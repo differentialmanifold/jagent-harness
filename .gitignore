@@ -1,0 +1,15 @@
+target/
+data/
+.idea/
+.vscode/
+*.iml
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+*.log
+*.db
+*.sqlite
+*.sqlite3
+.DS_Store

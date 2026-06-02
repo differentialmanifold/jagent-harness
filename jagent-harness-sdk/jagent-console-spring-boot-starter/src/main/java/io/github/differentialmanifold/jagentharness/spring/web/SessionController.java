@@ -1,0 +1,71 @@
+package io.github.differentialmanifold.jagentharness.spring.web;
+
+import java.util.List;
+
+import io.github.differentialmanifold.jagentharness.core.session.SessionDetails;
+import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
+import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.CreateSessionRequest;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.DeleteSessionRequest;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.RenameSessionRequest;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.SessionDetailsRequest;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/sessions")
+public class SessionController {
+
+    private final SessionManager sessionManager;
+    private final WorkspaceRootResolver workspaceRootResolver;
+
+    public SessionController(SessionManager sessionManager, WorkspaceRootResolver workspaceRootResolver) {
+        this.sessionManager = sessionManager;
+        this.workspaceRootResolver = workspaceRootResolver;
+    }
+
+    @PostMapping
+    public SessionRecord create(@RequestBody(required = false) CreateSessionRequest request) {
+        String title = request == null ? null : request.getTitle();
+        String workspacePath = request == null ? null : request.getWorkspacePath();
+        String normalizedWorkspacePath = workspaceRootResolver.normalizeWorkspacePath(workspacePath);
+        return sessionManager.createSession(title, normalizedWorkspacePath);
+    }
+
+    @GetMapping
+    public List<SessionRecord> list() {
+        return sessionManager.listSessions();
+    }
+
+    @PostMapping("/detail")
+    public SessionDetails detail(@RequestBody SessionDetailsRequest request) {
+        return sessionManager.getDetails(
+                requireSessionId(request == null ? null : request.getSessionId()));
+    }
+
+    @PostMapping("/rename")
+    public SessionRecord rename(@RequestBody RenameSessionRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("sessionId and title are required");
+        }
+        return sessionManager.renameSession(
+                requireSessionId(request.getSessionId()),
+                request.getTitle());
+    }
+
+    @PostMapping("/delete")
+    public void delete(@RequestBody DeleteSessionRequest request) {
+        sessionManager.deleteSession(
+                requireSessionId(request == null ? null : request.getSessionId()));
+    }
+
+    private String requireSessionId(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            throw new IllegalArgumentException("sessionId is required");
+        }
+        return sessionId.trim();
+    }
+}

@@ -1,0 +1,246 @@
+package io.github.differentialmanifold.jagentharness.core.conversation;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+
+public class DefaultConversationContextManager implements ConversationContextManager {
+
+    private final AgentSettings settings;
+    private final CompactionStore compactionStore;
+    private final AgentEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
+    private final TokenEstimator tokenEstimator = new TokenEstimator();
+
+    public DefaultConversationContextManager(AgentSettings settings,
+                                             CompactionStore compactionStore,
+                                             AgentEventPublisher eventPublisher,
+                                             ObjectMapper objectMapper) {
+        this.settings = settings;
+        this.compactionStore = compactionStore;
+        this.eventPublisher = eventPublisher;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public ConversationContext prepare(ConversationContextRequest request) {
+        List<AgentMessage> messages = request.getMessages() == null
+                ? new ArrayList<AgentMessage>()
+                : new ArrayList<AgentMessage>(request.getMessages());
+        CompactionState state = compactionStore.findBySessionId(request.getSessionId());
+        String summary = state == null ? null : state.getSummary();
+        String cursorMessageId = state == null ? null : state.getCursorMessageId();
+        List<AgentMessage> contextMessages = messagesAfterCursor(messages, cursorMessageId);
+        String systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
+        int estimatedTokens = estimateRequestTokens(systemPromptWithSummary, contextMessages, request.getTools());
+        int thresholdTokens = compactionThresholdTokens();
+
+        if (shouldCompact(estimatedTokens, thresholdTokens, contextMessages)) {
+            List<AgentMessage> recentMessages = recentMessages(contextMessages);
+            int compactMessageCount = contextMessages.size() - recentMessages.size();
+            if (compactMessageCount > 0) {
+                List<AgentMessage> messagesToCompact = new ArrayList<AgentMessage>(
+                        contextMessages.subList(0, compactMessageCount));
+                Map<String, Object> startPayload = new LinkedHashMap<String, Object>();
+                startPayload.put("estimatedTokens", estimatedTokens);
+                startPayload.put("thresholdTokens", thresholdTokens);
+                startPayload.put("messageCount", contextMessages.size());
+                startPayload.put("compactMessageCount", messagesToCompact.size());
+                startPayload.put("recentMessageCount", recentMessages.size());
+                publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_START, startPayload);
+
+                summary = compactConversation(request.getProvider(), summary, messagesToCompact);
+                cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
+                compactionStore.save(request.getSessionId(), summary, cursorMessageId);
+
+                contextMessages = recentMessages;
+                systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
+                int compactedTokens = estimateRequestTokens(
+                        systemPromptWithSummary,
+                        contextMessages,
+                        request.getTools());
+                Map<String, Object> endPayload = new LinkedHashMap<String, Object>();
+                endPayload.put("estimatedTokensBefore", estimatedTokens);
+                endPayload.put("estimatedTokensAfter", compactedTokens);
+                endPayload.put("thresholdTokens", thresholdTokens);
+                endPayload.put("summaryTokens", tokenEstimator.estimateText(summary));
+                endPayload.put("cursorMessageId", cursorMessageId);
+                publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_END, endPayload);
+            }
+        }
+
+        return new ConversationContext(systemPromptWithSummary, contextMessages);
+    }
+
+    private boolean shouldCompact(int estimatedTokens,
+                                  int thresholdTokens,
+                                  List<AgentMessage> contextMessages) {
+        return settings.isCompactionEnabled()
+                && thresholdTokens > 0
+                && estimatedTokens >= thresholdTokens
+                && contextMessages != null
+                && contextMessages.size() > Math.max(1, settings.getCompactionRecentMessages());
+    }
+
+    private int estimateRequestTokens(String systemPrompt,
+                                      List<AgentMessage> messages,
+                                      Collection<ToolDefinition> tools) {
+        return tokenEstimator.estimateText(systemPrompt)
+                + tokenEstimator.estimateMessages(messages)
+                + tokenEstimator.estimateTools(tools);
+    }
+
+    private int compactionThresholdTokens() {
+        int contextWindowTokens = settings.getContextWindowTokens() <= 0
+                ? 128000
+                : settings.getContextWindowTokens();
+        double ratio = settings.getCompactionThresholdRatio() <= 0
+                ? 0.8d
+                : settings.getCompactionThresholdRatio();
+        if (ratio > 1.0d) {
+            ratio = 1.0d;
+        }
+        return Math.max(1, (int) Math.floor(contextWindowTokens * ratio));
+    }
+
+    private List<AgentMessage> messagesAfterCursor(List<AgentMessage> messages, String cursorMessageId) {
+        if (messages == null || messages.isEmpty()) {
+            return new ArrayList<AgentMessage>();
+        }
+        if (cursorMessageId == null || cursorMessageId.trim().isEmpty()) {
+            return new ArrayList<AgentMessage>(messages);
+        }
+
+        for (int i = 0; i < messages.size(); i++) {
+            AgentMessage message = messages.get(i);
+            if (cursorMessageId.equals(message.getMessageId())) {
+                return new ArrayList<AgentMessage>(messages.subList(i + 1, messages.size()));
+            }
+        }
+        return new ArrayList<AgentMessage>(messages);
+    }
+
+    private List<AgentMessage> recentMessages(List<AgentMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return new ArrayList<AgentMessage>();
+        }
+        int recentCount = settings.getCompactionRecentMessages() <= 0
+                ? 20
+                : settings.getCompactionRecentMessages();
+        int start = Math.max(0, messages.size() - recentCount);
+        while (start > 0 && AgentMessage.ROLE_TOOL.equals(messages.get(start).getRole())) {
+            start--;
+        }
+        return new ArrayList<AgentMessage>(messages.subList(start, messages.size()));
+    }
+
+    private String compactConversation(ModelProvider provider,
+                                       String previousSummary,
+                                       List<AgentMessage> messagesToCompact) {
+        ModelRequest request = new ModelRequest();
+        request.setModel(settings.getModel());
+        request.setSystemPrompt(compactionSystemPrompt());
+        request.setMessages(Collections.singletonList(AgentMessage.user(
+                "compaction",
+                compactionUserPrompt(previousSummary, messagesToCompact))));
+        request.setTools(Collections.<ToolDefinition>emptyList());
+
+        ModelResponse response = provider.chat(request);
+        String summary = response == null ? null : response.getContent();
+        if (summary == null || summary.trim().isEmpty()) {
+            return previousSummary == null ? "" : previousSummary;
+        }
+        return summary.trim();
+    }
+
+    private String compactionSystemPrompt() {
+        int targetTokens = settings.getCompactionTargetTokens() <= 0
+                ? 4000
+                : settings.getCompactionTargetTokens();
+        return "You compact long agent conversations for future context. "
+                + "Produce a concise but complete summary under about " + targetTokens + " tokens. "
+                + "Preserve durable facts, user intent, decisions, constraints, file paths, code changes, "
+                + "tool results, unresolved tasks, and current next steps. "
+                + "Do not invent details. Do not include generic filler.";
+    }
+
+    private String compactionUserPrompt(String previousSummary, List<AgentMessage> messagesToCompact) {
+        StringBuilder prompt = new StringBuilder();
+        if (previousSummary != null && !previousSummary.trim().isEmpty()) {
+            prompt.append("Previous compacted summary:\n")
+                    .append(previousSummary.trim())
+                    .append("\n\n");
+        }
+        prompt.append("Compact this conversation segment and merge it with the previous summary if present.\n\n");
+        prompt.append(renderMessagesForCompaction(messagesToCompact));
+        return prompt.toString();
+    }
+
+    private String renderMessagesForCompaction(List<AgentMessage> messages) {
+        StringBuilder rendered = new StringBuilder();
+        if (messages == null || messages.isEmpty()) {
+            return "";
+        }
+        for (AgentMessage message : messages) {
+            rendered.append("[").append(valueOrEmpty(message.getRole())).append("]");
+            if (message.getToolName() != null && !message.getToolName().trim().isEmpty()) {
+                rendered.append(" tool=").append(message.getToolName());
+            }
+            if (message.getToolCallId() != null && !message.getToolCallId().trim().isEmpty()) {
+                rendered.append(" toolCallId=").append(message.getToolCallId());
+            }
+            rendered.append("\n");
+            if (message.getContent() != null && !message.getContent().isEmpty()) {
+                rendered.append(message.getContent()).append("\n");
+            }
+            if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+                try {
+                    rendered.append("toolCalls=")
+                            .append(objectMapper.writeValueAsString(message.getToolCalls()))
+                            .append("\n");
+                } catch (IOException e) {
+                    rendered.append("toolCalls=<failed to serialize>\n");
+                }
+            }
+            rendered.append("\n");
+        }
+        return rendered.toString();
+    }
+
+    private String appendCompactionSummary(String systemPrompt, String summary) {
+        String prompt = systemPrompt == null ? "" : systemPrompt;
+        if (summary == null || summary.trim().isEmpty()) {
+            return prompt;
+        }
+        return prompt
+                + "\n\n## Compacted Conversation Summary\n"
+                + "The following summary condenses earlier messages that are no longer included verbatim. "
+                + "Use it as durable context while prioritizing newer messages when there is a conflict.\n\n"
+                + summary.trim();
+    }
+
+    private String valueOrEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private AgentEvent publish(String sessionId,
+                               String turnId,
+                               String type,
+                               Object payload) {
+        return eventPublisher.publish(sessionId, turnId, type, payload);
+    }
+}
