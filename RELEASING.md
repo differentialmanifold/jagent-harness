@@ -40,9 +40,7 @@ io.github.differentialmanifold
 
    ```bash
    mvn -f pom.xml test
-   cd frontend
-   npm ci
-   npm run build
+   mvn -B -f jagent-harness-sdk/pom.xml -P release -Dgpg.skip verify
    ```
 
 4. Open a pull request into `main` and wait for CI to pass.
