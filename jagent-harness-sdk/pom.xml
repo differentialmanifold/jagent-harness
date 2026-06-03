@@ -6,11 +6,42 @@
 
     <groupId>io.github.differentialmanifold</groupId>
     <artifactId>jagent-harness-sdk</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
     <packaging>pom</packaging>
 
     <name>JAgentHarness SDK</name>
     <description>Embeddable Java agent harness SDK and Spring Boot integrations.</description>
+    <url>https://github.com/differentialmanifold/jagent-harness</url>
+
+    <inceptionYear>2026</inceptionYear>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/license/mit/</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>differentialmanifold</id>
+            <name>differentialmanifold</name>
+            <url>https://github.com/differentialmanifold</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/differentialmanifold/jagent-harness.git</connection>
+        <developerConnection>scm:git:https://github.com/differentialmanifold/jagent-harness.git</developerConnection>
+        <url>https://github.com/differentialmanifold/jagent-harness</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/differentialmanifold/jagent-harness/issues</url>
+    </issueManagement>
 
     <modules>
         <module>jagent-core</module>
@@ -25,6 +56,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
+        <maven.source.plugin.version>3.3.1</maven.source.plugin.version>
+        <maven.javadoc.plugin.version>3.6.3</maven.javadoc.plugin.version>
+        <maven.gpg.plugin.version>3.1.0</maven.gpg.plugin.version>
+        <central.publishing.maven.plugin.version>0.10.0</central.publishing.maven.plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -64,4 +99,81 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven.source.plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven.javadoc.plugin.version}</version>
+                        <configuration>
+                            <source>${java.version}</source>
+                            <doclint>none</doclint>
+                            <quiet>true</quiet>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven.gpg.plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <passphrase>${env.MAVEN_GPG_PASSPHRASE}</passphrase>
+                            <gpgArguments>
+                                <arg>--batch</arg>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                            </gpgArguments>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${central.publishing.maven.plugin.version}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <deploymentName>JAgentHarness ${project.version}</deploymentName>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
