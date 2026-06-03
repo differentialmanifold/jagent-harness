@@ -152,12 +152,9 @@
                             </execution>
                         </executions>
                         <configuration>
-                            <passphrase>${env.MAVEN_GPG_PASSPHRASE}</passphrase>
-                            <gpgArguments>
-                                <arg>--batch</arg>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                            </gpgArguments>
+                            <signer>bc</signer>
+                            <keyEnvName>MAVEN_GPG_KEY</keyEnvName>
+                            <passphraseEnvName>MAVEN_GPG_PASSPHRASE</passphraseEnvName>
                         </configuration>
                     </plugin>
                     <plugin>
