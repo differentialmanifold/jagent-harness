@@ -20,6 +20,10 @@ Export the signing key with:
 gpg --armor --export-secret-keys <KEY_ID>
 ```
 
+Release signing uses the Maven GPG Plugin `bc` signer. The armored private key is
+passed to Maven through `MAVEN_GPG_KEY`; the workflow does not import the key into
+`~/.gnupg`.
+
 The Sonatype namespace must allow publishing under:
 
 ```text
@@ -50,6 +54,9 @@ io.github.differentialmanifold
    ```
 
 4. Open a pull request into `main` and wait for CI to pass.
+
+   The `BC Signing` workflow performs a real release-profile signing check with
+   the `bc` signer, but it does not deploy artifacts.
 
 5. Squash merge the pull request.
 
