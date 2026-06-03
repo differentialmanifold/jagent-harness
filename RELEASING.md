@@ -14,6 +14,12 @@ Create these GitHub repository secrets before publishing:
 | `GPG_PRIVATE_KEY` | ASCII-armored GPG private key used to sign artifacts. |
 | `GPG_PASSPHRASE` | Passphrase for the GPG private key. |
 
+Export the signing key with:
+
+```zsh
+gpg --armor --export-secret-keys <KEY_ID>
+```
+
 The Sonatype namespace must allow publishing under:
 
 ```text
@@ -24,7 +30,7 @@ io.github.differentialmanifold
 
 1. Create a release branch from `main`.
 
-   ```bash
+   ```zsh
    git checkout main
    git pull
    git checkout -b release/0.1.0
@@ -32,13 +38,13 @@ io.github.differentialmanifold
 
 2. Set Maven versions to the release version.
 
-   ```bash
+   ```zsh
    mvn -f pom.xml versions:set -DnewVersion=0.1.0 -DgenerateBackupPoms=false
    ```
 
 3. Run local checks.
 
-   ```bash
+   ```zsh
    mvn -f pom.xml test
    mvn -B -f jagent-harness-sdk/pom.xml -P release -Dgpg.skip verify
    ```
@@ -49,7 +55,7 @@ io.github.differentialmanifold
 
 6. Tag the release from `main`.
 
-   ```bash
+   ```zsh
    git checkout main
    git pull
    git tag -a v0.1.0 -m "Release v0.1.0"
@@ -60,6 +66,6 @@ io.github.differentialmanifold
 
 8. After the release is published, open a follow-up pull request to bump development versions.
 
-   ```bash
+   ```zsh
    mvn -f pom.xml versions:set -DnewVersion=0.2.0-SNAPSHOT -DgenerateBackupPoms=false
    ```
