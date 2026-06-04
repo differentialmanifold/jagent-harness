@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -64,7 +65,7 @@ public class BashTool implements ToolDefinition {
             timeoutSeconds = 60;
         }
 
-        List<String> shellCommand = Arrays.asList("/bin/sh", "-lc", command);
+        List<String> shellCommand = shellCommand(command);
         ProcessBuilder processBuilder = new ProcessBuilder(shellCommand);
         processBuilder.directory(cwd.toFile());
         Process process = processBuilder.start();
@@ -103,6 +104,21 @@ public class BashTool implements ToolDefinition {
             }
             return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
         };
+    }
+
+    private List<String> shellCommand(String command) {
+        return shellCommand(command, System.getProperty("os.name"));
+    }
+
+    static List<String> shellCommand(String command, String osName) {
+        if (isWindows(osName)) {
+            return Arrays.asList("cmd.exe", "/d", "/s", "/c", command);
+        }
+        return Arrays.asList("/bin/sh", "-lc", command);
+    }
+
+    private static boolean isWindows(String osName) {
+        return osName != null && osName.toLowerCase(Locale.ENGLISH).contains("win");
     }
 
     private String futureValue(Future<String> future) {
