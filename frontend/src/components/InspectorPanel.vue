@@ -12,13 +12,13 @@
       </dl>
     </section>
 
-    <section>
+    <section v-if="loadedPromptFiles.length">
       <h3>Prompt Files</h3>
       <ul class="prompt-file-list">
-        <li v-for="file in promptFiles" :key="file.name" class="prompt-file">
+        <li v-for="file in loadedPromptFiles" :key="file.name" class="prompt-file">
           <header>
             <strong>{{ file.name }}</strong>
-            <small :class="{ active: file.exists }">{{ file.exists ? file.mode : 'missing' }}</small>
+            <small class="active">{{ file.mode }}</small>
           </header>
           <span>{{ file.description }}</span>
           <code>{{ file.path || agentConfigRoot }}</code>
@@ -63,6 +63,7 @@ const props = defineProps({
 })
 
 const promptFiles = computed(() => props.agentContext?.promptFiles || [])
+const loadedPromptFiles = computed(() => promptFiles.value.filter((file) => file.exists))
 const skills = computed(() => props.agentContext?.skills || [])
 const agentConfigRoot = computed(() => props.agentContext?.configRoot || '-')
 </script>
