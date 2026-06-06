@@ -178,30 +178,6 @@ function resultItemDetail(entry) {
   return ''
 }
 
-export function toolMetadata(message) {
-  const result = toolResult(message)
-  const omitted = new Set([
-    'stdout',
-    'stderr',
-    'content',
-    'matches',
-    'entries',
-    'command',
-    'diff',
-    'additions',
-    'deletions',
-    'changed',
-    'fileName'
-  ])
-  const metadata = {}
-  for (const [key, value] of Object.entries(result)) {
-    if (!omitted.has(key) && typeof value !== 'object') {
-      metadata[key] = value
-    }
-  }
-  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata, null, 2) : ''
-}
-
 export function summarizeToolArguments(call) {
   const name = call.name || call.toolName || 'tool'
   const args = parseJsonObject(call.argumentsJson || call.arguments || '') || {}

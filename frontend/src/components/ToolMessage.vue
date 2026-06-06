@@ -56,10 +56,6 @@
         </li>
       </ul>
 
-      <div v-if="!isEditDiffMessage(message) && toolMetadata(message)" class="tool-field muted">
-        <span>metadata</span>
-        <pre>{{ toolMetadata(message) }}</pre>
-      </div>
     </div>
   </details>
 </template>
@@ -78,7 +74,6 @@ import {
   toolCommand,
   toolMessageSubtitle,
   toolMessageTitle,
-  toolMetadata,
   toolResultItems,
   toolStatusLabel,
   toolStderr,
