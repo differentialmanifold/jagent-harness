@@ -1,12 +1,20 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptBinding;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
@@ -33,17 +41,23 @@ public class AgentContextController {
     private final AgentSettings settings;
     private final SessionManager sessionManager;
     private final WorkspaceRootResolver workspaceRootResolver;
+    private final KnowledgeFileStore knowledgeFileStore;
+    private final PromptBindingStore promptBindingStore;
 
     public AgentContextController(ToolRegistry toolRegistry,
                                   SkillRegistry skillRegistry,
                                   AgentSettings settings,
                                   SessionManager sessionManager,
-                                  WorkspaceRootResolver workspaceRootResolver) {
+                                  WorkspaceRootResolver workspaceRootResolver,
+                                  KnowledgeFileStore knowledgeFileStore,
+                                  PromptBindingStore promptBindingStore) {
         this.toolRegistry = toolRegistry;
         this.skillRegistry = skillRegistry;
         this.settings = settings;
         this.sessionManager = sessionManager;
         this.workspaceRootResolver = workspaceRootResolver;
+        this.knowledgeFileStore = knowledgeFileStore;
+        this.promptBindingStore = promptBindingStore;
     }
 
     @GetMapping
@@ -66,7 +80,7 @@ public class AgentContextController {
 
         return new AgentContextResponse(
                 tools(),
-                promptFiles(configRoot),
+                promptFiles(configRoot, workspaceRoot),
                 skills(agentContext, configRoot, workspaceRoot),
                 configRoot == null ? null : configRoot.toString(),
                 workspaceRoot == null ? null : workspaceRoot.toString());
@@ -88,25 +102,80 @@ public class AgentContextController {
         return tools;
     }
 
-    private List<PromptFileResponse> promptFiles(Path configRoot) {
+    private List<PromptFileResponse> promptFiles(Path configRoot, Path workspaceRoot) {
         List<PromptFileResponse> files = new ArrayList<PromptFileResponse>();
-        files.add(promptFile(
-                configRoot,
-                "SYSTEM.md",
-                "override",
-                "Overrides the built-in default system prompt when present."));
-        files.add(promptFile(
+        addPromptFile(files,
                 configRoot,
                 "AGENTS.md",
                 "append",
-                "Appends additional agent rules after the system prompt when present."));
+                "Global agent rules appended after the built-in system prompt.");
+        addPromptFile(files,
+                workspaceRoot,
+                "AGENTS.md",
+                "append",
+                "Project agent rules appended after global agent rules.");
+        addDatabasePromptFile(files,
+                "AGENTS.md",
+                "append",
+                "Database agent rules appended after file-based agent rules.");
         return files;
     }
 
-    private PromptFileResponse promptFile(Path configRoot, String name, String mode, String description) {
-        Path path = configRoot == null ? null : configRoot.resolve(name).toAbsolutePath().normalize();
-        boolean exists = path != null && Files.isRegularFile(path);
-        return new PromptFileResponse(name, path == null ? null : path.toString(), exists, mode, description);
+    private void addPromptFile(List<PromptFileResponse> files,
+                               Path root,
+                               String name,
+                               String mode,
+                               String description) {
+        Path path = root == null ? null : root.resolve(name).toAbsolutePath().normalize();
+        if (hasReadableContent(path)) {
+            files.add(new PromptFileResponse(name, path.toString(), true, mode, description));
+        }
+    }
+
+    private void addDatabasePromptFile(List<PromptFileResponse> files,
+                                       String name,
+                                       String mode,
+                                       String description) {
+        if (knowledgeFileStore == null) {
+            return;
+        }
+        boolean addedBinding = false;
+        if (promptBindingStore != null) {
+            for (PromptBinding binding : promptBindingStore.listBindings(name)) {
+                KnowledgeFile promptFile = binding == null ? null : knowledgeFileStore.readFile(binding.getFilePath());
+                if (promptFile != null && promptFile.getContent() != null && !promptFile.getContent().trim().isEmpty()) {
+                    files.add(new PromptFileResponse(
+                            name,
+                            promptFile.getPath(),
+                            true,
+                            mode,
+                            description));
+                    addedBinding = true;
+                }
+            }
+        }
+        if (!addedBinding) {
+            KnowledgeFile promptFile = knowledgeFileStore.readFile(name);
+            if (promptFile != null && promptFile.getContent() != null && !promptFile.getContent().trim().isEmpty()) {
+                files.add(new PromptFileResponse(
+                        name,
+                        promptFile.getPath(),
+                        true,
+                        mode,
+                        description));
+            }
+        }
+    }
+
+    private boolean hasReadableContent(Path path) {
+        if (path == null || !Files.isRegularFile(path)) {
+            return false;
+        }
+        try {
+            return !new String(Files.readAllBytes(path), StandardCharsets.UTF_8).trim().isEmpty();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read prompt file " + path, e);
+        }
     }
 
     private List<SkillInfoResponse> skills(AgentContext context, Path configRoot, Path workspaceRoot) {
@@ -116,21 +185,35 @@ public class AgentContextController {
                     skill.getName(),
                     skill.getDescription(),
                     skill.getFilePath(),
-                    skill.getDirectoryPath(),
                     skillScope(skill, configRoot, workspaceRoot)));
         }
         return skills;
     }
 
     private String skillScope(SkillDescriptor skill, Path configRoot, Path workspaceRoot) {
-        Path filePath = skill.getFilePath() == null ? null : java.nio.file.Paths.get(skill.getFilePath()).toAbsolutePath().normalize();
-        if (filePath != null && workspaceRoot != null && filePath.startsWith(workspaceRoot.toAbsolutePath().normalize())) {
+        Path filePath = parsePath(skill.getFilePath());
+        if (filePath != null && !filePath.isAbsolute()) {
+            return "database";
+        }
+        Path absoluteFilePath = filePath == null ? null : filePath.toAbsolutePath().normalize();
+        if (absoluteFilePath != null && workspaceRoot != null && absoluteFilePath.startsWith(workspaceRoot.toAbsolutePath().normalize())) {
             return "project";
         }
-        if (filePath != null && configRoot != null && filePath.startsWith(configRoot.toAbsolutePath().normalize())) {
+        if (absoluteFilePath != null && configRoot != null && absoluteFilePath.startsWith(configRoot.toAbsolutePath().normalize())) {
             return "global";
         }
         return "provider";
+    }
+
+    private Path parsePath(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Paths.get(path.trim()).normalize();
+        } catch (InvalidPathException e) {
+            return null;
+        }
     }
 
 }

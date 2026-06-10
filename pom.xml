@@ -6,7 +6,7 @@
 
     <groupId>io.github.differentialmanifold</groupId>
     <artifactId>jagent-harness-dev</artifactId>
-    <version>0.1.1</version>
+    <version>0.2.0</version>
     <packaging>pom</packaging>
 
     <name>JAgentHarness Development Reactor</name>

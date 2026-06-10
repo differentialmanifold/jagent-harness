@@ -33,3 +33,4 @@ harness:
   console:
     allowed-origins:
       - ${JAGENT_CORS_ORIGIN:http://localhost:5173}
+      - ${JAGENT_CORS_ORIGIN_127:http://127.0.0.1:5173}

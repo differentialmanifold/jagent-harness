@@ -1,32 +1,35 @@
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="$emit('close')">
-    <form class="project-dialog" role="dialog" aria-modal="true" @submit.prevent="$emit('submit')">
-      <header>
-        <h2>Add new project</h2>
-        <button class="icon-button subtle" type="button" title="Close" @click="$emit('close')">X</button>
-      </header>
-
-      <label for="project-path-input">Project path</label>
-      <input
-        id="project-path-input"
-        ref="inputEl"
-        :value="modelValue"
-        placeholder="/Users/you/work/my-project"
-        :disabled="submitting"
-        @input="$emit('update:modelValue', $event.target.value)"
-      />
-      <small v-if="error">{{ error }}</small>
-
-      <footer>
-        <button class="secondary-button" type="button" :disabled="submitting" @click="$emit('close')">
-          Cancel
-        </button>
-        <button class="primary-button" :disabled="submitting || !modelValue.trim()" type="submit">
-          {{ submitting ? 'Checking...' : 'Add project' }}
-        </button>
-      </footer>
+  <el-dialog
+    :model-value="open"
+    title="Add new project"
+    width="520px"
+    align-center
+    @close="$emit('close')"
+  >
+    <form class="dialog-form" @submit.prevent="$emit('submit')">
+      <el-form-item label="Project path" :error="error">
+        <el-input
+          ref="inputEl"
+          :model-value="modelValue"
+          placeholder="/Users/you/work/my-project"
+          :disabled="submitting"
+          @update:model-value="$emit('update:modelValue', $event)"
+        />
+      </el-form-item>
     </form>
-  </div>
+
+    <template #footer>
+      <el-button :disabled="submitting" @click="$emit('close')">Cancel</el-button>
+      <el-button
+        type="primary"
+        :loading="submitting"
+        :disabled="!modelValue.trim()"
+        @click="$emit('submit')"
+      >
+        Add project
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>

@@ -5,26 +5,46 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 
 public class PromptService implements PromptProvider {
 
+    private static final String DEFAULT_SYSTEM_PROMPT =
+            "You are a server-side agent running inside JAgentHarness.\n"
+                    + "Use available tools and skills to help the user accomplish the task.\n"
+                    + "Every executable capability is exposed as a registered tool, and every available skill describes a reusable workflow or domain instruction.\n"
+                    + "When a tool result is needed, call the tool and continue after the result is returned.\n";
+
     private final SkillRegistry skillRegistry;
     private final Path defaultConfigRoot;
+    private final KnowledgeFileStore knowledgeFileStore;
+    private final PromptBindingStore promptBindingStore;
 
     public PromptService(SkillRegistry skillRegistry) {
         this(skillRegistry, Paths.get("."));
     }
 
     public PromptService(SkillRegistry skillRegistry, Path defaultConfigRoot) {
+        this(skillRegistry, defaultConfigRoot, null, null);
+    }
+
+    public PromptService(SkillRegistry skillRegistry,
+                         Path defaultConfigRoot,
+                         KnowledgeFileStore knowledgeFileStore,
+                         PromptBindingStore promptBindingStore) {
         this.skillRegistry = skillRegistry;
         this.defaultConfigRoot = defaultConfigRoot == null
                 ? Paths.get(".").toAbsolutePath().normalize()
                 : defaultConfigRoot.toAbsolutePath().normalize();
+        this.knowledgeFileStore = knowledgeFileStore;
+        this.promptBindingStore = promptBindingStore;
     }
 
     public String buildSystemPrompt(Collection<ToolDefinition> tools) {
@@ -44,18 +64,10 @@ public class PromptService implements PromptProvider {
                 : context;
         AgentContext agentContext = effectiveContext.getAgentContext();
         Path root = configRoot(agentContext);
-        String customSystem = readIfExists(root.resolve("SYSTEM.md"));
+        Path workspaceRoot = workspaceRoot(agentContext);
         StringBuilder prompt = new StringBuilder();
-        if (!customSystem.isEmpty()) {
-            prompt.append(customSystem.trim()).append("\n\n");
-        } else {
-            prompt.append("You are a server-side agent running inside JAgentHarness.\n");
-            prompt.append("Use tools only by returning OpenAI-compatible function tool calls. ");
-            prompt.append("Every capability is exposed as a registered Java method tool.\n");
-            prompt.append("When a tool result is needed, call the tool and continue after the result is returned.\n\n");
-        }
-
-        appendContextFile(prompt, root.resolve("AGENTS.md"), "Agent Rules");
+        appendDefaultSystemPrompt(prompt);
+        appendAgentRules(prompt, root, workspaceRoot);
 
         prompt.append("Available tools:\n");
         for (ToolDefinition tool : effectiveContext.getTools()) {
@@ -70,18 +82,15 @@ public class PromptService implements PromptProvider {
             for (SkillDescriptor skill : skills) {
                 prompt.append("- ").append(skill.getName())
                         .append(": ").append(skill.getDescription());
-                if (!isBlank(skill.getDirectoryPath())) {
+                if (!isBlank(skill.getFilePath())) {
                     hasFileSkill = true;
-                    prompt.append(" (file: ").append(skill.getFilePath())
-                            .append("; directory: ").append(skill.getDirectoryPath()).append(")");
-                } else if (!isBlank(skill.getFilePath())) {
-                    prompt.append(" (source: ").append(skill.getFilePath()).append(")");
+                    prompt.append(" (file: ").append(skill.getFilePath()).append(")");
                 }
                 prompt.append("\n");
             }
             if (hasFileSkill) {
                 prompt.append("When a file skill is relevant, call read with its SKILL.md file path before following it. ");
-                prompt.append("If that SKILL.md references a relative path, resolve it relative to the skill directory shown above and read the full resolved path.\n\n");
+                prompt.append("If that SKILL.md references a relative path, resolve it relative to the directory containing that SKILL.md path and read the full resolved path.\n\n");
             } else {
                 prompt.append("\n");
             }
@@ -90,16 +99,79 @@ public class PromptService implements PromptProvider {
         return prompt.toString().trim();
     }
 
-    private void appendContextFile(StringBuilder prompt, Path path, String title) {
-        String content = readIfExists(path);
+    private void appendDefaultSystemPrompt(StringBuilder prompt) {
+        prompt.append(DEFAULT_SYSTEM_PROMPT).append("\n");
+    }
+
+    private void appendAgentRules(StringBuilder prompt, Path configRoot, Path workspaceRoot) {
+        List<String> contents = agentRuleFiles(configRoot, workspaceRoot);
+        if (contents.isEmpty()) {
+            return;
+        }
+
+        prompt.append("## Agent Rules\n");
+        for (int i = 0; i < contents.size(); i++) {
+            if (i > 0) {
+                prompt.append("\n\n");
+            }
+            prompt.append(contents.get(i).trim());
+        }
+        prompt.append("\n\n");
+    }
+
+    private List<String> agentRuleFiles(Path configRoot, Path workspaceRoot) {
+        List<String> files = new ArrayList<String>();
+        addAgentRuleFile(files, readIfExists(configRoot == null ? null : configRoot.resolve("AGENTS.md")));
+        addAgentRuleFile(files, readIfExists(workspaceRoot == null ? null : workspaceRoot.resolve("AGENTS.md")));
+        for (String content : readKnowledgePromptFiles("AGENTS.md")) {
+            addAgentRuleFile(files, content);
+        }
+        return files;
+    }
+
+    private void addAgentRuleFile(List<String> files, String content) {
         if (!content.isEmpty()) {
-            prompt.append("## ").append(title).append("\n");
-            prompt.append(content.trim()).append("\n\n");
+            files.add(content);
         }
     }
 
+    private List<String> readKnowledgePromptFiles(String promptName) {
+        List<String> contents = new ArrayList<String>();
+        if (knowledgeFileStore == null) {
+            return contents;
+        }
+        boolean readBinding = false;
+        if (promptBindingStore != null) {
+            for (PromptBinding binding : promptBindingStore.listBindings(promptName)) {
+                if (binding == null || isBlank(binding.getFilePath())) {
+                    continue;
+                }
+                String content = readKnowledgeIfExists(binding.getFilePath());
+                if (!content.isEmpty()) {
+                    contents.add(content);
+                    readBinding = true;
+                }
+            }
+        }
+        if (!readBinding) {
+            String content = readKnowledgeIfExists(promptName);
+            if (!content.isEmpty()) {
+                contents.add(content);
+            }
+        }
+        return contents;
+    }
+
+    private String readKnowledgeIfExists(String path) {
+        KnowledgeFile file = knowledgeFileStore.readFile(path);
+        if (file == null) {
+            return "";
+        }
+        return file.getContent() == null ? "" : file.getContent();
+    }
+
     private String readIfExists(Path path) {
-        if (!Files.isRegularFile(path)) {
+        if (path == null || !Files.isRegularFile(path)) {
             return "";
         }
         try {
@@ -120,7 +192,14 @@ public class PromptService implements PromptProvider {
         return configRoot();
     }
 
+    private Path workspaceRoot(AgentContext context) {
+        return context == null || context.getWorkspaceRoot() == null
+                ? null
+                : context.getWorkspaceRoot().toAbsolutePath().normalize();
+    }
+
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }
+
 }

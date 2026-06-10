@@ -568,6 +568,7 @@ export function useAgentHarness() {
     renameDialogTitle,
     renameDialogLabel,
     projectGroups,
+    loadAgentContext,
     bootstrap,
     openProjectDialog,
     closeProjectDialog,

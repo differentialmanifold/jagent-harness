@@ -5,17 +5,15 @@ public class SkillInfoResponse {
     private String name;
     private String description;
     private String filePath;
-    private String directoryPath;
     private String scope;
 
     public SkillInfoResponse() {
     }
 
-    public SkillInfoResponse(String name, String description, String filePath, String directoryPath, String scope) {
+    public SkillInfoResponse(String name, String description, String filePath, String scope) {
         this.name = name;
         this.description = description;
         this.filePath = filePath;
-        this.directoryPath = directoryPath;
         this.scope = scope;
     }
 
@@ -29,10 +27,6 @@ public class SkillInfoResponse {
 
     public String getFilePath() {
         return filePath;
-    }
-
-    public String getDirectoryPath() {
-        return directoryPath;
     }
 
     public String getScope() {

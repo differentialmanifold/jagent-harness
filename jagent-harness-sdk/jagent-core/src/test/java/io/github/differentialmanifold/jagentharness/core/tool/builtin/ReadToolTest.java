@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import org.junit.jupiter.api.Test;
@@ -114,6 +115,44 @@ class ReadToolTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> tool.execute(toolContext(), arguments));
+    }
+
+    @Test
+    void readsDatabaseSkillFileByLogicalPath() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        TestKnowledgeFileStore store = new TestKnowledgeFileStore();
+        store.writeFile("skills/review/SKILL.md", "# Review\n", "text/markdown");
+        ReadTool tool = new ReadTool(objectMapper, store);
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "skills/review/SKILL.md");
+
+        ToolExecutionResult executionResult = tool.execute(toolContext(), arguments);
+        JsonNode result = objectMapper.readTree(executionResult.getContent());
+
+        assertEquals("skills/review/SKILL.md", result.path("path").asText());
+        assertEquals("text", result.path("type").asText());
+        assertEquals("# Review\n", result.path("content").asText());
+    }
+
+    @Test
+    void databaseSkillFileOverridesFileWithSamePath() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        TestKnowledgeFileStore store = new TestKnowledgeFileStore();
+        store.writeFile("skills/review/SKILL.md", "# Database Review\n", "text/markdown");
+        ReadTool tool = new ReadTool(objectMapper, store);
+        Path file = workspaceRoot.resolve("skills/review/SKILL.md");
+        Files.createDirectories(file.getParent());
+        Files.write(file, "# File Review\n".getBytes(StandardCharsets.UTF_8));
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "skills/review/SKILL.md");
+
+        ToolExecutionResult executionResult = tool.execute(toolContext(), arguments);
+        JsonNode result = objectMapper.readTree(executionResult.getContent());
+
+        assertEquals("skills/review/SKILL.md", result.path("path").asText());
+        assertEquals("# Database Review\n", result.path("content").asText());
     }
 
     private ToolContext toolContext() {

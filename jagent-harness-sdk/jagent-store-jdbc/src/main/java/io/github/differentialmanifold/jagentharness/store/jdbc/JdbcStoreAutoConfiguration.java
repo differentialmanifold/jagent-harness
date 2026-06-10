@@ -4,7 +4,10 @@ import javax.sql.DataSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
+import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -45,5 +48,11 @@ public class JdbcStoreAutoConfiguration {
     @ConditionalOnMissingBean(CompactionStore.class)
     public JdbcCompactionStore jdbcCompactionStore(JdbcTemplate jdbcTemplate) {
         return new JdbcCompactionStore(jdbcTemplate);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean({KnowledgeFileStore.class, SkillManifestStore.class, PromptBindingStore.class})
+    public JdbcKnowledgeFileStore jdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate) {
+        return new JdbcKnowledgeFileStore(jdbcTemplate);
     }
 }

@@ -1,77 +1,83 @@
 <template>
   <aside class="sidebar">
-    <div class="brand">
+    <div class="session-sidebar-header">
       <div>
-        <h1>JAgentHarness</h1>
-        <p>{{ providerLabel }}</p>
+        <h2>Chats</h2>
+        <p>{{ projectGroups.length }} projects</p>
       </div>
-      <button class="icon-button" title="Refresh" @click="$emit('refresh')">R</button>
     </div>
 
     <div class="project-actions">
-      <button class="primary-button" @click="$emit('open-project-dialog')">
+      <el-button type="primary" :icon="Plus" @click="$emit('open-project-dialog')">
         Add new project
-      </button>
+      </el-button>
     </div>
 
-    <nav class="projects" aria-label="Projects">
-      <section
-        v-for="project in projectGroups"
-        :key="project.key"
-        :class="['project-group', { active: project.key === currentProjectKey, collapsed: isCollapsed(project.key) }]"
-      >
-        <div class="project-header">
-          <button class="project-title" @click="toggleProject(project)">
-            <span class="project-disclosure" aria-hidden="true">{{ isCollapsed(project.key) ? '>' : 'v' }}</span>
-            <span class="project-title-text">
-              <span>{{ project.name }}</span>
-              <small>{{ project.pathLabel }}</small>
-            </span>
-          </button>
-          <div class="menu-wrapper">
-            <button class="menu-button" title="Project actions" @click="toggleMenu('project', project.key)">
-              ...
+    <el-scrollbar class="projects-scroll">
+      <nav class="projects" aria-label="Projects">
+        <section
+          v-for="project in projectGroups"
+          :key="project.key"
+          :class="['project-group', { active: project.key === currentProjectKey, collapsed: isCollapsed(project.key) }]"
+        >
+          <div class="project-header">
+            <button class="project-title" @click="toggleProject(project)">
+              <el-icon class="project-disclosure" aria-hidden="true">
+                <CaretRight v-if="isCollapsed(project.key)" />
+                <CaretBottom v-else />
+              </el-icon>
+              <span class="project-title-text">
+                <span>{{ project.name }}</span>
+                <small>{{ project.pathLabel }}</small>
+              </span>
             </button>
-            <div v-if="isMenuOpen('project', project.key)" class="context-menu">
-              <button @click="runProjectAction('create-session', project)">New chat</button>
-              <button @click="runProjectAction('rename-project', project)">Rename</button>
-              <button class="danger" :disabled="running" @click="runProjectAction('remove-project', project)">Remove</button>
-            </div>
+            <el-dropdown trigger="click">
+              <el-button text :icon="MoreFilled" circle title="Project actions" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="runProjectAction('create-session', project)">New chat</el-dropdown-item>
+                  <el-dropdown-item @click="runProjectAction('rename-project', project)">Rename</el-dropdown-item>
+                  <el-dropdown-item :disabled="running" divided @click="runProjectAction('remove-project', project)">
+                    Remove
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
-        </div>
 
-        <div v-if="!isCollapsed(project.key)" class="sessions">
-          <div
-            v-for="session in project.sessions"
-            :key="session.sessionId"
-            :class="['session-item', { active: currentSession && currentSession.sessionId === session.sessionId }]"
-          >
-            <button class="session-main" @click="selectSession(session.sessionId)">
-              <span>{{ session.title }}</span>
-              <small>{{ formatDate(session.updatedAt) }}</small>
-            </button>
-            <div class="menu-wrapper">
-              <button class="menu-button" title="Chat actions" @click="toggleMenu('chat', session.sessionId)">
-                ...
+          <div v-if="!isCollapsed(project.key)" class="sessions">
+            <div
+              v-for="session in project.sessions"
+              :key="session.sessionId"
+              :class="['session-item', { active: currentSession && currentSession.sessionId === session.sessionId }]"
+            >
+              <button class="session-main" @click="selectSession(session.sessionId)">
+                <span>{{ session.title }}</span>
+                <small>{{ formatDate(session.updatedAt) }}</small>
               </button>
-              <div v-if="isMenuOpen('chat', session.sessionId)" class="context-menu">
-                <button :disabled="running" @click="runChatAction('rename-chat', session)">Rename</button>
-                <button class="danger" :disabled="running" @click="runChatAction('remove-chat', session)">Remove</button>
-              </div>
+              <el-dropdown trigger="click">
+                <el-button text :icon="MoreFilled" circle title="Chat actions" />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item :disabled="running" @click="runChatAction('rename-chat', session)">Rename</el-dropdown-item>
+                    <el-dropdown-item :disabled="running" divided @click="runChatAction('remove-chat', session)">Remove</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
-        </div>
-      </section>
-    </nav>
+        </section>
+      </nav>
+    </el-scrollbar>
   </aside>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue'
+import { CaretBottom, CaretRight, MoreFilled, Plus } from '@element-plus/icons-vue'
 import { formatDate } from '../utils/format'
 
 const props = defineProps({
-  providerLabel: { type: String, required: true },
   projectGroups: { type: Array, required: true },
   currentProjectKey: { type: String, required: true },
   currentSession: { type: Object, default: null },
@@ -79,7 +85,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'refresh',
   'open-project-dialog',
   'select-project',
   'create-session',
@@ -90,7 +95,6 @@ const emit = defineEmits([
   'remove-chat'
 ])
 
-const openMenu = ref(null)
 const collapsedProjectKeys = ref([])
 
 watch(
@@ -102,24 +106,7 @@ watch(
   { immediate: true }
 )
 
-function toggleMenu(type, key) {
-  if (openMenu.value && openMenu.value.type === type && openMenu.value.key === key) {
-    openMenu.value = null
-  } else {
-    openMenu.value = { type, key }
-  }
-}
-
-function isMenuOpen(type, key) {
-  return openMenu.value && openMenu.value.type === type && openMenu.value.key === key
-}
-
-function closeMenu() {
-  openMenu.value = null
-}
-
 function toggleProject(project) {
-  closeMenu()
   if (isCollapsed(project.key)) {
     collapsedProjectKeys.value = collapsedProjectKeys.value.filter((key) => key !== project.key)
     emit('select-project', project)
@@ -129,7 +116,6 @@ function toggleProject(project) {
 }
 
 function selectSession(sessionId) {
-  closeMenu()
   const project = props.projectGroups.find((item) => item.sessions.some((session) => session.sessionId === sessionId))
   if (project) {
     collapsedProjectKeys.value = collapsedProjectKeys.value.filter((key) => key !== project.key)
@@ -142,12 +128,10 @@ function isCollapsed(projectKey) {
 }
 
 function runProjectAction(action, project) {
-  closeMenu()
   emit(action, project)
 }
 
 function runChatAction(action, session) {
-  closeMenu()
   emit(action, session)
 }
 </script>
