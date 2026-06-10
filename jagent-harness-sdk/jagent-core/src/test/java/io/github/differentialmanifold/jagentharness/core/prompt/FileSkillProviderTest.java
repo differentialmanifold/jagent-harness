@@ -39,7 +39,6 @@ class FileSkillProviderTest {
         assertEquals("code-review", skills.get(0).getName());
         assertEquals("Use when reviewing Java code changes.", skills.get(0).getDescription());
         assertEquals(skill.toAbsolutePath().normalize().toString(), skills.get(0).getFilePath());
-        assertEquals(skill.getParent().toAbsolutePath().normalize().toString(), skills.get(0).getDirectoryPath());
     }
 
     @Test

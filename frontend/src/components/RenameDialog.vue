@@ -1,31 +1,34 @@
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="$emit('close')">
-    <form class="project-dialog" role="dialog" aria-modal="true" @submit.prevent="$emit('submit')">
-      <header>
-        <h2>{{ title }}</h2>
-        <button class="icon-button subtle" type="button" title="Close" @click="$emit('close')">X</button>
-      </header>
-
-      <label for="chat-title-input">{{ label }}</label>
-      <input
-        id="chat-title-input"
-        ref="inputEl"
-        :value="modelValue"
-        :disabled="submitting"
-        @input="$emit('update:modelValue', $event.target.value)"
-      />
-      <small v-if="error">{{ error }}</small>
-
-      <footer>
-        <button class="secondary-button" type="button" :disabled="submitting" @click="$emit('close')">
-          Cancel
-        </button>
-        <button class="primary-button" :disabled="submitting || !modelValue.trim()" type="submit">
-          {{ submitting ? 'Saving...' : 'Save' }}
-        </button>
-      </footer>
+  <el-dialog
+    :model-value="open"
+    :title="title"
+    width="480px"
+    align-center
+    @close="$emit('close')"
+  >
+    <form class="dialog-form" @submit.prevent="$emit('submit')">
+      <el-form-item :label="label" :error="error">
+        <el-input
+          ref="inputEl"
+          :model-value="modelValue"
+          :disabled="submitting"
+          @update:model-value="$emit('update:modelValue', $event)"
+        />
+      </el-form-item>
     </form>
-  </div>
+
+    <template #footer>
+      <el-button :disabled="submitting" @click="$emit('close')">Cancel</el-button>
+      <el-button
+        type="primary"
+        :loading="submitting"
+        :disabled="!modelValue.trim()"
+        @click="$emit('submit')"
+      >
+        Save
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>

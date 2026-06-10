@@ -13,6 +13,7 @@ public class ConsoleProperties {
 
     public ConsoleProperties() {
         allowedOrigins.add("http://localhost:5173");
+        allowedOrigins.add("http://127.0.0.1:5173");
     }
 
     public boolean isEnabled() {

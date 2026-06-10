@@ -2,6 +2,8 @@
   color: #18212f;
   background: #eef1f5;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --el-color-primary: #1f6feb;
+  --el-border-radius-base: 6px;
 }
 
 * {
@@ -27,11 +29,22 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+  border-bottom: 1px solid #d7dde6;
+  background: #fbfcfe;
+  padding: 14px 18px;
 }
 
 .sidebar {
@@ -47,12 +60,14 @@ textarea {
 
 .brand {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .brand h1,
+.session-sidebar-header h2,
 .panel-header h2,
 .inspector h3 {
   margin: 0;
@@ -64,14 +79,40 @@ textarea {
 }
 
 .brand p,
+.session-sidebar-header p,
 .panel-header p {
   margin: 4px 0 0;
   color: #667085;
   font-size: 13px;
 }
 
+.app-tabs {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-tabs .el-radio-button__inner {
+  min-width: 96px;
+  font-weight: 700;
+}
+
+.view-frame {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view-frame.chat-frame {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.view-frame.management-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .primary-button,
-.composer button,
 .icon-button,
 .secondary-button {
   border: 1px solid #1f6feb;
@@ -110,13 +151,33 @@ textarea {
   gap: 8px;
 }
 
+.project-actions .el-button {
+  width: 100%;
+}
+
+.session-sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.session-sidebar-header h2 {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.projects-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
 .projects {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
+  padding-right: 4px;
 }
 
 .project-group {
@@ -228,71 +289,16 @@ textarea {
   color: #667085;
 }
 
-.menu-wrapper {
-  position: relative;
-}
-
-.menu-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 28px;
-  border: 1px solid #d7dde6;
-  border-radius: 6px;
-  background: #fff;
-  color: #18212f;
-  cursor: pointer;
-  line-height: 1;
-}
-
-.context-menu {
-  position: absolute;
-  top: 32px;
-  right: 0;
-  z-index: 10;
-  display: grid;
-  min-width: 132px;
-  border: 1px solid #d7dde6;
-  border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 12px 30px rgba(24, 33, 47, 0.14);
-  padding: 6px;
-}
-
-.context-menu button {
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #18212f;
-  cursor: pointer;
-  padding: 8px 10px;
-  text-align: left;
-}
-
-.context-menu button:hover:not(:disabled) {
-  background: #f2f5f9;
-}
-
-.context-menu button.danger {
-  color: #a23333;
-}
-
-.context-menu button.danger:hover:not(:disabled) {
-  background: #fff2f2;
-}
-
-.context-menu button:disabled {
-  color: #98a2b3;
-  cursor: not-allowed;
-}
-
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.workspace.management-shell {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chat-panel {
@@ -316,22 +322,6 @@ textarea {
 
 .panel-header h2 {
   font-size: 18px;
-}
-
-.status-pill {
-  border: 1px solid #93c5a4;
-  border-radius: 999px;
-  background: #edf9f0;
-  color: #206a3b;
-  font-size: 12px;
-  padding: 5px 10px;
-  white-space: nowrap;
-}
-
-.status-pill.warn {
-  border-color: #e6b470;
-  background: #fff6e8;
-  color: #8a5400;
 }
 
 .messages {
@@ -641,101 +631,54 @@ textarea {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 1fr) 110px;
   gap: 10px;
   border-top: 1px solid #d7dde6;
   background: #fff;
   padding: 14px;
 }
 
-.composer textarea {
+.composer .el-textarea__inner {
   min-height: 74px;
-  resize: vertical;
-  border: 1px solid #cbd3df;
   border-radius: 8px;
   padding: 10px 12px;
 }
 
-.composer button {
+.composer .el-button {
+  min-height: 74px;
   border-radius: 8px;
 }
 
-.composer button:disabled,
 .primary-button:disabled,
 .secondary-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(24, 33, 47, 0.42);
-  padding: 24px;
-  z-index: 20;
-}
-
-.project-dialog {
-  display: grid;
-  gap: 14px;
-  width: min(520px, 100%);
-  border: 1px solid #d7dde6;
-  border-radius: 8px;
-  background: #fff;
-  padding: 18px;
-  box-shadow: 0 18px 48px rgba(24, 33, 47, 0.2);
-}
-
-.project-dialog header,
-.project-dialog footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.project-dialog h2 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.project-dialog label {
-  color: #667085;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.project-dialog input {
-  width: 100%;
-  min-width: 0;
-  height: 40px;
-  border: 1px solid #cbd3df;
-  border-radius: 6px;
-  padding: 8px 10px;
-}
-
-.project-dialog small {
-  color: #a23333;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.project-dialog footer {
-  justify-content: flex-end;
+.dialog-form .el-form-item {
+  margin-bottom: 0;
 }
 
 .inspector {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
   min-height: 0;
   border-left: 1px solid #d7dde6;
   background: #f8fafc;
-  padding: 18px;
-  overflow: auto;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.inspector-tabs {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.inspector-tabs .el-tabs__content,
+.inspector-tabs .el-tab-pane,
+.inspector-tabs .el-scrollbar {
+  min-height: 0;
+  height: 100%;
 }
 
 .inspector section {
@@ -873,16 +816,488 @@ dd {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.knowledge-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.knowledge-workspace {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.vfs-explorer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-right: 1px solid #d0d7de;
+  background: #f6f8fa;
+  overflow: hidden;
+}
+
+.vfs-sidebar-header {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid #d0d7de;
+  padding: 12px;
+}
+
+.github-tree-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #24292f;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.vfs-search {
+  width: 100%;
+  font-size: 13px;
+}
+
+.vfs-tree {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px 12px;
+  background: #fff;
+}
+
+.vfs-tree .el-tree-node__content {
+  height: 32px;
+  border-radius: 6px;
+}
+
+.vfs-tree .el-tree-node__content:hover {
+  background: #f6f8fa;
+}
+
+.vfs-tree .el-tree-node.is-current > .el-tree-node__content {
+  background: #eaeef2;
+  box-shadow: inset 3px 0 0 #0969da;
+  color: #24292f;
+}
+
+.vfs-tree-node {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  color: #24292f;
+  font-size: 13px;
+}
+
+.vfs-tree-node.dir {
+  font-weight: 600;
+}
+
+.vfs-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vfs-tree-node .el-icon {
+  flex: 0 0 auto;
+  color: #57606a;
+}
+
+.github-content-pane {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.github-pathbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border-bottom: 1px solid #d0d7de;
+  padding: 16px;
+}
+
+.github-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 240px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.github-breadcrumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #0969da;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.github-breadcrumb.root {
+  flex-shrink: 0;
+}
+
+.github-breadcrumb.current {
+  color: #24292f;
+}
+
+.github-breadcrumb-separator,
+.github-path-slash {
+  flex: 0 0 auto;
+  color: #57606a;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.github-path-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1500px) {
+  .github-pathbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .github-path-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+.github-commit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  margin: 14px 16px;
+  padding: 10px 12px;
+  color: #57606a;
+  font-size: 13px;
+}
+
+.github-commit-row strong {
+  color: #24292f;
+}
+
+.github-commit-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #ddf4ff;
+  color: #0969da;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.github-commit-date {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.github-directory-view,
+.github-file-view,
+.github-editor-view {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 16px;
+}
+
+.github-file-list-table {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d0d7de;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 6px;
+  color: #24292f;
+  font-size: 13px;
+}
+
+.github-file-list-table th,
+.github-file-list-table td {
+  border-bottom: 1px solid #d0d7de;
+  padding: 11px 14px;
+  text-align: left;
+}
+
+.github-file-list-table th {
+  background: #f6f8fa;
+  color: #57606a;
+  font-weight: 600;
+}
+
+.github-file-list-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.github-file-row-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #24292f;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.github-file-row-button:hover span {
+  color: #0969da;
+  text-decoration: underline;
+}
+
+.github-file-row-button .el-icon {
+  color: #57606a;
+}
+
+.github-file-row-button.dir .el-icon {
+  color: #54aeff;
+}
+
+.github-file-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #d0d7de;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: #f6f8fa;
+  color: #57606a;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.github-file-toolbar-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.github-markdown-body,
+.github-code-view,
+.github-code-editor {
+  border: 1px solid #d0d7de;
+  border-radius: 0 0 6px 6px;
+}
+
+.github-markdown-body {
+  min-height: 0;
+  background: #fff;
+  color: #24292f;
+  padding: 32px;
+}
+
+.github-markdown-body h1,
+.github-markdown-body h2,
+.github-markdown-body h3 {
+  margin: 24px 0 12px;
+  border-bottom: 1px solid #d8dee4;
+  padding-bottom: 8px;
+  line-height: 1.25;
+}
+
+.github-markdown-body h1:first-child,
+.github-markdown-body h2:first-child,
+.github-markdown-body h3:first-child {
+  margin-top: 0;
+}
+
+.github-markdown-body p {
+  margin: 0 0 14px;
+  line-height: 1.6;
+}
+
+.markdown-list-item {
+  padding-left: 18px;
+}
+
+.markdown-code-block,
+.github-code-view {
+  overflow: auto;
+  background: #f6f8fa;
+  color: #24292f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.markdown-code-block {
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.github-code-view {
+  min-height: 360px;
+  margin: 0;
+  padding: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.github-editor-view {
+  display: grid;
+  grid-row: 2 / -1;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.github-edit-path {
+  border: 1px solid #d0d7de;
+  border-bottom: 0;
+  background: #fff;
+  padding: 12px;
+}
+
+.github-edit-path .el-form-item {
+  margin-bottom: 0;
+}
+
+.github-edit-path .el-input__inner {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.code-editor {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.code-editor .el-textarea__inner {
+  height: 100% !important;
+  min-height: 0 !important;
+  resize: none;
+  border: 0;
+  border-radius: 0 0 6px 6px;
+  padding: 16px;
+  color: #24292f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  box-shadow: inset 0 0 0 1px #d0d7de;
+}
+
+.code-editor .el-textarea__inner:focus {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #0969da;
+}
+
+.github-commit-box {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #d0d7de;
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  background: #f6f8fa;
+  padding: 12px;
+}
+
+.github-commit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.github-commit-box .success {
+  color: #1a7f37;
+  font-size: 12px;
+}
+
+.github-commit-box .error {
+  color: #cf222e;
+  font-size: 12px;
+}
+
+.github-panel .empty-note {
+  padding: 12px;
+}
+
 @media (max-width: 980px) {
   body {
     overflow: auto;
   }
 
-  .app-shell,
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .brand {
+    width: 100%;
+  }
+
+  .app-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .app-tabs .el-radio-button__inner {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .view-frame,
+  .view-frame.chat-frame,
+  .view-frame.management-frame,
   .workspace {
     grid-template-columns: 1fr;
     height: auto;
-    min-height: 100vh;
+    min-height: 0;
     overflow: visible;
   }
 
@@ -901,5 +1316,36 @@ dd {
   .inspector {
     border: 0;
     overflow: visible;
+  }
+
+  .knowledge-panel,
+  .knowledge-workspace,
+  .vfs-explorer,
+  .github-content-pane {
+    height: auto;
+    overflow: visible;
+  }
+
+  .knowledge-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .github-editor-view {
+    height: auto;
+    overflow: visible;
+  }
+
+  .vfs-explorer {
+    border-right: 0;
+    border-bottom: 1px solid #d7dde6;
+  }
+
+  .vfs-tree {
+    max-height: 300px;
+  }
+
+  .code-editor .el-textarea__inner {
+    height: auto !important;
+    min-height: 520px !important;
   }
 }

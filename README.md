@@ -13,8 +13,10 @@ This repository also includes a coding-tool example with a Spring Boot backend a
 - Tools are Java methods, not command-line wrappers.
 - Spring Bean extension points for tools, model providers, skill providers, storage, and custom events.
 - OpenAI-compatible chat completions provider.
-- JDBC-backed session, message, and timeline event store.
-- Prompt and skill loading from application providers or files.
+- JDBC-backed session, message, timeline event, prompt, and skill storage.
+- Virtual knowledge filesystem for database-backed prompt and skill files.
+- `AGENTS.md` loading from global, workspace, and database sources.
+- Skill loading from global, workspace, and database sources with database-first precedence.
 - Optional Console Spring Boot starter with `/api/*` endpoints and SSE streaming for realtime UIs.
 - Context compaction when a conversation approaches the model context window.
 
@@ -52,7 +54,7 @@ Short version:
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.1.1.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.2.0.jar
 ```
 
 In another terminal:
@@ -71,7 +73,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.1.1</jagent-harness.version>
+    <jagent-harness.version>0.2.0</jagent-harness.version>
 </properties>
 
 <dependencies>
@@ -98,6 +100,7 @@ This dependency set does not expose any HTTP API. It is for applications that ca
 The Spring Boot starter includes the default OpenAI-compatible provider; add a custom `ModelProvider` bean for another provider.
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
+The schema includes the virtual knowledge filesystem, skill manifest, and prompt binding tables used by database-backed prompts and skills.
 
 Add the console starter only when you want the bundled Vue console or the `/api/*` management endpoints:
 
@@ -165,6 +168,13 @@ override it by registering their own `ModelHttpClient` bean.
 The SDK provides the built-in `read` tool for file-based skills. The coding-tool example registers
 coding-specific tools as Spring beans: `bash`, `edit`, `write`, `grep`, `find`, and `ls`.
 
+JAgentHarness uses a built-in general system prompt that cannot be replaced by `SYSTEM.md`.
+It appends every available `AGENTS.md` from the global configuration directory, workspace,
+and database. Skills are merged by name with the following precedence:
+database, workspace directory, then global directory. Database skill files use normal paths
+such as `skills/review/SKILL.md`; the built-in `read` tool resolves those paths from the
+database before checking the physical filesystem.
+
 ## Configuration
 
 Common environment variables used by the example applications:
@@ -180,8 +190,9 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
-| `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `SYSTEM.md`, `AGENTS.md`, and global file-based skills. |
+| `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `AGENTS.md` and global file-based skills. |
 | `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
+| `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |
 | `JAGENT_COMPACTION_ENABLED` | `true` | Enable context compaction. |
 | `JAGENT_CONTEXT_WINDOW_TOKENS` | `128000` | Model context window used for compaction checks. |
 

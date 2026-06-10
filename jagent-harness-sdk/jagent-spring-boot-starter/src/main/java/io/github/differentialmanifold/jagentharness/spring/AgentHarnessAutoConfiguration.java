@@ -9,6 +9,7 @@ import io.github.differentialmanifold.jagentharness.core.conversation.Compaction
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.DefaultConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.NoopCompactionStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.session.DefaultSessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.DefaultSessionStore;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
@@ -23,7 +24,10 @@ import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEvent
 import io.github.differentialmanifold.jagentharness.core.prompt.FileSkillProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptService;
+import io.github.differentialmanifold.jagentharness.core.prompt.DatabaseSkillProvider;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillProvider;
+import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
@@ -69,8 +73,8 @@ public class AgentHarnessAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(name = "readTool")
-    public ReadTool readTool(ObjectMapper objectMapper) {
-        return new ReadTool(objectMapper);
+    public ReadTool readTool(ObjectMapper objectMapper, ObjectProvider<KnowledgeFileStore> knowledgeFileStore) {
+        return new ReadTool(objectMapper, knowledgeFileStore.getIfAvailable());
     }
 
     @Bean
@@ -111,6 +115,13 @@ public class AgentHarnessAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnBean(SkillManifestStore.class)
+    @ConditionalOnMissingBean(DatabaseSkillProvider.class)
+    public DatabaseSkillProvider databaseSkillProvider(SkillManifestStore skillManifestStore) {
+        return new DatabaseSkillProvider(skillManifestStore);
+    }
+
+    @Bean
     @ConditionalOnMissingBean
     public SkillRegistry skillRegistry(List<SkillProvider> providers) {
         return new SkillRegistry(providers);
@@ -118,10 +129,15 @@ public class AgentHarnessAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PromptProvider promptProvider(HarnessProperties properties, SkillRegistry skillRegistry) {
+    public PromptProvider promptProvider(HarnessProperties properties,
+                                         SkillRegistry skillRegistry,
+                                         ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
+                                         ObjectProvider<PromptBindingStore> promptBindingStore) {
         return new PromptService(
                 skillRegistry,
-                PathsSupport.expandUserHome(properties.getPrompt().getConfigRoot()));
+                PathsSupport.expandUserHome(properties.getPrompt().getConfigRoot()),
+                knowledgeFileStore.getIfAvailable(),
+                promptBindingStore.getIfAvailable());
     }
 
     @Bean

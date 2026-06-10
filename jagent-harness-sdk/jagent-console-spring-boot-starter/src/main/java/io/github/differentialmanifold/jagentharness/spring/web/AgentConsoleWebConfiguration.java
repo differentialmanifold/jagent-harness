@@ -2,11 +2,15 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -36,13 +40,17 @@ public class AgentConsoleWebConfiguration {
                                                          SkillRegistry skillRegistry,
                                                          AgentSettings settings,
                                                          SessionManager sessionManager,
-                                                         WorkspaceRootResolver workspaceRootResolver) {
+                                                         WorkspaceRootResolver workspaceRootResolver,
+                                                         ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
+                                                         ObjectProvider<PromptBindingStore> promptBindingStore) {
         return new AgentContextController(
                 toolRegistry,
                 skillRegistry,
                 settings,
                 sessionManager,
-                workspaceRootResolver);
+                workspaceRootResolver,
+                knowledgeFileStore.getIfAvailable(),
+                promptBindingStore.getIfAvailable());
     }
 
     @Bean
@@ -77,6 +85,13 @@ public class AgentConsoleWebConfiguration {
     @ConditionalOnMissingBean
     public ToolController toolController(ToolRegistry toolRegistry) {
         return new ToolController(toolRegistry);
+    }
+
+    @Bean
+    @ConditionalOnBean(KnowledgeFileStore.class)
+    @ConditionalOnMissingBean
+    public VirtualFileController virtualFileController(KnowledgeFileStore knowledgeFileStore) {
+        return new VirtualFileController(knowledgeFileStore);
     }
 
     @Bean

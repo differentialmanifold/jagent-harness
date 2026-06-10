@@ -5,9 +5,12 @@
         <h2>{{ currentSession ? currentSession.title : 'No session selected' }}</h2>
         <p>{{ statusText }}</p>
       </div>
-      <div class="status-pill" :class="{ warn: provider && !provider.apiKeyConfigured }">
+      <el-tag
+        round
+        :type="provider && provider.apiKeyConfigured ? 'success' : 'warning'"
+      >
         {{ provider && provider.apiKeyConfigured ? 'API key ready' : 'API key missing' }}
-      </div>
+      </el-tag>
     </header>
 
     <div class="messages" ref="messagesEl">
@@ -19,22 +22,32 @@
     </div>
 
     <form class="composer" @submit.prevent="submit">
-      <textarea
-        :value="draft"
+      <el-input
+        class="composer-input"
+        type="textarea"
+        resize="none"
+        :model-value="draft"
         :disabled="!currentSession || running"
         placeholder="Ask the agent to inspect, edit, or plan work..."
-        @input="$emit('update:draft', $event.target.value)"
+        @update:model-value="$emit('update:draft', $event)"
         @keydown="handleKeydown"
-      ></textarea>
-      <button :disabled="!currentSession || running || !draft.trim()" type="submit">
-        {{ running ? 'Running' : 'Send' }}
-      </button>
+      />
+      <el-button
+        type="primary"
+        :icon="Promotion"
+        :loading="running"
+        :disabled="!currentSession || !draft.trim()"
+        native-type="submit"
+      >
+        Send
+      </el-button>
     </form>
   </section>
 </template>
 
 <script setup>
 import { nextTick, ref, watch } from 'vue'
+import { Promotion } from '@element-plus/icons-vue'
 import MessageItem from './MessageItem.vue'
 
 const props = defineProps({

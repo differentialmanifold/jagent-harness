@@ -13,6 +13,9 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
@@ -22,9 +25,15 @@ import io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchema
 public class ReadTool implements ToolDefinition {
 
     private final ObjectMapper objectMapper;
+    private final KnowledgeFileStore knowledgeFileStore;
 
     public ReadTool(ObjectMapper objectMapper) {
+        this(objectMapper, null);
+    }
+
+    public ReadTool(ObjectMapper objectMapper, KnowledgeFileStore knowledgeFileStore) {
         this.objectMapper = objectMapper;
+        this.knowledgeFileStore = knowledgeFileStore;
     }
 
     @Override
@@ -34,7 +43,7 @@ public class ReadTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Read a UTF-8 text file under the workspace root or agent config root and return its content.";
+        return "Read a UTF-8 text file from skills, workspace root, or agent config root and return its content.";
     }
 
     @Override
@@ -42,13 +51,27 @@ public class ReadTool implements ToolDefinition {
         ObjectNode properties = objectMapper.createObjectNode();
         properties.set("path", ToolSchemas.stringProperty(
                 objectMapper,
-                "File path. Relative paths resolve under the workspace root when present, otherwise under the agent config root. Absolute paths must stay under an allowed root."));
+                "File path. Skill paths are resolved before filesystem paths. Relative paths resolve under the workspace root when present, otherwise under the agent config root. Absolute paths must stay under an allowed root."));
         return ToolSchemas.objectSchema(objectMapper, properties, "path");
     }
 
     @Override
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
-        Path path = resolve(context, ToolArguments.requiredText(arguments, "path"));
+        String input = ToolArguments.requiredText(arguments, "path");
+        Path rawPath = Paths.get(input);
+        if (!rawPath.isAbsolute()) {
+            ToolExecutionResult databaseResult = readKnowledgeFileIfExists(databasePath(input));
+            if (databaseResult != null) {
+                return databaseResult;
+            }
+        }
+
+        Path path = resolve(context, input);
+        String databasePath = databasePath(context, path);
+        ToolExecutionResult databaseResult = readKnowledgeFileIfExists(databasePath);
+        if (databaseResult != null) {
+            return databaseResult;
+        }
         if (!Files.isRegularFile(path)) {
             throw new IllegalArgumentException("File not found: " + displayPath(context, path));
         }
@@ -58,6 +81,29 @@ public class ReadTool implements ToolDefinition {
         result.put("path", displayPath(context, path));
         result.put("type", "text");
         result.put("content", content);
+        return ToolExecutionResult.of(result.toString());
+    }
+
+    private String databasePath(String input) {
+        try {
+            return KnowledgeFilePaths.normalize(input);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private ToolExecutionResult readKnowledgeFileIfExists(String input) {
+        if (knowledgeFileStore == null || input == null || input.trim().isEmpty()) {
+            return null;
+        }
+        KnowledgeFile file = knowledgeFileStore.readFile(input);
+        if (file == null) {
+            return null;
+        }
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("path", file.getPath());
+        result.put("type", "text");
+        result.put("content", file.getContent());
         return ToolExecutionResult.of(result.toString());
     }
 
@@ -77,6 +123,26 @@ public class ReadTool implements ToolDefinition {
             throw new IllegalArgumentException("Path escapes allowed read root: " + input);
         }
         return resolved;
+    }
+
+    private String databasePath(ToolContext context, Path path) {
+        if (path == null) {
+            return null;
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        if (context != null && context.getWorkspaceRoot() != null) {
+            Path workspaceRoot = context.getWorkspaceRoot().toAbsolutePath().normalize();
+            if (normalized.startsWith(workspaceRoot)) {
+                return workspaceRoot.relativize(normalized).toString();
+            }
+        }
+        if (context != null && context.getConfigRoot() != null) {
+            Path configRoot = context.getConfigRoot().toAbsolutePath().normalize();
+            if (normalized.startsWith(configRoot)) {
+                return configRoot.relativize(normalized).toString();
+            }
+        }
+        return null;
     }
 
     private Path defaultRelativeRoot(ToolContext context) {
