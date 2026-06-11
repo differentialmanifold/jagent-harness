@@ -3,7 +3,7 @@
     <el-tabs class="inspector-tabs" model-value="context">
       <el-tab-pane label="Context" name="context">
         <el-scrollbar>
-          <section>
+          <section class="inspector-section">
             <h3>Provider</h3>
             <el-descriptions :column="1" size="small" border>
               <el-descriptions-item label="Active">{{ provider ? provider.activeProvider : '-' }}</el-descriptions-item>
@@ -12,7 +12,7 @@
             </el-descriptions>
           </section>
 
-          <section v-if="loadedPromptFiles.length">
+          <section v-if="loadedPromptFiles.length" class="inspector-section">
             <h3>Prompt Files</h3>
             <ul class="prompt-file-list">
               <li v-for="file in loadedPromptFiles" :key="file.path || file.name" class="prompt-file">
@@ -26,9 +26,9 @@
             </ul>
           </section>
 
-          <section>
+          <section v-if="skills.length" class="inspector-section">
             <h3>Skills</h3>
-            <ul v-if="skills.length" class="skill-list">
+            <ul class="skill-list">
               <li v-for="skill in skills" :key="skill.name">
                 <header>
                   <strong>{{ skill.name }}</strong>
@@ -38,14 +38,13 @@
                 <code>{{ skill.filePath || '-' }}</code>
               </li>
             </ul>
-            <el-empty v-else description="No skills loaded" :image-size="72" />
           </section>
         </el-scrollbar>
       </el-tab-pane>
 
       <el-tab-pane label="Tools" name="tools">
         <el-scrollbar>
-          <section>
+          <section class="inspector-section">
             <h3>Tools</h3>
             <ul class="tool-list">
               <li v-for="tool in tools" :key="tool.name">

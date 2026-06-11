@@ -51,7 +51,12 @@
       </main>
 
       <main v-else-if="activeView === 'prompts'" class="workspace management-shell">
-        <KnowledgePanel key="prompts" mode="prompts" @changed="refreshAgentContext" />
+        <KnowledgePanel
+          key="prompts"
+          mode="prompts"
+          :session-id="currentSession ? currentSession.sessionId : ''"
+          @changed="refreshAgentContext"
+        />
       </main>
 
       <main v-else class="workspace management-shell">
