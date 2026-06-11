@@ -116,8 +116,8 @@ public class AgentContextController {
                 "Project agent rules appended after global agent rules.");
         addDatabasePromptFile(files,
                 "AGENTS.md",
-                "append",
-                "Database agent rules appended after file-based agent rules.");
+                "database",
+                "Database agent rules loaded after file-based agent rules.");
         return files;
     }
 

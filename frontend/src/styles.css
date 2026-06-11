@@ -681,7 +681,14 @@ textarea {
   height: 100%;
 }
 
-.inspector section {
+.inspector-tabs .el-scrollbar__view {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  padding-bottom: 14px;
+}
+
+.inspector-section {
   display: grid;
   gap: 12px;
 }
@@ -831,6 +838,10 @@ dd {
   min-height: 0;
   overflow: hidden;
   background: #fff;
+}
+
+.knowledge-workspace.prompt-workspace {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .vfs-explorer {
@@ -983,6 +994,10 @@ dd {
   justify-content: flex-end;
 }
 
+.prompt-view-tabs {
+  margin-right: auto;
+}
+
 @media (max-width: 1500px) {
   .github-pathbar {
     display: grid;
@@ -1033,10 +1048,40 @@ dd {
 
 .github-directory-view,
 .github-file-view,
-.github-editor-view {
+.github-editor-view,
+.github-empty-file-view,
+.prompt-preview-view {
   min-height: 0;
   overflow: auto;
   padding: 0 16px 16px;
+}
+
+.prompt-preview-view {
+  min-height: 0;
+  overflow: auto;
+}
+
+.prompt-preview-view .el-radio-group {
+  flex: 0 0 auto;
+}
+
+.prompt-preview-content {
+  min-height: 100%;
+}
+
+.prompt-preview-workspace {
+  min-width: 0;
+  overflow: hidden;
+  color: #57606a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.github-empty-file-view {
+  display: grid;
+  place-items: center;
 }
 
 .github-file-list-table {
@@ -1347,5 +1392,14 @@ dd {
   .code-editor .el-textarea__inner {
     height: auto !important;
     min-height: 520px !important;
+  }
+
+  .prompt-preview-view .github-file-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .prompt-preview-workspace {
+    order: 5;
+    flex: 1 1 100%;
   }
 }

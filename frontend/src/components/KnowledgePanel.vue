@@ -7,8 +7,8 @@
       </div>
     </header>
 
-    <div class="knowledge-workspace github-workspace">
-      <aside class="vfs-explorer github-file-tree">
+    <div :class="['knowledge-workspace', 'github-workspace', { 'prompt-workspace': !isSkillsMode }]">
+      <aside v-if="isSkillsMode" class="vfs-explorer github-file-tree">
         <div class="vfs-sidebar-header github-tree-header">
           <div class="github-tree-title">
             <el-icon><Folder /></el-icon>
@@ -52,7 +52,22 @@
 
       <main class="github-content-pane">
         <header class="github-pathbar">
-          <nav class="github-breadcrumbs" aria-label="Path" :title="displayPath">
+          <el-radio-group
+            v-if="!isSkillsMode"
+            v-model="promptView"
+            class="prompt-view-tabs"
+            aria-label="Prompt view"
+          >
+            <el-radio-button value="agents">AGENTS.md</el-radio-button>
+            <el-radio-button value="final">Final Prompt</el-radio-button>
+          </el-radio-group>
+
+          <nav
+            v-else
+            class="github-breadcrumbs"
+            aria-label="Path"
+            :title="displayPath"
+          >
             <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
               <button
                 :class="[
@@ -79,9 +94,15 @@
             <span v-if="displayPath.endsWith('/')" class="github-path-slash">/</span>
           </nav>
 
-          <el-button :icon="CopyDocument" circle title="Copy path" @click="copyPath" />
+          <el-button
+            v-if="isSkillsMode"
+            :icon="CopyDocument"
+            circle
+            title="Copy path"
+            @click="copyPath"
+          />
 
-          <div class="github-path-actions">
+          <div v-if="showFileActions" class="github-path-actions">
             <el-dropdown v-if="isSkillsMode" trigger="click" @command="handleAddFileCommand">
               <el-button>
                 Add file
@@ -118,6 +139,16 @@
               Edit
             </el-button>
 
+            <el-button
+              v-if="showCreatePromptButton"
+              type="primary"
+              :icon="Plus"
+              :disabled="loading"
+              @click="beginEditFile"
+            >
+              Create AGENTS.md
+            </el-button>
+
             <el-popconfirm
               v-if="canDeleteCurrent"
               width="300"
@@ -133,14 +164,62 @@
           </div>
         </header>
 
-        <section v-if="!isEditing" class="github-commit-row">
+        <section
+          v-if="promptView !== 'final' && !isEditing && (selectedKind === 'dir' || selectedFile)"
+          class="github-commit-row"
+        >
           <div class="github-commit-avatar">DB</div>
           <strong>{{ commitTitle }}</strong>
           <span>{{ commitSubtitle }}</span>
           <span v-if="currentUpdatedAt" class="github-commit-date">updated {{ formatDate(currentUpdatedAt) }}</span>
         </section>
 
-        <section v-if="isEditing" class="github-editor-view">
+        <section v-if="promptView === 'final'" class="prompt-preview-view">
+          <div class="github-file-toolbar">
+            <el-radio-group v-model="promptPreviewTab" size="small">
+              <el-radio-button value="preview">Preview</el-radio-button>
+              <el-radio-button value="code">Code</el-radio-button>
+            </el-radio-group>
+            <span>{{ promptPreviewLineCount }} lines</span>
+            <span>{{ promptPreviewBytes }} bytes</span>
+            <code v-if="promptPreviewWorkspace" class="prompt-preview-workspace">
+              {{ promptPreviewWorkspace }}
+            </code>
+            <div class="github-file-toolbar-actions">
+              <el-button
+                size="small"
+                :icon="CopyDocument"
+                title="Copy final prompt"
+                @click="copyPromptPreview"
+              />
+            </div>
+          </div>
+
+          <div
+            v-if="promptPreviewTab === 'preview'"
+            v-loading="promptPreviewLoading"
+            class="github-markdown-body prompt-preview-content"
+          >
+            <template v-if="promptPreviewBlocks.length">
+              <component
+                :is="block.tag"
+                v-for="(block, index) in promptPreviewBlocks"
+                :key="index"
+                :class="block.className"
+              >
+                {{ block.text }}
+              </component>
+            </template>
+            <p v-else class="empty-note">No prompt available</p>
+          </div>
+          <pre
+            v-else
+            v-loading="promptPreviewLoading"
+            class="github-code-view prompt-preview-content"
+          ><code>{{ promptPreview }}</code></pre>
+        </section>
+
+        <section v-else-if="isEditing" class="github-editor-view">
           <div class="github-file-toolbar">
             <el-radio-group v-model="editTab" size="small">
               <el-radio-button value="edit">Edit</el-radio-button>
@@ -230,7 +309,7 @@
           <el-empty v-if="directoryRows.length === 0" description="No files" :image-size="80" />
         </section>
 
-        <section v-else class="github-file-view">
+        <section v-else-if="selectedFile" class="github-file-view">
           <div class="github-file-toolbar">
             <el-radio-group v-model="fileViewTab" size="small">
               <el-radio-button value="preview" :disabled="!isMarkdownFile">Preview</el-radio-button>
@@ -258,6 +337,14 @@
           </div>
           <pre v-else class="github-code-view"><code>{{ fileContent }}</code></pre>
         </section>
+
+        <section v-else class="github-empty-file-view">
+          <el-empty description="No database AGENTS.md">
+            <el-button type="primary" :icon="Plus" @click="beginEditFile">
+              Create AGENTS.md
+            </el-button>
+          </el-empty>
+        </section>
       </main>
     </div>
   </section>
@@ -275,6 +362,7 @@ import {
   Download,
   EditPen,
   Folder,
+  Plus,
   Upload
 } from '@element-plus/icons-vue'
 import { request } from '../api/http'
@@ -285,7 +373,8 @@ const props = defineProps({
     type: String,
     required: true,
     validator: (value) => ['prompts', 'skills'].includes(value)
-  }
+  },
+  sessionId: { type: String, default: '' }
 })
 
 const emit = defineEmits(['changed'])
@@ -306,6 +395,11 @@ const error = ref('')
 const notice = ref('')
 const skillSearch = ref('')
 const fileViewTab = ref('preview')
+const promptView = ref('agents')
+const promptPreviewTab = ref('preview')
+const promptPreview = ref('')
+const promptPreviewWorkspace = ref('')
+const promptPreviewLoading = ref(false)
 const editTab = ref('edit')
 const editMode = ref('')
 const editOriginalPath = ref('')
@@ -317,7 +411,10 @@ const editorTextarea = ref(null)
 const panelTitle = computed(() => isSkillsMode.value ? 'Skills Management' : 'Prompt Management')
 const panelSubtitle = computed(() => {
   if (!isSkillsMode.value) {
-    return selectedFile.value ? 'AGENTS.md database file' : 'AGENTS.md not saved'
+    if (promptView.value === 'final') {
+      return 'Final runtime prompt'
+    }
+    return selectedFile.value ? 'Database AGENTS.md' : 'No database AGENTS.md'
   }
   return `${skillKeys.value.length} skills, ${visibleFiles.value.length} files`
 })
@@ -384,13 +481,17 @@ const selectedKind = computed(() => {
   return selectedNode.value ? selectedNode.value.type : 'dir'
 })
 const isEditing = computed(() => Boolean(editMode.value))
+const showFileActions = computed(() => isSkillsMode.value || promptView.value === 'agents')
 const displayPath = computed(() => {
   if (isEditing.value) return normalizeDraftPath(editDraftPath.value) || editDraftPath.value || rootPath.value
   return selectedPath.value
 })
 const breadcrumbs = computed(() => createBreadcrumbs(displayPath.value, selectedKind.value))
 const selectedDirectory = computed(() => selectedKind.value === 'dir' ? selectedPath.value : parentPath(selectedPath.value))
-const showEditButton = computed(() => !isEditing.value && selectedKind.value === 'file')
+const showEditButton = computed(() => !isEditing.value && selectedKind.value === 'file' && Boolean(selectedFile.value))
+const showCreatePromptButton = computed(() => {
+  return !isSkillsMode.value && !isEditing.value && !selectedFile.value
+})
 const canDeleteCurrent = computed(() => {
   if (isEditing.value || deleting.value) return false
   if (selectedKind.value === 'file') return Boolean(selectedFile.value)
@@ -407,12 +508,19 @@ const currentUpdatedAt = computed(() => {
   return rows.length ? rows[0].updatedAt : ''
 })
 const commitTitle = computed(() => selectedKind.value === 'dir' ? 'Directory snapshot' : 'Database file')
-const commitSubtitle = computed(() => selectedKind.value === 'dir' ? selectedPath.value : selectedFile.value ? selectedFile.value.name : 'not saved')
+const commitSubtitle = computed(() => {
+  return selectedKind.value === 'dir'
+    ? selectedPath.value
+    : selectedFile.value?.name || ''
+})
 const isMarkdownFile = computed(() => isMarkdownPath(selectedPath.value))
 const fileLineCount = computed(() => countLines(fileContent.value))
 const editLineCount = computed(() => countLines(editDraftContent.value))
 const filePreviewBlocks = computed(() => markdownBlocks(fileContent.value))
 const editPreviewBlocks = computed(() => markdownBlocks(editDraftContent.value))
+const promptPreviewBlocks = computed(() => markdownBlocks(promptPreview.value))
+const promptPreviewLineCount = computed(() => countLines(promptPreview.value))
+const promptPreviewBytes = computed(() => new TextEncoder().encode(promptPreview.value).length)
 const editPathValidationMessage = computed(() => validationMessage(normalizeDraftPath(editDraftPath.value)))
 const canSave = computed(() => {
   return Boolean(normalizeDraftPath(editDraftPath.value))
@@ -460,13 +568,33 @@ watch(
   () => props.mode,
   async () => {
     selectedPath.value = rootPath.value
+    promptView.value = 'agents'
     cancelEdit()
     await loadFiles()
   }
 )
 
+watch(
+  () => props.sessionId,
+  async () => {
+    if (!isSkillsMode.value) {
+      await loadPromptPreview()
+    }
+  }
+)
+
+watch(promptView, async (view) => {
+  if (view === 'final') {
+    cancelEdit()
+    await loadPromptPreview()
+  }
+})
+
 onMounted(async () => {
   await loadFiles()
+  if (!isSkillsMode.value) {
+    await loadPromptPreview()
+  }
 })
 
 async function loadFiles() {
@@ -527,6 +655,24 @@ async function loadContent(path) {
   const file = await request(`/api/vfs/files/content?path=${encodeURIComponent(path)}`)
   selectedPath.value = file.path
   fileContent.value = file.content || ''
+}
+
+async function loadPromptPreview() {
+  if (isSkillsMode.value || promptPreviewLoading.value) return
+  promptPreviewLoading.value = true
+  error.value = ''
+  try {
+    const preview = await request('/api/agent/prompt-preview', {
+      method: 'POST',
+      body: JSON.stringify(props.sessionId ? { sessionId: props.sessionId } : {})
+    })
+    promptPreview.value = preview?.systemPrompt || ''
+    promptPreviewWorkspace.value = preview?.workspaceRoot || ''
+  } catch (err) {
+    showError(err)
+  } finally {
+    promptPreviewLoading.value = false
+  }
 }
 
 function beginEditFile() {
@@ -593,6 +739,7 @@ async function saveChanges() {
     cancelEdit()
     await loadFiles()
     await selectPath(saved.path)
+    await loadPromptPreview()
     notice.value = `Saved ${saved.path}.`
     ElMessage.success(notice.value)
     emit('changed')
@@ -620,6 +767,7 @@ async function deleteCurrent() {
     const nextPath = selectedKind.value === 'dir' ? parentPath(selectedPath.value) || 'skills' : selectedDirectory.value || rootPath.value
     await loadFiles()
     await selectPath(nextPath)
+    await loadPromptPreview()
     notice.value = `Deleted ${paths.length} file${paths.length === 1 ? '' : 's'}.`
     ElMessage.success(notice.value)
     emit('changed')
@@ -714,6 +862,11 @@ async function copyPath() {
 async function copyContent() {
   await writeClipboard(fileContent.value)
   ElMessage.success('Copied content.')
+}
+
+async function copyPromptPreview() {
+  await writeClipboard(promptPreview.value)
+  ElMessage.success('Copied final prompt.')
 }
 
 async function writeClipboard(value) {

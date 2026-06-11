@@ -6,6 +6,7 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
@@ -51,6 +52,21 @@ public class AgentConsoleWebConfiguration {
                 workspaceRootResolver,
                 knowledgeFileStore.getIfAvailable(),
                 promptBindingStore.getIfAvailable());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PromptPreviewController promptPreviewController(PromptProvider promptProvider,
+                                                           ToolRegistry toolRegistry,
+                                                           AgentSettings settings,
+                                                           SessionManager sessionManager,
+                                                           WorkspaceRootResolver workspaceRootResolver) {
+        return new PromptPreviewController(
+                promptProvider,
+                toolRegistry,
+                settings,
+                sessionManager,
+                workspaceRootResolver);
     }
 
     @Bean
