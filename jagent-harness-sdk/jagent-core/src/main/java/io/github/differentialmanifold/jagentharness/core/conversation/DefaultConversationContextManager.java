@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
@@ -38,6 +39,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
     @Override
     public ConversationContext prepare(ConversationContextRequest request) {
+        request.getStopSignal().throwIfAborted();
         List<AgentMessage> messages = request.getMessages() == null
                 ? new ArrayList<AgentMessage>()
                 : new ArrayList<AgentMessage>(request.getMessages());
@@ -63,7 +65,12 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 startPayload.put("recentMessageCount", recentMessages.size());
                 publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_START, startPayload);
 
-                summary = compactConversation(request.getProvider(), summary, messagesToCompact);
+                summary = compactConversation(
+                        request.getProvider(),
+                        summary,
+                        messagesToCompact,
+                        request.getStopSignal());
+                request.getStopSignal().throwIfAborted();
                 cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
                 compactionStore.save(request.getSessionId(), summary, cursorMessageId);
 
@@ -83,6 +90,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
             }
         }
 
+        request.getStopSignal().throwIfAborted();
         return new ConversationContext(systemPromptWithSummary, contextMessages);
     }
 
@@ -150,7 +158,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
     private String compactConversation(ModelProvider provider,
                                        String previousSummary,
-                                       List<AgentMessage> messagesToCompact) {
+                                       List<AgentMessage> messagesToCompact,
+                                       StopSignal stopSignal) {
         ModelRequest request = new ModelRequest();
         request.setModel(settings.getModel());
         request.setSystemPrompt(compactionSystemPrompt());
@@ -159,7 +168,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 compactionUserPrompt(previousSummary, messagesToCompact))));
         request.setTools(Collections.<ToolDefinition>emptyList());
 
-        ModelResponse response = provider.chat(request);
+        ModelResponse response = provider.chat(request, null, stopSignal);
         String summary = response == null ? null : response.getContent();
         if (summary == null || summary.trim().isEmpty()) {
             return previousSummary == null ? "" : previousSummary;

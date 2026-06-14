@@ -25,6 +25,7 @@ public class DefaultToolContextFactory implements ToolContextFactory {
                 effectiveOptions.getTraceId(),
                 null,
                 settings == null ? null : settings.getConfigRoot(),
-                effectiveOptions.getAttributes());
+                effectiveOptions.getAttributes(),
+                effectiveOptions.getStopSignal());
     }
 }

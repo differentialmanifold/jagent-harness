@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
@@ -52,40 +54,68 @@ public class OpenAiCompatibleProvider implements ModelProvider {
 
     @Override
     public ModelResponse chat(ModelRequest request) {
+        return chatNonStreaming(request, StopSignal.none());
+    }
+
+    private ModelResponse chatNonStreaming(ModelRequest request, StopSignal stopSignal) {
         ObjectNode payload = buildPayload(request, false);
         try {
-            String body = postJson(objectMapper.writeValueAsString(payload));
+            String body = postJson(objectMapper.writeValueAsString(payload), stopSignal);
             return parseResponse(body);
         } catch (IOException e) {
+            if (stopSignal.isAborted()) {
+                throw new StopRequestedException(e);
+            }
             throw new ModelProviderException("Model provider request failed: " + e.getMessage(), e);
         }
     }
 
     @Override
     public ModelResponse chat(ModelRequest request, Consumer<String> contentDeltaConsumer) {
+        return chat(request, contentDeltaConsumer, StopSignal.none());
+    }
+
+    @Override
+    public ModelResponse chat(ModelRequest request,
+                              Consumer<String> contentDeltaConsumer,
+                              StopSignal stopSignal) {
+        StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
+        effectiveSignal.throwIfAborted();
         if (!config.isStreamEnabled()) {
-            ModelResponse response = chat(request);
+            ModelResponse response = chatNonStreaming(request, effectiveSignal);
             if (contentDeltaConsumer != null && response.getContent() != null) {
                 contentDeltaConsumer.accept(response.getContent());
             }
+            effectiveSignal.throwIfAborted();
             return response;
         }
         ObjectNode payload = buildPayload(request, true);
         try {
-            return postStream(objectMapper.writeValueAsString(payload), contentDeltaConsumer);
+            return postStream(
+                    objectMapper.writeValueAsString(payload),
+                    contentDeltaConsumer,
+                    effectiveSignal);
         } catch (IOException e) {
+            if (effectiveSignal.isAborted()) {
+                throw new StopRequestedException(e);
+            }
             throw new ModelProviderException("Model provider stream request failed: " + e.getMessage(), e);
         }
     }
 
-    private String postJson(String body) throws IOException {
-        return httpClient.postJson(new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body)).getBody();
+    private String postJson(String body, StopSignal stopSignal) throws IOException {
+        return httpClient.postJson(
+                new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
+                stopSignal).getBody();
     }
 
-    private ModelResponse postStream(String body, Consumer<String> contentDeltaConsumer) throws IOException {
+    private ModelResponse postStream(String body,
+                                     Consumer<String> contentDeltaConsumer,
+                                     StopSignal stopSignal) throws IOException {
         return httpClient.postStream(
                 new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
-                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer));
+                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer, stopSignal),
+                stopSignal);
     }
 
     private ObjectNode buildPayload(ModelRequest request, boolean stream) {
@@ -200,14 +230,15 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private ModelResponse parseStreamResponse(InputStream inputStream,
-                                              Consumer<String> contentDeltaConsumer) throws IOException {
+                                              Consumer<String> contentDeltaConsumer,
+                                              StopSignal stopSignal) throws IOException {
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
         StreamAccumulator accumulator = new StreamAccumulator();
         StringBuilder data = new StringBuilder();
         String line;
         while ((line = reader.readLine()) != null) {
             if (line.trim().isEmpty()) {
-                consumeSseData(data, accumulator, contentDeltaConsumer);
+                consumeSseData(data, accumulator, contentDeltaConsumer, stopSignal);
                 data.setLength(0);
             } else if (line.startsWith("data:")) {
                 if (data.length() > 0) {
@@ -216,16 +247,19 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 data.append(line.substring("data:".length()).trim());
             }
         }
-        consumeSseData(data, accumulator, contentDeltaConsumer);
+        consumeSseData(data, accumulator, contentDeltaConsumer, stopSignal);
+        stopSignal.throwIfAborted();
         return accumulator.toResponse(objectMapper);
     }
 
     private void consumeSseData(StringBuilder data,
                                 StreamAccumulator accumulator,
-                                Consumer<String> contentDeltaConsumer) throws IOException {
+                                Consumer<String> contentDeltaConsumer,
+                                StopSignal stopSignal) throws IOException {
         if (data.length() == 0) {
             return;
         }
+        stopSignal.throwIfAborted();
         String value = data.toString();
         if ("[DONE]".equals(value)) {
             return;

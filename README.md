@@ -67,6 +67,28 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+### Stop a streamed run
+
+Clients can assign a transport-level `requestId` to a streamed chat request:
+
+```json
+{
+  "requestId": "3a51dcf8-5df1-44ef-b7e6-e6ea366f2ec3",
+  "sessionId": "session-id",
+  "content": "Inspect the project"
+}
+```
+
+Stop that request without exposing the agent's internal `turnId`:
+
+```bash
+curl -X POST \
+  http://localhost:8080/api/chat/requests/3a51dcf8-5df1-44ef-b7e6-e6ea366f2ec3/stop
+```
+
+The frontend generates a UUID for each request, keeps the SSE connection open until it receives
+`agent_stopped`, and uses `AbortController` only as a timeout fallback.
+
 ## Spring Boot Usage
 
 Add the modules your application needs:

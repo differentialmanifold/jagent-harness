@@ -30,7 +30,8 @@ public class CodingToolContextFactory implements ToolContextFactory {
                 effectiveOptions.getTraceId(),
                 workspaceRoot(session),
                 settings.getConfigRoot(),
-                effectiveOptions.getAttributes());
+                effectiveOptions.getAttributes(),
+                effectiveOptions.getStopSignal());
     }
 
     private Path workspaceRoot(SessionRecord session) {

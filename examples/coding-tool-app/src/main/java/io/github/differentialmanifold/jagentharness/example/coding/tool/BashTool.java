@@ -21,6 +21,9 @@ import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
@@ -62,6 +65,8 @@ public class BashTool implements ToolDefinition {
 
     @Override
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
+        StopSignal stopSignal = context.getStopSignal();
+        stopSignal.throwIfAborted();
         String command = ToolArguments.requiredText(arguments, "command");
         Path cwd = pathResolver.resolve(context, arguments.path("cwd").asText("."));
         if (!Files.isDirectory(cwd)) {
@@ -81,24 +86,49 @@ public class BashTool implements ToolDefinition {
         Future<String> stdout = executor.submit(streamReader(process.getInputStream()));
         Future<String> stderr = executor.submit(streamReader(process.getErrorStream()));
 
-        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        int exitCode;
-        if (finished) {
-            exitCode = process.exitValue();
-        } else {
-            process.destroyForcibly();
-            exitCode = -1;
-        }
+        try (StopRegistration ignored = stopSignal.onStop(() -> destroyProcess(process))) {
+            boolean finished;
+            try {
+                finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                destroyProcess(process);
+                Thread.currentThread().interrupt();
+                if (stopSignal.isAborted()) {
+                    throw new StopRequestedException(e);
+                }
+                throw e;
+            }
+            stopSignal.throwIfAborted();
 
-        ObjectNode result = objectMapper.createObjectNode();
-        result.put("command", command);
-        result.put("cwd", pathResolver.relative(context, cwd));
-        result.put("exitCode", exitCode);
-        result.put("timedOut", !finished);
-        result.put("stdout", futureValue(stdout));
-        result.put("stderr", futureValue(stderr));
-        executor.shutdownNow();
-        return ToolExecutionResult.of(result.toString());
+            int exitCode;
+            if (finished) {
+                exitCode = process.exitValue();
+            } else {
+                destroyProcess(process);
+                exitCode = -1;
+            }
+
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("command", command);
+            result.put("cwd", pathResolver.relative(context, cwd));
+            result.put("exitCode", exitCode);
+            result.put("timedOut", !finished);
+            result.put("stdout", futureValue(stdout));
+            result.put("stderr", futureValue(stderr));
+            return ToolExecutionResult.of(result.toString());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private void destroyProcess(Process process) {
+        if (process == null || !process.isAlive()) {
+            return;
+        }
+        process.destroy();
+        if (process.isAlive()) {
+            process.destroyForcibly();
+        }
     }
 
     private Callable<String> streamReader(final InputStream inputStream) {

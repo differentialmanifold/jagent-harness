@@ -33,9 +33,19 @@
         @keydown="handleKeydown"
       />
       <el-button
+        v-if="running"
+        type="danger"
+        :icon="VideoPause"
+        :disabled="stopping || !stopReady"
+        native-type="button"
+        @click="$emit('stop')"
+      >
+        {{ stopping ? 'Stopping' : 'Stop' }}
+      </el-button>
+      <el-button
+        v-else
         type="primary"
         :icon="Promotion"
-        :loading="running"
         :disabled="!currentSession || !draft.trim()"
         native-type="submit"
       >
@@ -47,7 +57,7 @@
 
 <script setup>
 import { nextTick, ref, watch } from 'vue'
-import { Promotion } from '@element-plus/icons-vue'
+import { Promotion, VideoPause } from '@element-plus/icons-vue'
 import MessageItem from './MessageItem.vue'
 
 const props = defineProps({
@@ -56,10 +66,12 @@ const props = defineProps({
   provider: { type: Object, default: null },
   statusText: { type: String, required: true },
   running: { type: Boolean, required: true },
+  stopping: { type: Boolean, required: true },
+  stopReady: { type: Boolean, required: true },
   draft: { type: String, required: true }
 })
 
-const emit = defineEmits(['update:draft', 'send'])
+const emit = defineEmits(['update:draft', 'send', 'stop'])
 const messagesEl = ref(null)
 let scrollFrame = null
 

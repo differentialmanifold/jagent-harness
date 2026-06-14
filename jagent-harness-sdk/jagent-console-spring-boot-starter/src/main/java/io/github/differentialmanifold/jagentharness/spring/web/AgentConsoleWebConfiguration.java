@@ -71,10 +71,17 @@ public class AgentConsoleWebConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public AgentRunRegistry agentRunRegistry() {
+        return new AgentRunRegistry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public ChatController chatController(SessionManager sessionManager,
                                          AgentHarness agentHarness,
-                                         TaskExecutor agentTaskExecutor) {
-        return new ChatController(sessionManager, agentHarness, agentTaskExecutor);
+                                         TaskExecutor agentTaskExecutor,
+                                         AgentRunRegistry agentRunRegistry) {
+        return new ChatController(sessionManager, agentHarness, agentTaskExecutor, agentRunRegistry);
     }
 
     @Bean

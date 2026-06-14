@@ -56,6 +56,7 @@ public class ReadTool implements ToolDefinition {
 
     @Override
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
+        context.getStopSignal().throwIfAborted();
         Path path = pathResolver.resolve(context, ToolArguments.requiredText(arguments, "path"));
         if (!Files.isRegularFile(path)) {
             throw new IllegalArgumentException("File not found: " + pathResolver.relative(context, path));
@@ -70,7 +71,7 @@ public class ReadTool implements ToolDefinition {
             throw new IllegalArgumentException("limit must be between 1 and " + MAX_LIMIT);
         }
 
-        ReadSlice slice = readLines(path, offset, limit);
+        ReadSlice slice = readLines(context, path, offset, limit);
 
         ObjectNode result = objectMapper.createObjectNode();
         result.put("path", pathResolver.relative(context, path));
@@ -84,12 +85,13 @@ public class ReadTool implements ToolDefinition {
         return ToolExecutionResult.of(result.toString());
     }
 
-    private ReadSlice readLines(Path path, int offset, int limit) throws Exception {
+    private ReadSlice readLines(ToolContext context, Path path, int offset, int limit) throws Exception {
         List<String> selected = new ArrayList<String>();
         int totalLines = 0;
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
             while ((line = reader.readLine()) != null) {
+                context.getStopSignal().throwIfAborted();
                 totalLines++;
                 if (line.indexOf('\0') >= 0) {
                     throw unsupportedTextFile(path);

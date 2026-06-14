@@ -8,6 +8,7 @@ public class AgentEvent {
 
     public static final String AGENT_START = "agent_start";
     public static final String AGENT_END = "agent_end";
+    public static final String AGENT_STOPPED = "agent_stopped";
     public static final String TURN_START = "turn_start";
     public static final String TURN_END = "turn_end";
     public static final String MESSAGE_START = "message_start";

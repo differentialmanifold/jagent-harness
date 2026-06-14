@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { request } from '../api/http'
 import { loadJson, saveJson } from '../utils/storage'
 import { projectName, projectPathLabel, workspaceKey } from '../utils/workspace'
@@ -31,6 +31,8 @@ export function useAgentHarness() {
   const renameTitleDraft = ref('')
   const renameError = ref('')
   const running = ref(false)
+  const stopping = ref(false)
+  const stopReady = ref(false)
   const hiddenProjectKeys = ref(loadJson('jagent.hiddenProjects', []))
   const projectAliases = ref(loadJson('jagent.projectAliases', {}))
   const projectDialogOpen = ref(false)
@@ -41,6 +43,10 @@ export function useAgentHarness() {
   const renameSessionId = ref('')
   const renameProjectKey = ref('')
   let activeStreamId = null
+  let activeRequestId = null
+  let streamController = null
+  let stopFallbackTimer = null
+  let stopRequested = false
 
   const providerLabel = computed(() => {
     if (!provider.value) return 'Loading runtime'
@@ -49,7 +55,13 @@ export function useAgentHarness() {
 
   const statusText = computed(() => {
     if (!currentSession.value) return 'Create or select a session to begin'
-    const prefix = running.value ? 'Agent loop is streaming events' : `${messages.value.length} messages`
+    const prefix = stopping.value
+      ? 'Stopping agent run'
+      : running.value && !stopReady.value
+        ? 'Starting agent run'
+      : running.value
+        ? 'Agent loop is streaming events'
+        : `${messages.value.length} messages`
     return `${prefix} | ${projectPathLabel(currentSession.value.workspacePath)}`
   })
 
@@ -77,6 +89,12 @@ export function useAgentHarness() {
   })
 
   onMounted(bootstrap)
+  onBeforeUnmount(() => {
+    clearStopFallback()
+    if (streamController) {
+      streamController.abort()
+    }
+  })
 
   async function bootstrap() {
     await Promise.all([loadProvider(), loadAgentContext(), loadSessions()])
@@ -284,28 +302,68 @@ export function useAgentHarness() {
     }
     draft.value = ''
     running.value = true
+    stopping.value = false
+    stopReady.value = false
+    stopRequested = false
     activeStreamId = null
+    activeRequestId = createRequestId()
+    streamController = new AbortController()
     try {
-      await streamRequest('/api/chat/stream', { sessionId, content })
+      await streamRequest(
+        '/api/chat/stream',
+        { requestId: activeRequestId, sessionId, content },
+        streamController.signal
+      )
       await selectSession(sessionId)
       await loadSessions()
     } catch (error) {
-      appendLocalErrorMessage(error.message)
+      if (!(error.name === 'AbortError' && stopRequested)) {
+        appendLocalErrorMessage(error.message)
+      }
     } finally {
+      clearStopFallback()
+      activeRequestId = null
+      streamController = null
+      stopRequested = false
+      stopping.value = false
+      stopReady.value = false
       running.value = false
     }
   }
 
-  async function streamRequest(url, body) {
+  async function stopMessage() {
+    if (!running.value || stopping.value || !stopReady.value || !activeRequestId) return
+    stopping.value = true
+    stopRequested = true
+    stopFallbackTimer = window.setTimeout(() => {
+      if (streamController) {
+        streamController.abort()
+      }
+    }, 3000)
+    try {
+      await request(`/api/chat/requests/${encodeURIComponent(activeRequestId)}/stop`, {
+        method: 'POST'
+      })
+    } catch (error) {
+      clearStopFallback()
+      stopRequested = false
+      stopping.value = false
+      appendLocalErrorMessage(`Failed to stop agent: ${error.message}`)
+    }
+  }
+
+  async function streamRequest(url, body, signal) {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     })
     if (!response.ok || !response.body) {
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || response.statusText)
     }
+    stopReady.value = true
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -371,6 +429,12 @@ export function useAgentHarness() {
       upsertCompactionMessage(event, payload, false)
     } else if (type === 'agent_end') {
       running.value = false
+    } else if (type === 'agent_stopped') {
+      clearStopFallback()
+      stopping.value = false
+      stopReady.value = false
+      running.value = false
+      appendCustomEventMessage(event, type, payload)
     } else if (type === 'agent_error') {
       throw new Error(payload.message || 'Agent stream failed')
     } else if (!ignoredCoreEvents.has(type)) {
@@ -475,6 +539,7 @@ export function useAgentHarness() {
 
   function customEventText(type, payload) {
     const label = String(type || 'event')
+    if (label === 'agent_stopped') return 'Agent stopped'
     const text = payload.message || payload.status || payload.text || payload.title
     if (text) return `${label}: ${text}`
     if (Object.keys(payload).length === 0) return label
@@ -545,6 +610,20 @@ export function useAgentHarness() {
     return title.length > 36 ? `${title.slice(0, 36)}...` : title
   }
 
+  function createRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID()
+    }
+    return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`
+  }
+
+  function clearStopFallback() {
+    if (stopFallbackTimer) {
+      window.clearTimeout(stopFallbackTimer)
+      stopFallbackTimer = null
+    }
+  }
+
   return {
     sessions,
     currentSession,
@@ -558,6 +637,8 @@ export function useAgentHarness() {
     renameTitleDraft,
     renameError,
     running,
+    stopping,
+    stopReady,
     projectDialogOpen,
     projectSubmitting,
     renameDialogOpen,
@@ -582,6 +663,7 @@ export function useAgentHarness() {
     submitRenameDialog,
     selectProject,
     selectSession,
-    sendMessage
+    sendMessage,
+    stopMessage
   }
 }
