@@ -54,7 +54,7 @@ Short version:
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.2.0.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.2.1.jar
 ```
 
 In another terminal:
@@ -73,7 +73,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.2.0</jagent-harness.version>
+    <jagent-harness.version>0.2.1</jagent-harness.version>
 </properties>
 
 <dependencies>
@@ -165,15 +165,17 @@ Reusable extension modules should expose those beans through Spring Boot auto-co
 The default OpenAI-compatible provider uses an OkHttp-backed `ModelHttpClient`; applications can
 override it by registering their own `ModelHttpClient` bean.
 
-The SDK provides the built-in `read` tool for file-based skills. The coding-tool example registers
-coding-specific tools as Spring beans: `bash`, `edit`, `write`, `grep`, `find`, and `ls`.
+The SDK provides the built-in `skill` tool for loading `SKILL.md` instructions and files referenced
+by a skill. The coding-tool example registers workspace-specific tools as Spring beans:
+`bash`, `read`, `edit`, `write`, `grep`, `find`, and `ls`. Its `read` tool only accesses the
+workspace and supports one-based `offset` and line-count `limit` arguments.
 
 JAgentHarness uses a built-in general system prompt that cannot be replaced by `SYSTEM.md`.
 It appends every available `AGENTS.md` from the global configuration directory, workspace,
 and database. Skills are merged by name with the following precedence:
 database, workspace directory, then global directory. Database skill files use normal paths
-such as `skills/review/SKILL.md`; the built-in `read` tool resolves those paths from the
-database before checking the physical filesystem.
+such as `skills/review/SKILL.md`; the built-in `skill` tool resolves those paths from the
+database before checking workspace and global skill directories.
 
 ## Configuration
 
@@ -183,7 +185,7 @@ Common environment variables used by the example applications:
 | --- | --- | --- |
 | `JAGENT_OPENAI_API_KEY` | empty | Optional API key for the OpenAI-compatible provider. When set, it is sent as a Bearer token. |
 | `JAGENT_OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/coding/paas/v4` | Provider base URL configured by the example `application.yml`. |
-| `JAGENT_MODEL` | `glm-5.1` | Model name configured by the example `application.yml`. |
+| `JAGENT_MODEL` | `glm-5.2` | Model name configured by the example `application.yml`. |
 | `JAGENT_MODEL_STREAM_ENABLED` | `true` | Set to `false` for OpenAI-compatible endpoints that do not support SSE streaming. |
 | `JAGENT_TEMPERATURE` | empty | Optional. If empty, `temperature` is not sent. |
 | `JAGENT_DATASOURCE_URL` | `jdbc:sqlite:jagent-harness.db` | JDBC URL used by the examples. |

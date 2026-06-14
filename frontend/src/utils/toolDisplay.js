@@ -39,6 +39,7 @@ export function toolMessageTitle(message) {
   const name = message.toolName || 'tool'
   const failed = isFailedToolMessage(message)
   if (name === 'bash') return failed ? 'Bash command failed' : 'Ran bash command'
+  if (name === 'skill') return failed ? 'Skill load failed' : 'Loaded skill'
   if (name === 'read') return failed ? 'Read failed' : 'Read file'
   if (name === 'write') return failed ? 'Write failed' : 'Wrote file'
   if (name === 'edit') return failed ? 'Edit failed' : `Edited ${editFileName(message)}`
@@ -183,7 +184,9 @@ export function summarizeToolArguments(call) {
   const args = parseJsonObject(call.argumentsJson || call.arguments || '') || {}
   if (name === 'bash' && args.command) return oneLine(args.command, 160)
   if (name === 'grep' && args.query) return `"${oneLine(args.query, 80)}" in ${args.path || '.'}`
-  if (name === 'read' || name === 'write' || name === 'edit' || name === 'ls') return args.path || '.'
+  if (name === 'skill' || name === 'read' || name === 'write' || name === 'edit' || name === 'ls') {
+    return args.path || '.'
+  }
   if (name === 'find') return `${args.path || '.'} ${args.glob || '**/*'}`.trim()
   const summary = Object.entries(args)
     .map(([key, value]) => `${key}: ${oneLine(String(value), 80)}`)

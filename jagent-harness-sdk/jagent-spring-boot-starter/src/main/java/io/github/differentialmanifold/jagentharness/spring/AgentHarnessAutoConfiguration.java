@@ -40,7 +40,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContext
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
-import io.github.differentialmanifold.jagentharness.core.tool.builtin.ReadTool;
+import io.github.differentialmanifold.jagentharness.core.tool.builtin.SkillTool;
 import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
@@ -72,9 +72,9 @@ public class AgentHarnessAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(name = "readTool")
-    public ReadTool readTool(ObjectMapper objectMapper, ObjectProvider<KnowledgeFileStore> knowledgeFileStore) {
-        return new ReadTool(objectMapper, knowledgeFileStore.getIfAvailable());
+    @ConditionalOnMissingBean(name = "skillTool")
+    public SkillTool skillTool(ObjectMapper objectMapper, ObjectProvider<KnowledgeFileStore> knowledgeFileStore) {
+        return new SkillTool(objectMapper, knowledgeFileStore.getIfAvailable());
     }
 
     @Bean

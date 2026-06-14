@@ -21,7 +21,7 @@ class PromptServiceTest {
     Path tempDir;
 
     @Test
-    void tellsModelHowToReadFileSkills() {
+    void tellsModelHowToLoadFileSkills() {
         SkillDescriptor skill = new SkillDescriptor(
                 "java-review",
                 "Use when reviewing Java code.",
@@ -33,8 +33,9 @@ class PromptServiceTest {
 
         assertTrue(prompt.contains("file: /tmp/skills/java-review/SKILL.md"));
         assertFalse(prompt.contains("directory: /tmp/skills/java-review"));
-        assertTrue(prompt.contains("call read with its SKILL.md file path"));
-        assertTrue(prompt.contains("resolve it relative to the directory containing that SKILL.md path"));
+        assertTrue(prompt.contains("call the skill tool with its SKILL.md path"));
+        assertTrue(prompt.contains("always load it with the skill tool, never with the read tool"));
+        assertTrue(prompt.contains("call the skill tool with the full resolved path"));
     }
 
     @Test

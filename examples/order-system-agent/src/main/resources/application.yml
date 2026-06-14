@@ -15,7 +15,7 @@ spring:
 harness:
   model:
     provider: ${JAGENT_MODEL_PROVIDER:openai-compatible}
-    model: ${JAGENT_MODEL:glm-5.1}
+    model: ${JAGENT_MODEL:glm-5.2}
     base-url: ${JAGENT_OPENAI_BASE_URL:https://open.bigmodel.cn/api/coding/paas/v4}
     api-key: ${JAGENT_OPENAI_API_KEY:}
     temperature: ${JAGENT_TEMPERATURE:}

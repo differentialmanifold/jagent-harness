@@ -37,13 +37,13 @@ io.github.differentialmanifold
    ```zsh
    git checkout main
    git pull
-   git checkout -b release/0.2.0
+   git checkout -b release/0.2.1
    ```
 
 2. Set Maven versions to the release version.
 
    ```zsh
-   mvn -f pom.xml versions:set -DnewVersion=0.2.0 -DgenerateBackupPoms=false
+   mvn -f pom.xml versions:set -DnewVersion=0.2.1 -DgenerateBackupPoms=false
    ```
 
 3. Run local checks.
@@ -65,8 +65,8 @@ io.github.differentialmanifold
    ```zsh
    git checkout main
    git pull
-   git tag -a v0.2.0 -m "Release v0.2.0"
-   git push origin v0.2.0
+   git tag -a v0.2.1 -m "Release v0.2.1"
+   git push origin v0.2.1
    ```
 
 7. The `Publish SDK` GitHub Actions workflow publishes the SDK modules to Maven Central.
@@ -74,5 +74,5 @@ io.github.differentialmanifold
 8. After the release is published, open a follow-up pull request to bump development versions.
 
    ```zsh
-   mvn -f pom.xml versions:set -DnewVersion=0.2.1-SNAPSHOT -DgenerateBackupPoms=false
+   mvn -f pom.xml versions:set -DnewVersion=0.2.2-SNAPSHOT -DgenerateBackupPoms=false
    ```
