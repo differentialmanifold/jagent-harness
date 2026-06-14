@@ -6,7 +6,19 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.RunControl;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -45,5 +57,44 @@ class BashToolTest {
     void usesShOnUnixLikeSystems() {
         assertEquals(Arrays.asList("/bin/sh", "-lc", "ls"),
                 BashTool.shellCommand("ls", "Mac OS X", Collections.emptyMap()));
+    }
+
+    @Test
+    void stopsRunningProcessWhenSignalIsAborted() throws Exception {
+        Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
+        ObjectMapper objectMapper = new ObjectMapper();
+        RunControl control = new RunControl();
+        ToolContext context = new ToolContext(
+                "session",
+                "turn",
+                null,
+                tempDir,
+                null,
+                Collections.emptyMap(),
+                control);
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("command", "exec sleep 30");
+        arguments.put("timeoutSeconds", 60);
+        BashTool tool = new BashTool(objectMapper, new WorkspacePathResolver());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<?> execution = executor.submit(() -> {
+                try {
+                    tool.execute(context, arguments);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            Thread.sleep(200);
+            control.requestStop();
+
+            ExecutionException exception = assertThrows(
+                    ExecutionException.class,
+                    () -> execution.get(3, TimeUnit.SECONDS));
+            assertTrue(exception.getCause().getCause() instanceof StopRequestedException);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 }

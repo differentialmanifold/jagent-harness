@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { request } from '../api/http'
 import { loadJson, saveJson } from '../utils/storage'
 import { projectName, projectPathLabel, workspaceKey } from '../utils/workspace'
@@ -6,10 +6,7 @@ import { projectName, projectPathLabel, workspaceKey } from '../utils/workspace'
 const ignoredCoreEvents = new Set([
   'agent_start',
   'turn_start',
-  'turn_end',
-  'tool_execution_start',
-  'tool_execution_update',
-  'tool_execution_end'
+  'turn_end'
 ])
 
 export function useAgentHarness() {
@@ -31,6 +28,8 @@ export function useAgentHarness() {
   const renameTitleDraft = ref('')
   const renameError = ref('')
   const running = ref(false)
+  const stopping = ref(false)
+  const stopReady = ref(false)
   const hiddenProjectKeys = ref(loadJson('jagent.hiddenProjects', []))
   const projectAliases = ref(loadJson('jagent.projectAliases', {}))
   const projectDialogOpen = ref(false)
@@ -41,6 +40,11 @@ export function useAgentHarness() {
   const renameSessionId = ref('')
   const renameProjectKey = ref('')
   let activeStreamId = null
+  let activeRequestId = null
+  let streamController = null
+  let stopFallbackTimer = null
+  let stopRequested = false
+  const pendingToolMessages = new Map()
 
   const providerLabel = computed(() => {
     if (!provider.value) return 'Loading runtime'
@@ -49,7 +53,19 @@ export function useAgentHarness() {
 
   const statusText = computed(() => {
     if (!currentSession.value) return 'Create or select a session to begin'
-    const prefix = running.value ? 'Agent loop is streaming events' : `${messages.value.length} messages`
+    const runningTool = messages.value.find((message) => message.role === 'tool' && message.running)
+    const thinking = messages.value.find((message) => message.role === 'assistant' && message.thinking)
+    const prefix = stopping.value
+      ? 'Stopping agent run'
+      : running.value && !stopReady.value
+        ? 'Starting agent run'
+      : runningTool
+        ? `Running ${runningTool.toolName || 'tool'}`
+      : thinking
+        ? 'Agent is thinking'
+      : running.value
+        ? 'Agent loop is streaming events'
+        : `${messages.value.length} messages`
     return `${prefix} | ${projectPathLabel(currentSession.value.workspacePath)}`
   })
 
@@ -77,6 +93,12 @@ export function useAgentHarness() {
   })
 
   onMounted(bootstrap)
+  onBeforeUnmount(() => {
+    clearStopFallback()
+    if (streamController) {
+      streamController.abort()
+    }
+  })
 
   async function bootstrap() {
     await Promise.all([loadProvider(), loadAgentContext(), loadSessions()])
@@ -284,28 +306,68 @@ export function useAgentHarness() {
     }
     draft.value = ''
     running.value = true
-    activeStreamId = null
+    stopping.value = false
+    stopReady.value = false
+    stopRequested = false
+    resetTransientRunState()
+    activeRequestId = createRequestId()
+    streamController = new AbortController()
     try {
-      await streamRequest('/api/chat/stream', { sessionId, content })
+      await streamRequest(
+        '/api/chat/stream',
+        { requestId: activeRequestId, sessionId, content },
+        streamController.signal
+      )
       await selectSession(sessionId)
       await loadSessions()
     } catch (error) {
-      appendLocalErrorMessage(error.message)
+      if (!(error.name === 'AbortError' && stopRequested)) {
+        appendLocalErrorMessage(error.message)
+      }
     } finally {
+      clearStopFallback()
+      activeRequestId = null
+      streamController = null
+      stopRequested = false
+      stopping.value = false
+      stopReady.value = false
       running.value = false
     }
   }
 
-  async function streamRequest(url, body) {
+  async function stopMessage() {
+    if (!running.value || stopping.value || !stopReady.value || !activeRequestId) return
+    stopping.value = true
+    stopRequested = true
+    stopFallbackTimer = window.setTimeout(() => {
+      if (streamController) {
+        streamController.abort()
+      }
+    }, 3000)
+    try {
+      await request(`/api/chat/requests/${encodeURIComponent(activeRequestId)}/stop`, {
+        method: 'POST'
+      })
+    } catch (error) {
+      clearStopFallback()
+      stopRequested = false
+      stopping.value = false
+      appendLocalErrorMessage(`Failed to stop agent: ${error.message}`)
+    }
+  }
+
+  async function streamRequest(url, body, signal) {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     })
     if (!response.ok || !response.body) {
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || response.statusText)
     }
+    stopReady.value = true
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -314,23 +376,23 @@ export function useAgentHarness() {
       const { value, done } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      buffer = consumeSseBuffer(buffer)
+      buffer = await consumeSseBuffer(buffer)
     }
     buffer += decoder.decode()
-    consumeSseBuffer(`${buffer}\n\n`)
+    await consumeSseBuffer(`${buffer}\n\n`)
   }
 
-  function consumeSseBuffer(buffer) {
+  async function consumeSseBuffer(buffer) {
     const normalized = buffer.replace(/\r\n/g, '\n')
     const blocks = normalized.split('\n\n')
     const rest = blocks.pop() || ''
     for (const block of blocks) {
-      consumeSseBlock(block)
+      await consumeSseBlock(block)
     }
     return rest
   }
 
-  function consumeSseBlock(block) {
+  async function consumeSseBlock(block) {
     const lines = block.split('\n')
     let eventName = 'message'
     const data = []
@@ -340,16 +402,22 @@ export function useAgentHarness() {
     }
     if (data.length === 0) return
     const event = JSON.parse(data.join('\n'))
+    const payload = parsePayload(event.payloadJson)
+    const type = event.type || eventName
     handleAgentEvent(eventName, event)
+    if (type === 'tool_execution_start'
+        || (type === 'message_end' && payload.message?.role === 'assistant' && payload.message.toolCalls?.length)) {
+      await waitForBrowserPaint()
+    }
   }
 
   function replayTimelineEvents(events) {
-    activeStreamId = null
+    resetTransientRunState()
     messages.value = []
     for (const event of events) {
       handleAgentEvent(event.type || 'message', event, { replay: true })
     }
-    activeStreamId = null
+    resetTransientRunState()
   }
 
   function handleAgentEvent(eventName, event, options = {}) {
@@ -357,7 +425,7 @@ export function useAgentHarness() {
     const type = event.type || eventName
     if (type === 'message_start') {
       if (!options.replay) {
-        activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
+        startThinkingMessage(event, payload)
       }
     } else if (type === 'message_update') {
       if (!options.replay) {
@@ -365,13 +433,37 @@ export function useAgentHarness() {
       }
     } else if (type === 'message_end') {
       mergeMessage(payload.message)
+    } else if (type === 'tool_execution_start') {
+      if (!options.replay) {
+        startToolExecution(event, payload)
+      }
+    } else if (type === 'tool_execution_update') {
+      if (!options.replay) {
+        updateToolExecution(payload)
+      }
+    } else if (type === 'tool_execution_end') {
+      if (!options.replay) {
+        completeToolExecution(payload)
+      }
     } else if (type === 'compaction_start') {
       upsertCompactionMessage(event, payload, true)
     } else if (type === 'compaction_end') {
       upsertCompactionMessage(event, payload, false)
     } else if (type === 'agent_end') {
+      clearEmptyThinkingMessage()
+      completePendingTools('completed')
+      running.value = false
+    } else if (type === 'agent_stopped') {
+      clearStopFallback()
+      clearEmptyThinkingMessage()
+      completePendingTools('stopped')
+      activeStreamId = null
+      stopping.value = false
+      stopReady.value = false
       running.value = false
     } else if (type === 'agent_error') {
+      clearEmptyThinkingMessage()
+      completePendingTools('failed')
       throw new Error(payload.message || 'Agent stream failed')
     } else if (!ignoredCoreEvents.has(type)) {
       appendCustomEventMessage(event, type, payload)
@@ -397,7 +489,22 @@ export function useAgentHarness() {
     const message = messages.value.find((item) => item.messageId === activeStreamId)
     if (message) {
       message.content = `${message.content || ''}${delta}`
+      message.thinking = false
     }
+  }
+
+  function startThinkingMessage(event, payload) {
+    clearEmptyThinkingMessage()
+    activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
+    messages.value.push({
+      messageId: activeStreamId,
+      sessionId: event.sessionId,
+      role: 'assistant',
+      content: '',
+      streaming: true,
+      thinking: true,
+      startedAt: Date.now()
+    })
   }
 
   function ensureStreamingMessage(event) {
@@ -408,7 +515,9 @@ export function useAgentHarness() {
         sessionId: event.sessionId,
         role: 'assistant',
         content: '',
-        streaming: true
+        streaming: true,
+        thinking: true,
+        startedAt: Date.now()
       })
     }
   }
@@ -417,6 +526,9 @@ export function useAgentHarness() {
     if (!message || !message.messageId) return
     if (message.role === 'assistant' && activeStreamId) {
       replaceStreamingMessage(message)
+      return
+    }
+    if (message.role === 'tool' && replacePendingToolMessage(message)) {
       return
     }
 
@@ -436,6 +548,90 @@ export function useAgentHarness() {
       messages.value.push(message)
     }
     activeStreamId = null
+  }
+
+  function clearEmptyThinkingMessage() {
+    if (!activeStreamId) return
+    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+    if (index >= 0 && !messages.value[index].content) {
+      messages.value.splice(index, 1)
+    }
+    activeStreamId = null
+  }
+
+  function startToolExecution(event, payload) {
+    const toolCallId = payload.toolCallId || `${event.turnId}:${Date.now()}`
+    const messageId = `tool-running:${toolCallId}`
+    pendingToolMessages.set(toolCallId, messageId)
+    messages.value.push({
+      messageId,
+      sessionId: event.sessionId,
+      turnId: event.turnId,
+      role: 'tool',
+      toolCallId,
+      toolName: payload.toolName || 'tool',
+      argumentsJson: payload.arguments || '',
+      content: '',
+      running: true,
+      startedAt: Date.now()
+    })
+  }
+
+  function updateToolExecution(payload) {
+    const message = pendingToolMessage(payload.toolCallId)
+    if (!message) return
+    message.progress = payload.message || payload.status || payload.text || ''
+  }
+
+  function completeToolExecution(payload) {
+    const message = pendingToolMessage(payload.toolCallId)
+    if (!message) return
+    message.running = false
+    message.completedAt = Date.now()
+    message.content = payload.result || ''
+    message.stopped = payload.stopped === true
+  }
+
+  function replacePendingToolMessage(message) {
+    const pendingMessageId = pendingToolMessages.get(message.toolCallId)
+    if (!pendingMessageId) return false
+    const index = messages.value.findIndex((item) => item.messageId === pendingMessageId)
+    if (index >= 0) {
+      messages.value.splice(index, 1, message)
+    } else {
+      messages.value.push(message)
+    }
+    pendingToolMessages.delete(message.toolCallId)
+    return true
+  }
+
+  function pendingToolMessage(toolCallId) {
+    const messageId = pendingToolMessages.get(toolCallId)
+    if (!messageId) return null
+    return messages.value.find((message) => message.messageId === messageId) || null
+  }
+
+  function waitForBrowserPaint() {
+    if (document.visibilityState !== 'visible') {
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()))
+  }
+
+  function completePendingTools(status) {
+    for (const messageId of pendingToolMessages.values()) {
+      const message = messages.value.find((item) => item.messageId === messageId)
+      if (!message || !message.running) continue
+      message.running = false
+      message.completedAt = Date.now()
+      message.stopped = status === 'stopped'
+      message.failed = status === 'failed'
+    }
+  }
+
+  function resetTransientRunState() {
+    activeStreamId = null
+    pendingToolMessages.clear()
   }
 
   function upsertCompactionMessage(event, payload, active) {
@@ -545,6 +741,20 @@ export function useAgentHarness() {
     return title.length > 36 ? `${title.slice(0, 36)}...` : title
   }
 
+  function createRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID()
+    }
+    return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`
+  }
+
+  function clearStopFallback() {
+    if (stopFallbackTimer) {
+      window.clearTimeout(stopFallbackTimer)
+      stopFallbackTimer = null
+    }
+  }
+
   return {
     sessions,
     currentSession,
@@ -558,6 +768,8 @@ export function useAgentHarness() {
     renameTitleDraft,
     renameError,
     running,
+    stopping,
+    stopReady,
     projectDialogOpen,
     projectSubmitting,
     renameDialogOpen,
@@ -582,6 +794,7 @@ export function useAgentHarness() {
     submitRenameDialog,
     selectProject,
     selectSession,
-    sendMessage
+    sendMessage,
+    stopMessage
   }
 }

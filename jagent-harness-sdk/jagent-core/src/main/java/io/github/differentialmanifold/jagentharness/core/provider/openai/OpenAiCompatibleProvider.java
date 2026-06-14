@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
@@ -52,40 +54,68 @@ public class OpenAiCompatibleProvider implements ModelProvider {
 
     @Override
     public ModelResponse chat(ModelRequest request) {
+        return chatNonStreaming(request, StopSignal.none());
+    }
+
+    private ModelResponse chatNonStreaming(ModelRequest request, StopSignal stopSignal) {
         ObjectNode payload = buildPayload(request, false);
         try {
-            String body = postJson(objectMapper.writeValueAsString(payload));
+            String body = postJson(objectMapper.writeValueAsString(payload), stopSignal);
             return parseResponse(body);
         } catch (IOException e) {
+            if (stopSignal.isAborted()) {
+                throw new StopRequestedException(e);
+            }
             throw new ModelProviderException("Model provider request failed: " + e.getMessage(), e);
         }
     }
 
     @Override
     public ModelResponse chat(ModelRequest request, Consumer<String> contentDeltaConsumer) {
+        return chat(request, contentDeltaConsumer, StopSignal.none());
+    }
+
+    @Override
+    public ModelResponse chat(ModelRequest request,
+                              Consumer<String> contentDeltaConsumer,
+                              StopSignal stopSignal) {
+        StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
+        effectiveSignal.throwIfAborted();
         if (!config.isStreamEnabled()) {
-            ModelResponse response = chat(request);
+            ModelResponse response = chatNonStreaming(request, effectiveSignal);
             if (contentDeltaConsumer != null && response.getContent() != null) {
                 contentDeltaConsumer.accept(response.getContent());
             }
+            effectiveSignal.throwIfAborted();
             return response;
         }
         ObjectNode payload = buildPayload(request, true);
         try {
-            return postStream(objectMapper.writeValueAsString(payload), contentDeltaConsumer);
+            return postStream(
+                    objectMapper.writeValueAsString(payload),
+                    contentDeltaConsumer,
+                    effectiveSignal);
         } catch (IOException e) {
+            if (effectiveSignal.isAborted()) {
+                throw new StopRequestedException(e);
+            }
             throw new ModelProviderException("Model provider stream request failed: " + e.getMessage(), e);
         }
     }
 
-    private String postJson(String body) throws IOException {
-        return httpClient.postJson(new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body)).getBody();
+    private String postJson(String body, StopSignal stopSignal) throws IOException {
+        return httpClient.postJson(
+                new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
+                stopSignal).getBody();
     }
 
-    private ModelResponse postStream(String body, Consumer<String> contentDeltaConsumer) throws IOException {
+    private ModelResponse postStream(String body,
+                                     Consumer<String> contentDeltaConsumer,
+                                     StopSignal stopSignal) throws IOException {
         return httpClient.postStream(
                 new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
-                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer));
+                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer),
+                stopSignal);
     }
 
     private ObjectNode buildPayload(ModelRequest request, boolean stream) {

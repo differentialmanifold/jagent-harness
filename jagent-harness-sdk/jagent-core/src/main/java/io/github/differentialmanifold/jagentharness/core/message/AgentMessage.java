@@ -13,6 +13,7 @@ public class AgentMessage {
     public static final String ROLE_USER = "user";
     public static final String ROLE_ASSISTANT = "assistant";
     public static final String ROLE_TOOL = "tool";
+    public static final String STOP_REASON_ABORTED = "aborted";
 
     private String messageId;
     private String sessionId;
@@ -23,6 +24,7 @@ public class AgentMessage {
     private String toolCallId;
     private String toolName;
     private List<ToolCall> toolCalls = new ArrayList<ToolCall>();
+    private String stopReason;
     private String metadataJson;
     private Instant createdAt;
 
@@ -126,6 +128,14 @@ public class AgentMessage {
 
     public void setToolCalls(List<ToolCall> toolCalls) {
         this.toolCalls = toolCalls;
+    }
+
+    public String getStopReason() {
+        return stopReason;
+    }
+
+    public void setStopReason(String stopReason) {
+        this.stopReason = stopReason;
     }
 
     public String getMetadataJson() {

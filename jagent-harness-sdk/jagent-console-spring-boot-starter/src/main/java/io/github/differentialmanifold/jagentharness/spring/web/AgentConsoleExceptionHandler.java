@@ -20,6 +20,11 @@ public class AgentConsoleExceptionHandler {
         return error(HttpStatus.BAD_GATEWAY, exception);
     }
 
+    @ExceptionHandler(ActiveRequestException.class)
+    public ResponseEntity<ErrorResponse> activeRequest(Exception exception) {
+        return error(HttpStatus.CONFLICT, exception);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> serverError(Exception exception) {
         return error(HttpStatus.INTERNAL_SERVER_ERROR, exception);

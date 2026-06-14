@@ -27,8 +27,8 @@ public class JdbcMessageRepository implements MessageRepository {
         jdbcTemplate.update("insert into messages "
                         + "(message_id, session_id, turn_id, parent_message_id, role, content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
-                        + "metadata_json, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "stop_reason, metadata_json, created_at) "
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 message.getMessageId(),
                 message.getSessionId(),
                 message.getTurnId(),
@@ -38,6 +38,7 @@ public class JdbcMessageRepository implements MessageRepository {
                 message.getToolCallId(),
                 message.getToolName(),
                 writeToolCalls(message.getToolCalls()),
+                message.getStopReason(),
                 message.getMetadataJson(),
                 JdbcTimeCodec.encode(message.getCreatedAt()));
     }
@@ -63,6 +64,7 @@ public class JdbcMessageRepository implements MessageRepository {
             message.setToolCallId(rs.getString("tool_call_id"));
             message.setToolName(rs.getString("tool_name"));
             message.setToolCalls(readToolCalls(rs.getString("tool_calls_json")));
+            message.setStopReason(rs.getString("stop_reason"));
             message.setMetadataJson(rs.getString("metadata_json"));
             message.setCreatedAt(JdbcTimeCodec.decode(rs.getString("created_at")));
             return message;

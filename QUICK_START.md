@@ -21,7 +21,7 @@ npm -v
 
 ## 1. Configure the Model
 
-The example uses an OpenAI-compatible chat completions provider. The default model is `glm-5.1`.
+The example uses an OpenAI-compatible chat completions provider. The default model is `glm-5.2`.
 
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
@@ -31,7 +31,7 @@ Optional overrides:
 
 ```bash
 export JAGENT_OPENAI_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4
-export JAGENT_MODEL=glm-5.1
+export JAGENT_MODEL=glm-5.2
 export JAGENT_MODEL_STREAM_ENABLED=true
 ```
 
@@ -44,7 +44,7 @@ From the repository root:
 
 ```bash
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.2.0.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.2.1.jar
 ```
 
 The backend listens on `http://localhost:8080`.

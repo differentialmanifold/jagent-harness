@@ -40,7 +40,10 @@
           :provider="provider"
           :status-text="statusText"
           :running="running"
+          :stopping="stopping"
+          :stop-ready="stopReady"
           @send="sendMessage"
+          @stop="stopMessage"
         />
 
         <InspectorPanel
@@ -111,6 +114,8 @@ const {
   renameTitleDraft,
   renameError,
   running,
+  stopping,
+  stopReady,
   projectDialogOpen,
   projectSubmitting,
   renameDialogOpen,
@@ -134,7 +139,8 @@ const {
   submitRenameDialog,
   selectProject,
   selectSession,
-  sendMessage
+  sendMessage,
+  stopMessage
 } = useAgentHarness()
 
 async function selectSessionAndShowChat(sessionId) {

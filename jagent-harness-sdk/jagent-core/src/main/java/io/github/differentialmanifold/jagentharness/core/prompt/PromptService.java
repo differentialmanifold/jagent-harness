@@ -89,8 +89,9 @@ public class PromptService implements PromptProvider {
                 prompt.append("\n");
             }
             if (hasFileSkill) {
-                prompt.append("When a file skill is relevant, call read with its SKILL.md file path before following it. ");
-                prompt.append("If that SKILL.md references a relative path, resolve it relative to the directory containing that SKILL.md path and read the full resolved path.\n\n");
+                prompt.append("When a skill is relevant, call the skill tool with its SKILL.md path before following it. ");
+                prompt.append("Every path under skills/ is a skill resource: always load it with the skill tool, never with the read tool. ");
+                prompt.append("If SKILL.md references a relative path, resolve it relative to the directory containing SKILL.md and call the skill tool with the full resolved path.\n\n");
             } else {
                 prompt.append("\n");
             }

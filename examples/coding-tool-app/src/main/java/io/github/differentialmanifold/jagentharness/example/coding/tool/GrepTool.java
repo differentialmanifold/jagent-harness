@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
@@ -51,6 +52,7 @@ public class GrepTool implements ToolDefinition {
 
     @Override
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
+        context.getStopSignal().throwIfAborted();
         String query = ToolArguments.requiredText(arguments, "query");
         Path root = pathResolver.resolve(context, arguments.path("path").asText("."));
         if (!Files.isDirectory(root)) {
@@ -83,6 +85,7 @@ public class GrepTool implements ToolDefinition {
                             String needle,
                             boolean caseSensitive,
                             ArrayNode matches) {
+        context.getStopSignal().throwIfAborted();
         Path relative = pathResolver.workspaceRoot(context).relativize(path.toAbsolutePath().normalize());
         if (!matchesGlob(relative, matcher, glob)) {
             return;
@@ -90,6 +93,7 @@ public class GrepTool implements ToolDefinition {
         try {
             List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
             for (int i = 0; i < lines.size(); i++) {
+                context.getStopSignal().throwIfAborted();
                 String line = lines.get(i);
                 String haystack = caseSensitive ? line : line.toLowerCase();
                 if (haystack.contains(needle)) {
@@ -100,6 +104,8 @@ public class GrepTool implements ToolDefinition {
                     matches.add(match);
                 }
             }
+        } catch (StopRequestedException e) {
+            throw e;
         } catch (Exception ignored) {
             // Binary or unreadable files are skipped by design.
         }

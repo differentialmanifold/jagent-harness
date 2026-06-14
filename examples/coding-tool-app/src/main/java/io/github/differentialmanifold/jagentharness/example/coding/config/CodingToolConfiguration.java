@@ -6,6 +6,7 @@ import io.github.differentialmanifold.jagentharness.example.coding.tool.EditTool
 import io.github.differentialmanifold.jagentharness.example.coding.tool.FindTool;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.GrepTool;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.LsTool;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.ReadTool;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.WriteTool;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
 import org.springframework.context.annotation.Bean;
@@ -32,6 +33,11 @@ public class CodingToolConfiguration {
     @Bean
     public WriteTool writeTool(ObjectMapper objectMapper, WorkspacePathResolver pathResolver) {
         return new WriteTool(objectMapper, pathResolver);
+    }
+
+    @Bean
+    public ReadTool readTool(ObjectMapper objectMapper, WorkspacePathResolver pathResolver) {
+        return new ReadTool(objectMapper, pathResolver);
     }
 
     @Bean

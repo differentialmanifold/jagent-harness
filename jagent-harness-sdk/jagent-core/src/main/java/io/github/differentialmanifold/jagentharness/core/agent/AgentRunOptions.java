@@ -12,11 +12,13 @@ public class AgentRunOptions {
     private final String traceId;
     private final Map<String, Object> attributes;
     private final Consumer<AgentEvent> eventConsumer;
+    private final StopSignal stopSignal;
 
     private AgentRunOptions(Builder builder) {
         this.traceId = builder.traceId;
         this.attributes = Collections.unmodifiableMap(new LinkedHashMap<String, Object>(builder.attributes));
         this.eventConsumer = builder.eventConsumer;
+        this.stopSignal = builder.stopSignal == null ? StopSignal.none() : builder.stopSignal;
     }
 
     public static AgentRunOptions empty() {
@@ -39,6 +41,10 @@ public class AgentRunOptions {
         return eventConsumer;
     }
 
+    public StopSignal getStopSignal() {
+        return stopSignal;
+    }
+
     public AgentRunOptions withEventConsumer(Consumer<AgentEvent> eventConsumer) {
         return toBuilder().eventConsumer(eventConsumer).build();
     }
@@ -47,13 +53,15 @@ public class AgentRunOptions {
         return builder()
                 .traceId(traceId)
                 .attributes(attributes)
-                .eventConsumer(eventConsumer);
+                .eventConsumer(eventConsumer)
+                .stopSignal(stopSignal);
     }
 
     public static class Builder {
         private String traceId;
         private final Map<String, Object> attributes = new LinkedHashMap<String, Object>();
         private Consumer<AgentEvent> eventConsumer;
+        private StopSignal stopSignal = StopSignal.none();
 
         public Builder traceId(String traceId) {
             this.traceId = traceId;
@@ -78,6 +86,11 @@ public class AgentRunOptions {
 
         public Builder eventConsumer(Consumer<AgentEvent> eventConsumer) {
             this.eventConsumer = eventConsumer;
+            return this;
+        }
+
+        public Builder stopSignal(StopSignal stopSignal) {
+            this.stopSignal = stopSignal == null ? StopSignal.none() : stopSignal;
             return this;
         }
 

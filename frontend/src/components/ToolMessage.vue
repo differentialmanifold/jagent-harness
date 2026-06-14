@@ -1,5 +1,18 @@
 <template>
-  <details class="tool-run" :open="isFailedToolMessage(message)">
+  <div v-if="message.running" class="tool-run tool-run-active" aria-live="polite">
+    <div class="tool-run-summary">
+      <span class="tool-status">
+        <el-icon class="is-loading"><Loading /></el-icon>
+      </span>
+      <span class="tool-summary">
+        <strong>{{ toolMessageTitle(message) }}</strong>
+        <small>{{ toolRunningSubtitle(message) }} · {{ elapsedText }}</small>
+      </span>
+    </div>
+    <div class="tool-progress-track" aria-hidden="true"><span></span></div>
+  </div>
+
+  <details v-else class="tool-run" :open="isFailedToolMessage(message)">
     <summary>
       <span class="tool-status">{{ toolStatusLabel(message) }}</span>
       <span class="tool-summary">
@@ -61,6 +74,8 @@
 </template>
 
 <script setup>
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
 import {
   diffHunkKey,
   diffLineClass,
@@ -74,6 +89,7 @@ import {
   toolCommand,
   toolMessageSubtitle,
   toolMessageTitle,
+  toolRunningSubtitle,
   toolResultItems,
   toolStatusLabel,
   toolStderr,
@@ -81,7 +97,40 @@ import {
   toolTextContent
 } from '../utils/toolDisplay'
 
-defineProps({
+const props = defineProps({
   message: { type: Object, required: true }
+})
+
+const now = ref(Date.now())
+let timer = null
+
+const elapsedText = computed(() => {
+  const startedAt = Number(props.message.startedAt) || now.value
+  const elapsedSeconds = Math.max(0, Math.floor((now.value - startedAt) / 1000))
+  return elapsedSeconds < 60
+    ? `${elapsedSeconds}s`
+    : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`
+})
+
+watch(
+  () => props.message.running,
+  (running) => {
+    if (running && !timer) {
+      now.value = Date.now()
+      timer = window.setInterval(() => {
+        now.value = Date.now()
+      }, 1000)
+    } else if (!running && timer) {
+      window.clearInterval(timer)
+      timer = null
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  if (timer) {
+    window.clearInterval(timer)
+  }
 })
 </script>

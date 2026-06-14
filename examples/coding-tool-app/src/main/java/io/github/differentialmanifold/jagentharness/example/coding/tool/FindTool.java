@@ -51,6 +51,7 @@ public class FindTool implements ToolDefinition {
 
     @Override
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
+        context.getStopSignal().throwIfAborted();
         Path root = pathResolver.resolve(context, arguments.path("path").asText("."));
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("Directory not found: " + pathResolver.relative(context, root));
@@ -63,6 +64,7 @@ public class FindTool implements ToolDefinition {
 
         try (Stream<Path> stream = Files.walk(root)) {
             stream.forEach(path -> {
+                context.getStopSignal().throwIfAborted();
                 if (root.equals(path)) {
                     return;
                 }
@@ -79,6 +81,7 @@ public class FindTool implements ToolDefinition {
 
         ArrayNode entries = objectMapper.createArrayNode();
         for (Path match : matches) {
+            context.getStopSignal().throwIfAborted();
             ObjectNode entry = objectMapper.createObjectNode();
             entry.put("path", pathResolver.relative(context, match));
             entry.put("type", Files.isDirectory(match) ? "directory" : "file");

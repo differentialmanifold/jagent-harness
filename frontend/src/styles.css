@@ -347,6 +347,15 @@ textarea {
   background: #f4f8ff;
 }
 
+.message.assistant.interrupted {
+  border-color: #d9b36c;
+  background: #fffaf0;
+}
+
+.message.assistant:has(.assistant-thinking) {
+  min-width: 180px;
+}
+
 .message.tool {
   align-self: stretch;
   border-color: #cbd3df;
@@ -356,6 +365,16 @@ textarea {
 .message.tool.failed {
   border-color: #e3a0a0;
   background: #fff7f7;
+}
+
+.message.tool.running {
+  border-color: #9bb8df;
+  background: #f7faff;
+}
+
+.message.tool.stopped {
+  border-color: #d9b36c;
+  background: #fffaf0;
 }
 
 .message.status {
@@ -372,11 +391,16 @@ textarea {
 
 .message-meta {
   display: flex;
+  align-items: center;
   gap: 8px;
   color: #667085;
   font-size: 12px;
   margin-bottom: 8px;
   text-transform: uppercase;
+}
+
+.message-meta .el-tag {
+  text-transform: none;
 }
 
 .message pre {
@@ -388,12 +412,92 @@ textarea {
   line-height: 1.5;
 }
 
+.assistant-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assistant-thinking .el-icon {
+  color: #3375d6;
+  font-size: 16px;
+}
+
+.activity-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 12px;
+}
+
+.activity-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #667085;
+  animation: activity-dot 1.2s infinite ease-in-out;
+}
+
+.activity-dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.activity-dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 3px;
+  background: #3375d6;
+  vertical-align: -0.15em;
+  animation: stream-cursor 0.9s steps(1) infinite;
+}
+
 .tool-run summary {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   cursor: pointer;
   list-style: none;
+}
+
+.tool-run-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tool-run-active .tool-status {
+  border-color: #9bb8df;
+  background: #edf4ff;
+  color: #245da8;
+}
+
+.tool-run-active .tool-status .el-icon {
+  font-size: 14px;
+}
+
+.tool-progress-track {
+  height: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: #dce8f8;
+}
+
+.tool-progress-track span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  background: #3375d6;
+  animation: tool-progress 1.4s infinite ease-in-out;
 }
 
 .tool-run summary::-webkit-details-marker {
@@ -421,6 +525,13 @@ textarea {
   color: #a23333;
 }
 
+.message.stopped .tool-status {
+  width: 42px;
+  border-color: #d9b36c;
+  background: #fff5df;
+  color: #8a5a00;
+}
+
 .tool-summary {
   display: grid;
   gap: 3px;
@@ -435,6 +546,43 @@ textarea {
   color: #667085;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+@keyframes activity-dot {
+  0%, 60%, 100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes stream-cursor {
+  0%, 45% {
+    opacity: 1;
+  }
+  46%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes tool-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(290%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-dots i,
+  .stream-cursor,
+  .tool-progress-track span {
+    animation: none;
+  }
 }
 
 .edit-stats {

@@ -1,7 +1,12 @@
 export function messageClass(message) {
   const classes = ['message', message.role]
-  if (message.role === 'tool' && isFailedToolMessage(message)) {
+  if (message.role === 'tool' && (message.running || message.stopped)) {
+    classes.push(message.running ? 'running' : 'stopped')
+  } else if (message.role === 'tool' && isFailedToolMessage(message)) {
     classes.push('failed')
+  }
+  if (message.stopReason === 'aborted') {
+    classes.push('interrupted')
   }
   return classes
 }
@@ -21,7 +26,12 @@ export function toolResult(message) {
 }
 
 export function isFailedToolMessage(message) {
+  if (message.failed) return true
   return isToolResultObjectError(toolResult(message))
+}
+
+export function isStoppedToolMessage(message) {
+  return message.stopped || toolResult(message).error === 'Tool execution stopped'
 }
 
 function isToolResultObjectError(result) {
@@ -32,13 +42,18 @@ function isToolResultObjectError(result) {
 }
 
 export function toolStatusLabel(message) {
+  if (message.running) return 'RUN'
+  if (isStoppedToolMessage(message)) return 'STOP'
   return isFailedToolMessage(message) ? 'ERR' : 'OK'
 }
 
 export function toolMessageTitle(message) {
   const name = message.toolName || 'tool'
+  if (message.running) return runningToolTitle(name)
+  if (isStoppedToolMessage(message)) return `${toolDisplayName(name)} stopped`
   const failed = isFailedToolMessage(message)
   if (name === 'bash') return failed ? 'Bash command failed' : 'Ran bash command'
+  if (name === 'skill') return failed ? 'Skill load failed' : 'Loaded skill'
   if (name === 'read') return failed ? 'Read failed' : 'Read file'
   if (name === 'write') return failed ? 'Write failed' : 'Wrote file'
   if (name === 'edit') return failed ? 'Edit failed' : `Edited ${editFileName(message)}`
@@ -46,6 +61,11 @@ export function toolMessageTitle(message) {
   if (name === 'find') return failed ? 'Find failed' : 'Found files'
   if (name === 'ls') return failed ? 'List failed' : 'Listed directory'
   return failed ? `${name} failed` : `Ran ${name}`
+}
+
+export function toolRunningSubtitle(message) {
+  if (message.progress) return message.progress
+  return summarizeToolArguments(message)
 }
 
 export function isEditDiffMessage(message) {
@@ -183,12 +203,38 @@ export function summarizeToolArguments(call) {
   const args = parseJsonObject(call.argumentsJson || call.arguments || '') || {}
   if (name === 'bash' && args.command) return oneLine(args.command, 160)
   if (name === 'grep' && args.query) return `"${oneLine(args.query, 80)}" in ${args.path || '.'}`
-  if (name === 'read' || name === 'write' || name === 'edit' || name === 'ls') return args.path || '.'
+  if (name === 'skill' || name === 'read' || name === 'write' || name === 'edit' || name === 'ls') {
+    return args.path || '.'
+  }
   if (name === 'find') return `${args.path || '.'} ${args.glob || '**/*'}`.trim()
   const summary = Object.entries(args)
     .map(([key, value]) => `${key}: ${oneLine(String(value), 80)}`)
     .join(', ')
   return summary || name
+}
+
+function runningToolTitle(name) {
+  if (name === 'bash') return 'Running command'
+  if (name === 'skill') return 'Loading skill'
+  if (name === 'read') return 'Reading file'
+  if (name === 'write') return 'Writing file'
+  if (name === 'edit') return 'Editing file'
+  if (name === 'grep') return 'Searching files'
+  if (name === 'find') return 'Finding files'
+  if (name === 'ls') return 'Listing directory'
+  return `Running ${name}`
+}
+
+function toolDisplayName(name) {
+  if (name === 'bash') return 'Command'
+  if (name === 'skill') return 'Skill load'
+  if (name === 'read') return 'Read'
+  if (name === 'write') return 'Write'
+  if (name === 'edit') return 'Edit'
+  if (name === 'grep') return 'Search'
+  if (name === 'find') return 'Find'
+  if (name === 'ls') return 'Directory listing'
+  return name
 }
 
 function oneLine(value, maxLength = 120) {

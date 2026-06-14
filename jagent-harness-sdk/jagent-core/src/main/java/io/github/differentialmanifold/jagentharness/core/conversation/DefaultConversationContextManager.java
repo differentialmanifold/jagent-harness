@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
@@ -19,6 +20,10 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 
 public class DefaultConversationContextManager implements ConversationContextManager {
+
+    private static final String ABORTED_RESPONSE_CONTEXT =
+            "The user interrupted the preceding assistant response. "
+                    + "Treat it as incomplete and do not continue it unless explicitly requested.";
 
     private final AgentSettings settings;
     private final CompactionStore compactionStore;
@@ -38,6 +43,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
     @Override
     public ConversationContext prepare(ConversationContextRequest request) {
+        request.getStopSignal().throwIfAborted();
         List<AgentMessage> messages = request.getMessages() == null
                 ? new ArrayList<AgentMessage>()
                 : new ArrayList<AgentMessage>(request.getMessages());
@@ -46,7 +52,10 @@ public class DefaultConversationContextManager implements ConversationContextMan
         String cursorMessageId = state == null ? null : state.getCursorMessageId();
         List<AgentMessage> contextMessages = messagesAfterCursor(messages, cursorMessageId);
         String systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
-        int estimatedTokens = estimateRequestTokens(systemPromptWithSummary, contextMessages, request.getTools());
+        int estimatedTokens = estimateRequestTokens(
+                systemPromptWithSummary,
+                messagesForModel(contextMessages),
+                request.getTools());
         int thresholdTokens = compactionThresholdTokens();
 
         if (shouldCompact(estimatedTokens, thresholdTokens, contextMessages)) {
@@ -63,7 +72,12 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 startPayload.put("recentMessageCount", recentMessages.size());
                 publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_START, startPayload);
 
-                summary = compactConversation(request.getProvider(), summary, messagesToCompact);
+                summary = compactConversation(
+                        request.getProvider(),
+                        summary,
+                        messagesToCompact,
+                        request.getStopSignal());
+                request.getStopSignal().throwIfAborted();
                 cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
                 compactionStore.save(request.getSessionId(), summary, cursorMessageId);
 
@@ -71,7 +85,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
                 int compactedTokens = estimateRequestTokens(
                         systemPromptWithSummary,
-                        contextMessages,
+                        messagesForModel(contextMessages),
                         request.getTools());
                 Map<String, Object> endPayload = new LinkedHashMap<String, Object>();
                 endPayload.put("estimatedTokensBefore", estimatedTokens);
@@ -83,7 +97,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
             }
         }
 
-        return new ConversationContext(systemPromptWithSummary, contextMessages);
+        request.getStopSignal().throwIfAborted();
+        return new ConversationContext(systemPromptWithSummary, messagesForModel(contextMessages));
     }
 
     private boolean shouldCompact(int estimatedTokens,
@@ -150,7 +165,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
     private String compactConversation(ModelProvider provider,
                                        String previousSummary,
-                                       List<AgentMessage> messagesToCompact) {
+                                       List<AgentMessage> messagesToCompact,
+                                       StopSignal stopSignal) {
         ModelRequest request = new ModelRequest();
         request.setModel(settings.getModel());
         request.setSystemPrompt(compactionSystemPrompt());
@@ -159,7 +175,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 compactionUserPrompt(previousSummary, messagesToCompact))));
         request.setTools(Collections.<ToolDefinition>emptyList());
 
-        ModelResponse response = provider.chat(request);
+        ModelResponse response = provider.chat(request, null, stopSignal);
         String summary = response == null ? null : response.getContent();
         if (summary == null || summary.trim().isEmpty()) {
             return previousSummary == null ? "" : previousSummary;
@@ -197,6 +213,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
         }
         for (AgentMessage message : messages) {
             rendered.append("[").append(valueOrEmpty(message.getRole())).append("]");
+            if (message.getStopReason() != null && !message.getStopReason().trim().isEmpty()) {
+                rendered.append(" stopReason=").append(message.getStopReason());
+            }
             if (message.getToolName() != null && !message.getToolName().trim().isEmpty()) {
                 rendered.append(" tool=").append(message.getToolName());
             }
@@ -206,6 +225,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
             rendered.append("\n");
             if (message.getContent() != null && !message.getContent().isEmpty()) {
                 rendered.append(message.getContent()).append("\n");
+            }
+            if (isAbortedAssistant(message)) {
+                rendered.append("The user interrupted this assistant response before completion.\n");
             }
             if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
                 try {
@@ -219,6 +241,38 @@ public class DefaultConversationContextManager implements ConversationContextMan
             rendered.append("\n");
         }
         return rendered.toString();
+    }
+
+    private List<AgentMessage> messagesForModel(List<AgentMessage> messages) {
+        List<AgentMessage> modelMessages = new ArrayList<AgentMessage>();
+        if (messages == null || messages.isEmpty()) {
+            return modelMessages;
+        }
+        for (AgentMessage message : messages) {
+            if (!isAbortedAssistant(message)) {
+                modelMessages.add(message);
+                continue;
+            }
+            if (hasAssistantContent(message)) {
+                modelMessages.add(message);
+            }
+            AgentMessage interrupted = AgentMessage.user(message.getSessionId(), ABORTED_RESPONSE_CONTEXT);
+            interrupted.setTurnId(message.getTurnId());
+            interrupted.setParentMessageId(message.getMessageId());
+            modelMessages.add(interrupted);
+        }
+        return modelMessages;
+    }
+
+    private boolean isAbortedAssistant(AgentMessage message) {
+        return message != null
+                && AgentMessage.ROLE_ASSISTANT.equals(message.getRole())
+                && AgentMessage.STOP_REASON_ABORTED.equals(message.getStopReason());
+    }
+
+    private boolean hasAssistantContent(AgentMessage message) {
+        return (message.getContent() != null && !message.getContent().isEmpty())
+                || (message.getToolCalls() != null && !message.getToolCalls().isEmpty());
     }
 
     private String appendCompactionSummary(String systemPrompt, String summary) {

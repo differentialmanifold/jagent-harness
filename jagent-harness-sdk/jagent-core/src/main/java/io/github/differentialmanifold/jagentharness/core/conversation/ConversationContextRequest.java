@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
@@ -17,6 +18,7 @@ public class ConversationContextRequest {
     private final List<AgentMessage> messages;
     private final Collection<ToolDefinition> tools;
     private final ModelProvider provider;
+    private final StopSignal stopSignal;
 
     public ConversationContextRequest(String sessionId,
                                       String turnId,
@@ -24,6 +26,16 @@ public class ConversationContextRequest {
                                       List<AgentMessage> messages,
                                       Collection<ToolDefinition> tools,
                                       ModelProvider provider) {
+        this(sessionId, turnId, systemPrompt, messages, tools, provider, StopSignal.none());
+    }
+
+    public ConversationContextRequest(String sessionId,
+                                      String turnId,
+                                      String systemPrompt,
+                                      List<AgentMessage> messages,
+                                      Collection<ToolDefinition> tools,
+                                      ModelProvider provider,
+                                      StopSignal stopSignal) {
         this.sessionId = sessionId;
         this.turnId = turnId;
         this.systemPrompt = systemPrompt;
@@ -34,6 +46,7 @@ public class ConversationContextRequest {
                 ? Collections.<ToolDefinition>emptyList()
                 : Collections.unmodifiableCollection(new ArrayList<ToolDefinition>(tools));
         this.provider = provider;
+        this.stopSignal = stopSignal == null ? StopSignal.none() : stopSignal;
     }
 
     public String getSessionId() {
@@ -58,5 +71,9 @@ public class ConversationContextRequest {
 
     public ModelProvider getProvider() {
         return provider;
+    }
+
+    public StopSignal getStopSignal() {
+        return stopSignal;
     }
 }
