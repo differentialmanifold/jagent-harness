@@ -134,7 +134,6 @@ public class AgentRunner implements AgentHarness {
                 ModelResponse response = provider.chat(
                         request,
                         delta -> {
-                            stopSignal.throwIfAborted();
                             partialAnswer.append(delta);
                             publishAssistantTextUpdate(
                                     sessionId,

@@ -37,16 +37,7 @@ class AgentRunnerStopTest {
         ObjectMapper objectMapper = new ObjectMapper();
         List<AgentEvent> events = new ArrayList<AgentEvent>();
 
-        AgentRunner runner = new AgentRunner(
-                settings(),
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                context -> "System prompt.",
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
-                objectMapper);
+        AgentRunner runner = createRunner(store, providers, objectMapper);
 
         assertThrows(
                 StopRequestedException.class,
@@ -63,6 +54,48 @@ class AgentRunnerStopTest {
         assertEquals(AgentMessage.ROLE_ASSISTANT, store.messages.get(1).getRole());
         assertEquals("partial answer", store.messages.get(1).getContent());
         assertTrue(events.stream().anyMatch(event -> AgentEvent.AGENT_STOPPED.equals(event.getType())));
+    }
+
+    @Test
+    void doesNotPersistSyntheticAssistantMessageWhenStoppedBeforeOutput() {
+        RunControl control = new RunControl();
+        control.requestStop();
+        FakeSessionStore store = new FakeSessionStore();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(new StoppingModelProvider(control));
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<AgentEvent> events = new ArrayList<AgentEvent>();
+
+        AgentRunner runner = createRunner(store, providers, objectMapper);
+
+        assertThrows(
+                StopRequestedException.class,
+                () -> runner.run(
+                        "s1",
+                        "stop this",
+                        AgentRunOptions.builder()
+                                .eventConsumer(events::add)
+                                .stopSignal(control)
+                                .build()));
+
+        assertEquals(1, store.messages.size());
+        assertEquals(AgentMessage.ROLE_USER, store.messages.get(0).getRole());
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.AGENT_STOPPED.equals(event.getType())));
+    }
+
+    private AgentRunner createRunner(FakeSessionStore store,
+                                     ModelProviderRegistry providers,
+                                     ObjectMapper objectMapper) {
+        return new AgentRunner(
+                settings(),
+                store,
+                new DefaultAgentEventPublisher(objectMapper),
+                context -> "System prompt.",
+                new ToolRegistry(),
+                providers,
+                new DefaultToolContextFactory(),
+                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
+                objectMapper);
     }
 
     private AgentSettings settings() {

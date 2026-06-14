@@ -114,7 +114,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                                      StopSignal stopSignal) throws IOException {
         return httpClient.postStream(
                 new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
-                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer, stopSignal),
+                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer),
                 stopSignal);
     }
 
@@ -230,15 +230,14 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private ModelResponse parseStreamResponse(InputStream inputStream,
-                                              Consumer<String> contentDeltaConsumer,
-                                              StopSignal stopSignal) throws IOException {
+                                              Consumer<String> contentDeltaConsumer) throws IOException {
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
         StreamAccumulator accumulator = new StreamAccumulator();
         StringBuilder data = new StringBuilder();
         String line;
         while ((line = reader.readLine()) != null) {
             if (line.trim().isEmpty()) {
-                consumeSseData(data, accumulator, contentDeltaConsumer, stopSignal);
+                consumeSseData(data, accumulator, contentDeltaConsumer);
                 data.setLength(0);
             } else if (line.startsWith("data:")) {
                 if (data.length() > 0) {
@@ -247,19 +246,16 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 data.append(line.substring("data:".length()).trim());
             }
         }
-        consumeSseData(data, accumulator, contentDeltaConsumer, stopSignal);
-        stopSignal.throwIfAborted();
+        consumeSseData(data, accumulator, contentDeltaConsumer);
         return accumulator.toResponse(objectMapper);
     }
 
     private void consumeSseData(StringBuilder data,
                                 StreamAccumulator accumulator,
-                                Consumer<String> contentDeltaConsumer,
-                                StopSignal stopSignal) throws IOException {
+                                Consumer<String> contentDeltaConsumer) throws IOException {
         if (data.length() == 0) {
             return;
         }
-        stopSignal.throwIfAborted();
         String value = data.toString();
         if ("[DONE]".equals(value)) {
             return;
