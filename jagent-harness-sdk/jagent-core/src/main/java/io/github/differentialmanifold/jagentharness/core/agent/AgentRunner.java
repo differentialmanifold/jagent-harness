@@ -169,22 +169,20 @@ public class AgentRunner implements AgentHarness {
                         parentMessageId);
             }
         } catch (StopRequestedException e) {
-            appendStoppedAssistantMessage(
+            AgentMessage stoppedMessage = appendStoppedAssistantMessage(
                     sessionId,
                     turnId,
-                    parentMessageId,
                     partialAnswer.toString());
-            publishStopped(sessionId, turnId, iterations);
+            publishStopped(sessionId, turnId, iterations, stoppedMessage.getMessageId());
             sessionStore.touch(sessionId);
             throw e;
         } catch (RuntimeException e) {
             if (stopSignal.isAborted()) {
-                appendStoppedAssistantMessage(
+                AgentMessage stoppedMessage = appendStoppedAssistantMessage(
                         sessionId,
                         turnId,
-                        parentMessageId,
                         partialAnswer.toString());
-                publishStopped(sessionId, turnId, iterations);
+                publishStopped(sessionId, turnId, iterations, stoppedMessage.getMessageId());
                 sessionStore.touch(sessionId);
                 throw new StopRequestedException(e);
             }
@@ -338,21 +336,19 @@ public class AgentRunner implements AgentHarness {
                 context.getStopSignal());
     }
 
-    private void appendStoppedAssistantMessage(String sessionId,
-                                               String turnId,
-                                               String parentMessageId,
-                                               String content) {
-        if (content == null || content.isEmpty()) {
-            return;
-        }
+    private AgentMessage appendStoppedAssistantMessage(String sessionId,
+                                                       String turnId,
+                                                       String content) {
         AgentMessage message = AgentMessage.assistant(
                 sessionId,
-                content,
+                content == null ? "" : content,
                 Collections.<ToolCall>emptyList());
         message.setTurnId(turnId);
-        message.setParentMessageId(parentMessageId);
+        message.setParentMessageId(lastMessageId(sessionStore.findMessages(sessionId)));
+        message.setStopReason(AgentMessage.STOP_REASON_ABORTED);
         sessionStore.appendMessage(message);
         publish(sessionId, turnId, AgentEvent.MESSAGE_END, eventPayload("message", message));
+        return message;
     }
 
     private String appendStoppedToolMessages(String sessionId,
@@ -383,9 +379,14 @@ public class AgentRunner implements AgentHarness {
         return currentParentMessageId;
     }
 
-    private void publishStopped(String sessionId, String turnId, int iterations) {
+    private void publishStopped(String sessionId,
+                                String turnId,
+                                int iterations,
+                                String messageId) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("status", "stopped");
+        payload.put("stopReason", AgentMessage.STOP_REASON_ABORTED);
+        payload.put("messageId", messageId);
         payload.put("iterations", iterations);
         publish(sessionId, turnId, AgentEvent.TURN_END, payload);
         publish(sessionId, turnId, AgentEvent.AGENT_STOPPED, payload);

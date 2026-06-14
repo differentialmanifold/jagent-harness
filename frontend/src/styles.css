@@ -347,6 +347,11 @@ textarea {
   background: #f4f8ff;
 }
 
+.message.assistant.interrupted {
+  border-color: #d9b36c;
+  background: #fffaf0;
+}
+
 .message.tool {
   align-self: stretch;
   border-color: #cbd3df;
@@ -372,11 +377,16 @@ textarea {
 
 .message-meta {
   display: flex;
+  align-items: center;
   gap: 8px;
   color: #667085;
   font-size: 12px;
   margin-bottom: 8px;
   text-transform: uppercase;
+}
+
+.message-meta .el-tag {
+  text-transform: none;
 }
 
 .message pre {

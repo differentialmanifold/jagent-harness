@@ -34,6 +34,7 @@ create table if not exists messages (
     tool_call_id varchar(128),
     tool_name varchar(128),
     tool_calls_json text,
+    stop_reason varchar(32),
     metadata_json text,
     created_at varchar(64) not null
 );

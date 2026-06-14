@@ -5,6 +5,14 @@
     <template v-else>
       <div class="message-meta">
         <el-tag size="small" :type="message.role === 'assistant' ? 'primary' : 'info'">{{ message.role }}</el-tag>
+        <el-tag
+          v-if="message.stopReason === 'aborted'"
+          size="small"
+          type="warning"
+          effect="plain"
+        >
+          Stopped by user
+        </el-tag>
       </div>
       <pre v-if="message.content">{{ message.content }}</pre>
 

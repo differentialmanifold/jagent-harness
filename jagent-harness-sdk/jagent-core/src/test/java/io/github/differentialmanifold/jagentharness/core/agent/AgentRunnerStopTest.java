@@ -53,11 +53,12 @@ class AgentRunnerStopTest {
         assertEquals(AgentMessage.ROLE_USER, store.messages.get(0).getRole());
         assertEquals(AgentMessage.ROLE_ASSISTANT, store.messages.get(1).getRole());
         assertEquals("partial answer", store.messages.get(1).getContent());
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.AGENT_STOPPED.equals(event.getType())));
+        assertEquals(AgentMessage.STOP_REASON_ABORTED, store.messages.get(1).getStopReason());
+        assertStoppedEvent(events, store.messages.get(1), objectMapper);
     }
 
     @Test
-    void doesNotPersistSyntheticAssistantMessageWhenStoppedBeforeOutput() {
+    void persistsEmptyAbortedAssistantMessageWhenStoppedBeforeOutput() {
         RunControl control = new RunControl();
         control.requestStop();
         FakeSessionStore store = new FakeSessionStore();
@@ -78,9 +79,33 @@ class AgentRunnerStopTest {
                                 .stopSignal(control)
                                 .build()));
 
-        assertEquals(1, store.messages.size());
+        assertEquals(2, store.messages.size());
         assertEquals(AgentMessage.ROLE_USER, store.messages.get(0).getRole());
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.AGENT_STOPPED.equals(event.getType())));
+        AgentMessage stoppedMessage = store.messages.get(1);
+        assertEquals(AgentMessage.ROLE_ASSISTANT, stoppedMessage.getRole());
+        assertEquals("", stoppedMessage.getContent());
+        assertEquals(AgentMessage.STOP_REASON_ABORTED, stoppedMessage.getStopReason());
+        assertEquals(store.messages.get(0).getMessageId(), stoppedMessage.getParentMessageId());
+        assertStoppedEvent(events, stoppedMessage, objectMapper);
+    }
+
+    private void assertStoppedEvent(List<AgentEvent> events,
+                                    AgentMessage stoppedMessage,
+                                    ObjectMapper objectMapper) {
+        AgentEvent stoppedEvent = events.stream()
+                .filter(event -> AgentEvent.AGENT_STOPPED.equals(event.getType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("agent_stopped event was not published"));
+        try {
+            assertEquals(
+                    AgentMessage.STOP_REASON_ABORTED,
+                    objectMapper.readTree(stoppedEvent.getPayloadJson()).path("stopReason").asText());
+            assertEquals(
+                    stoppedMessage.getMessageId(),
+                    objectMapper.readTree(stoppedEvent.getPayloadJson()).path("messageId").asText());
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
     }
 
     private AgentRunner createRunner(FakeSessionStore store,

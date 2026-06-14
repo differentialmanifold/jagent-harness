@@ -431,10 +431,10 @@ export function useAgentHarness() {
       running.value = false
     } else if (type === 'agent_stopped') {
       clearStopFallback()
+      activeStreamId = null
       stopping.value = false
       stopReady.value = false
       running.value = false
-      appendCustomEventMessage(event, type, payload)
     } else if (type === 'agent_error') {
       throw new Error(payload.message || 'Agent stream failed')
     } else if (!ignoredCoreEvents.has(type)) {
@@ -539,7 +539,6 @@ export function useAgentHarness() {
 
   function customEventText(type, payload) {
     const label = String(type || 'event')
-    if (label === 'agent_stopped') return 'Agent stopped'
     const text = payload.message || payload.status || payload.text || payload.title
     if (text) return `${label}: ${text}`
     if (Object.keys(payload).length === 0) return label
