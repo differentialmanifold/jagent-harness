@@ -376,23 +376,23 @@ export function useAgentHarness() {
       const { value, done } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      buffer = consumeSseBuffer(buffer)
+      buffer = await consumeSseBuffer(buffer)
     }
     buffer += decoder.decode()
-    consumeSseBuffer(`${buffer}\n\n`)
+    await consumeSseBuffer(`${buffer}\n\n`)
   }
 
-  function consumeSseBuffer(buffer) {
+  async function consumeSseBuffer(buffer) {
     const normalized = buffer.replace(/\r\n/g, '\n')
     const blocks = normalized.split('\n\n')
     const rest = blocks.pop() || ''
     for (const block of blocks) {
-      consumeSseBlock(block)
+      await consumeSseBlock(block)
     }
     return rest
   }
 
-  function consumeSseBlock(block) {
+  async function consumeSseBlock(block) {
     const lines = block.split('\n')
     let eventName = 'message'
     const data = []
@@ -402,7 +402,13 @@ export function useAgentHarness() {
     }
     if (data.length === 0) return
     const event = JSON.parse(data.join('\n'))
+    const payload = parsePayload(event.payloadJson)
+    const type = event.type || eventName
     handleAgentEvent(eventName, event)
+    if (type === 'tool_execution_start'
+        || (type === 'message_end' && payload.message?.role === 'assistant' && payload.message.toolCalls?.length)) {
+      await waitForBrowserPaint()
+    }
   }
 
   function replayTimelineEvents(events) {
@@ -603,6 +609,13 @@ export function useAgentHarness() {
     const messageId = pendingToolMessages.get(toolCallId)
     if (!messageId) return null
     return messages.value.find((message) => message.messageId === messageId) || null
+  }
+
+  function waitForBrowserPaint() {
+    if (document.visibilityState !== 'visible') {
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()))
   }
 
   function completePendingTools(status) {
