@@ -6,10 +6,7 @@ import { projectName, projectPathLabel, workspaceKey } from '../utils/workspace'
 const ignoredCoreEvents = new Set([
   'agent_start',
   'turn_start',
-  'turn_end',
-  'tool_execution_start',
-  'tool_execution_update',
-  'tool_execution_end'
+  'turn_end'
 ])
 
 export function useAgentHarness() {
@@ -47,6 +44,7 @@ export function useAgentHarness() {
   let streamController = null
   let stopFallbackTimer = null
   let stopRequested = false
+  const pendingToolMessages = new Map()
 
   const providerLabel = computed(() => {
     if (!provider.value) return 'Loading runtime'
@@ -55,10 +53,16 @@ export function useAgentHarness() {
 
   const statusText = computed(() => {
     if (!currentSession.value) return 'Create or select a session to begin'
+    const runningTool = messages.value.find((message) => message.role === 'tool' && message.running)
+    const thinking = messages.value.find((message) => message.role === 'assistant' && message.thinking)
     const prefix = stopping.value
       ? 'Stopping agent run'
       : running.value && !stopReady.value
         ? 'Starting agent run'
+      : runningTool
+        ? `Running ${runningTool.toolName || 'tool'}`
+      : thinking
+        ? 'Agent is thinking'
       : running.value
         ? 'Agent loop is streaming events'
         : `${messages.value.length} messages`
@@ -305,7 +309,7 @@ export function useAgentHarness() {
     stopping.value = false
     stopReady.value = false
     stopRequested = false
-    activeStreamId = null
+    resetTransientRunState()
     activeRequestId = createRequestId()
     streamController = new AbortController()
     try {
@@ -402,12 +406,12 @@ export function useAgentHarness() {
   }
 
   function replayTimelineEvents(events) {
-    activeStreamId = null
+    resetTransientRunState()
     messages.value = []
     for (const event of events) {
       handleAgentEvent(event.type || 'message', event, { replay: true })
     }
-    activeStreamId = null
+    resetTransientRunState()
   }
 
   function handleAgentEvent(eventName, event, options = {}) {
@@ -415,7 +419,7 @@ export function useAgentHarness() {
     const type = event.type || eventName
     if (type === 'message_start') {
       if (!options.replay) {
-        activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
+        startThinkingMessage(event, payload)
       }
     } else if (type === 'message_update') {
       if (!options.replay) {
@@ -423,19 +427,37 @@ export function useAgentHarness() {
       }
     } else if (type === 'message_end') {
       mergeMessage(payload.message)
+    } else if (type === 'tool_execution_start') {
+      if (!options.replay) {
+        startToolExecution(event, payload)
+      }
+    } else if (type === 'tool_execution_update') {
+      if (!options.replay) {
+        updateToolExecution(payload)
+      }
+    } else if (type === 'tool_execution_end') {
+      if (!options.replay) {
+        completeToolExecution(payload)
+      }
     } else if (type === 'compaction_start') {
       upsertCompactionMessage(event, payload, true)
     } else if (type === 'compaction_end') {
       upsertCompactionMessage(event, payload, false)
     } else if (type === 'agent_end') {
+      clearEmptyThinkingMessage()
+      completePendingTools('completed')
       running.value = false
     } else if (type === 'agent_stopped') {
       clearStopFallback()
+      clearEmptyThinkingMessage()
+      completePendingTools('stopped')
       activeStreamId = null
       stopping.value = false
       stopReady.value = false
       running.value = false
     } else if (type === 'agent_error') {
+      clearEmptyThinkingMessage()
+      completePendingTools('failed')
       throw new Error(payload.message || 'Agent stream failed')
     } else if (!ignoredCoreEvents.has(type)) {
       appendCustomEventMessage(event, type, payload)
@@ -461,7 +483,22 @@ export function useAgentHarness() {
     const message = messages.value.find((item) => item.messageId === activeStreamId)
     if (message) {
       message.content = `${message.content || ''}${delta}`
+      message.thinking = false
     }
+  }
+
+  function startThinkingMessage(event, payload) {
+    clearEmptyThinkingMessage()
+    activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
+    messages.value.push({
+      messageId: activeStreamId,
+      sessionId: event.sessionId,
+      role: 'assistant',
+      content: '',
+      streaming: true,
+      thinking: true,
+      startedAt: Date.now()
+    })
   }
 
   function ensureStreamingMessage(event) {
@@ -472,7 +509,9 @@ export function useAgentHarness() {
         sessionId: event.sessionId,
         role: 'assistant',
         content: '',
-        streaming: true
+        streaming: true,
+        thinking: true,
+        startedAt: Date.now()
       })
     }
   }
@@ -481,6 +520,9 @@ export function useAgentHarness() {
     if (!message || !message.messageId) return
     if (message.role === 'assistant' && activeStreamId) {
       replaceStreamingMessage(message)
+      return
+    }
+    if (message.role === 'tool' && replacePendingToolMessage(message)) {
       return
     }
 
@@ -500,6 +542,83 @@ export function useAgentHarness() {
       messages.value.push(message)
     }
     activeStreamId = null
+  }
+
+  function clearEmptyThinkingMessage() {
+    if (!activeStreamId) return
+    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+    if (index >= 0 && !messages.value[index].content) {
+      messages.value.splice(index, 1)
+    }
+    activeStreamId = null
+  }
+
+  function startToolExecution(event, payload) {
+    const toolCallId = payload.toolCallId || `${event.turnId}:${Date.now()}`
+    const messageId = `tool-running:${toolCallId}`
+    pendingToolMessages.set(toolCallId, messageId)
+    messages.value.push({
+      messageId,
+      sessionId: event.sessionId,
+      turnId: event.turnId,
+      role: 'tool',
+      toolCallId,
+      toolName: payload.toolName || 'tool',
+      argumentsJson: payload.arguments || '',
+      content: '',
+      running: true,
+      startedAt: Date.now()
+    })
+  }
+
+  function updateToolExecution(payload) {
+    const message = pendingToolMessage(payload.toolCallId)
+    if (!message) return
+    message.progress = payload.message || payload.status || payload.text || ''
+  }
+
+  function completeToolExecution(payload) {
+    const message = pendingToolMessage(payload.toolCallId)
+    if (!message) return
+    message.running = false
+    message.completedAt = Date.now()
+    message.content = payload.result || ''
+    message.stopped = payload.stopped === true
+  }
+
+  function replacePendingToolMessage(message) {
+    const pendingMessageId = pendingToolMessages.get(message.toolCallId)
+    if (!pendingMessageId) return false
+    const index = messages.value.findIndex((item) => item.messageId === pendingMessageId)
+    if (index >= 0) {
+      messages.value.splice(index, 1, message)
+    } else {
+      messages.value.push(message)
+    }
+    pendingToolMessages.delete(message.toolCallId)
+    return true
+  }
+
+  function pendingToolMessage(toolCallId) {
+    const messageId = pendingToolMessages.get(toolCallId)
+    if (!messageId) return null
+    return messages.value.find((message) => message.messageId === messageId) || null
+  }
+
+  function completePendingTools(status) {
+    for (const messageId of pendingToolMessages.values()) {
+      const message = messages.value.find((item) => item.messageId === messageId)
+      if (!message || !message.running) continue
+      message.running = false
+      message.completedAt = Date.now()
+      message.stopped = status === 'stopped'
+      message.failed = status === 'failed'
+    }
+  }
+
+  function resetTransientRunState() {
+    activeStreamId = null
+    pendingToolMessages.clear()
   }
 
   function upsertCompactionMessage(event, payload, active) {
