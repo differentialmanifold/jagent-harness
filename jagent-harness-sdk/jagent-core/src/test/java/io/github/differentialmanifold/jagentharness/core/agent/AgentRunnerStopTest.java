@@ -30,7 +30,7 @@ class AgentRunnerStopTest {
 
     @Test
     void persistsPartialAssistantMessageAndPublishesStoppedEvent() {
-        RunControl control = new RunControl();
+        MutableStopSignal control = new MutableStopSignal();
         FakeSessionStore store = new FakeSessionStore();
         ModelProviderRegistry providers = new ModelProviderRegistry();
         providers.register(new StoppingModelProvider(control));
@@ -59,7 +59,7 @@ class AgentRunnerStopTest {
 
     @Test
     void persistsEmptyAbortedAssistantMessageWhenStoppedBeforeOutput() {
-        RunControl control = new RunControl();
+        MutableStopSignal control = new MutableStopSignal();
         control.requestStop();
         FakeSessionStore store = new FakeSessionStore();
         ModelProviderRegistry providers = new ModelProviderRegistry();
@@ -131,9 +131,9 @@ class AgentRunnerStopTest {
     }
 
     private static class StoppingModelProvider implements ModelProvider {
-        private final RunControl control;
+        private final MutableStopSignal control;
 
-        private StoppingModelProvider(RunControl control) {
+        private StoppingModelProvider(MutableStopSignal control) {
             this.control = control;
         }
 

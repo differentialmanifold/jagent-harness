@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
-import io.github.differentialmanifold.jagentharness.core.agent.RunControl;
+import io.github.differentialmanifold.jagentharness.core.agent.MutableStopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
@@ -96,7 +96,7 @@ class OpenAiCompatibleProviderTest {
         ModelRequest request = new ModelRequest();
         request.setModel("test-model");
         request.setMessages(Collections.emptyList());
-        RunControl control = new RunControl();
+        MutableStopSignal control = new MutableStopSignal();
         CountDownLatch firstDelta = new CountDownLatch(1);
         List<String> deltas = Collections.synchronizedList(new ArrayList<String>());
         Future<ModelResponse> responseFuture = executor.submit(() -> provider.chat(

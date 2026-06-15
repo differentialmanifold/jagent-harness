@@ -11,10 +11,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.github.differentialmanifold.jagentharness.core.agent.RunControl;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
@@ -63,7 +65,7 @@ class BashToolTest {
     void stopsRunningProcessWhenSignalIsAborted() throws Exception {
         Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
         ObjectMapper objectMapper = new ObjectMapper();
-        RunControl control = new RunControl();
+        TestStopSignal control = new TestStopSignal();
         ToolContext context = new ToolContext(
                 "session",
                 "turn",
@@ -95,6 +97,45 @@ class BashToolTest {
             assertTrue(exception.getCause().getCause() instanceof StopRequestedException);
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    private static class TestStopSignal implements StopSignal {
+
+        private final AtomicBoolean stopped = new AtomicBoolean(false);
+        private volatile Runnable listener;
+
+        private void requestStop() {
+            stopped.set(true);
+            Runnable action = listener;
+            if (action != null) {
+                action.run();
+            }
+        }
+
+        @Override
+        public boolean isAborted() {
+            return stopped.get();
+        }
+
+        @Override
+        public void throwIfAborted() {
+            if (isAborted()) {
+                throw new StopRequestedException();
+            }
+        }
+
+        @Override
+        public StopRegistration onStop(Runnable action) {
+            listener = action;
+            if (isAborted()) {
+                action.run();
+            }
+            return () -> {
+                if (listener == action) {
+                    listener = null;
+                }
+            };
         }
     }
 }

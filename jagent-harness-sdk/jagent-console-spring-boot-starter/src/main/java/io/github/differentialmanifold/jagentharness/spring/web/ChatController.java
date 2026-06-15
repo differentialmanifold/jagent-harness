@@ -6,8 +6,9 @@ import java.util.Map;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
-import io.github.differentialmanifold.jagentharness.core.agent.AgentRunResult;
-import io.github.differentialmanifold.jagentharness.core.agent.RunControl;
+import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
+import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
@@ -30,31 +31,16 @@ public class ChatController {
     private final SessionManager sessionManager;
     private final AgentHarness agentHarness;
     private final TaskExecutor agentTaskExecutor;
-    private final AgentRunRegistry agentRunRegistry;
-
-    public ChatController(SessionManager sessionManager,
-                          AgentHarness agentHarness,
-                          TaskExecutor agentTaskExecutor) {
-        this(sessionManager, agentHarness, agentTaskExecutor, new AgentRunRegistry());
-    }
+    private final RunStopCoordinator runStopCoordinator;
 
     public ChatController(SessionManager sessionManager,
                           AgentHarness agentHarness,
                           TaskExecutor agentTaskExecutor,
-                          AgentRunRegistry agentRunRegistry) {
+                          RunStopCoordinator runStopCoordinator) {
         this.sessionManager = sessionManager;
         this.agentHarness = agentHarness;
         this.agentTaskExecutor = agentTaskExecutor;
-        this.agentRunRegistry = agentRunRegistry;
-    }
-
-    @PostMapping("/run")
-    public AgentRunResult run(@RequestBody ChatRunRequest request) {
-        ChatRunRequest effectiveRequest = requireRunRequest(request);
-        return agentHarness.run(
-                effectiveRequest.getSessionId(),
-                effectiveRequest.getContent(),
-                optionsFrom(effectiveRequest));
+        this.runStopCoordinator = runStopCoordinator;
     }
 
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -63,17 +49,17 @@ public class ChatController {
         String sessionId = effectiveRequest.getSessionId();
         String requestId = requestIdOrCreate(effectiveRequest.getRequestId());
         effectiveRequest.setRequestId(requestId);
-        RunControl runControl = agentRunRegistry.register(requestId, sessionId);
+        RunStopHandle stopHandle = runStopCoordinator.register(requestId, sessionId);
         SseEmitter emitter = new SseEmitter(0L);
-        emitter.onTimeout(runControl::requestStop);
-        emitter.onError(error -> runControl.requestStop());
+        emitter.onTimeout(() -> runStopCoordinator.requestStop(requestId));
+        emitter.onError(error -> runStopCoordinator.requestStop(requestId));
         try {
             agentTaskExecutor.execute(() -> {
                 try {
                     AgentRunOptions options = optionsFrom(effectiveRequest)
                             .toBuilder()
                             .eventConsumer(event -> sendEvent(emitter, event))
-                            .stopSignal(runControl)
+                            .stopSignal(stopHandle)
                             .build();
                     agentHarness.run(
                             sessionId,
@@ -86,12 +72,12 @@ public class ChatController {
                     sendAgentError(emitter, sessionId, e);
                     emitter.complete();
                 } finally {
-                    agentRunRegistry.remove(requestId, runControl);
+                    stopHandle.close();
                     Thread.interrupted();
                 }
             });
         } catch (RuntimeException e) {
-            agentRunRegistry.remove(requestId, runControl);
+            stopHandle.close();
             throw e;
         }
         return emitter;
@@ -99,8 +85,11 @@ public class ChatController {
 
     @PostMapping("/requests/{requestId}/stop")
     public ResponseEntity<Void> stop(@PathVariable String requestId) {
-        agentRunRegistry.requestStop(requireRequestId(requestId));
-        return ResponseEntity.noContent().build();
+        StopRequestResult result = runStopCoordinator.requestStop(requireRequestId(requestId));
+        if (result == StopRequestResult.NOT_FOUND) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.accepted().build();
     }
 
     private ChatRunRequest requireRunRequest(ChatRunRequest request) {

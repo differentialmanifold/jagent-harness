@@ -88,6 +88,10 @@ curl -X POST \
 
 The frontend generates a UUID for each request, keeps the SSE connection open until it receives
 `agent_stopped`, and uses `AbortController` only as a timeout fallback.
+Active runs are coordinated through `RunStopCoordinator`. The JDBC store provides the default
+implementation and records each request in the shared database, so a stop request can reach a run
+owned by another service instance. Each active request watches only its own database row; there is
+no full-table polling. A custom coordinator bean can replace JDBC with Redis or another transport.
 
 ## Spring Boot Usage
 
@@ -122,7 +126,9 @@ This dependency set does not expose any HTTP API. It is for applications that ca
 The Spring Boot starter includes the default OpenAI-compatible provider; add a custom `ModelProvider` bean for another provider.
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
-The schema includes the virtual knowledge filesystem, skill manifest, and prompt binding tables used by database-backed prompts and skills.
+The schema includes the virtual knowledge filesystem, skill manifest, prompt binding, and active
+agent run tables. Multi-instance deployments must point every instance at the same database;
+the default SQLite configuration is intended for local single-host development.
 
 Add the console starter only when you want the bundled Vue console or the `/api/*` management endpoints:
 
@@ -214,6 +220,9 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
+| `JAGENT_STOP_POLL_INTERVAL_MS` | `100` | Interval for each active request to check its own stop row. |
+| `JAGENT_STOP_LEASE_DURATION_MS` | `10000` | Active-run lease duration used to recover from failed instances. |
+| `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-request stop listeners. |
 | `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `AGENTS.md` and global file-based skills. |
 | `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
 | `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |

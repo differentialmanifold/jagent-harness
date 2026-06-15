@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 import javax.sql.DataSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
@@ -12,12 +13,14 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionReposito
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 @ConditionalOnClass(JdbcTemplate.class)
+@EnableConfigurationProperties(JdbcRunStopProperties.class)
 public class JdbcStoreAutoConfiguration {
 
     @Bean(initMethod = "initialize")
@@ -54,5 +57,12 @@ public class JdbcStoreAutoConfiguration {
     @ConditionalOnMissingBean({KnowledgeFileStore.class, SkillManifestStore.class, PromptBindingStore.class})
     public JdbcKnowledgeFileStore jdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate) {
         return new JdbcKnowledgeFileStore(jdbcTemplate);
+    }
+
+    @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean(RunStopCoordinator.class)
+    public JdbcRunStopCoordinator jdbcRunStopCoordinator(JdbcTemplate jdbcTemplate,
+                                                         JdbcRunStopProperties properties) {
+        return new JdbcRunStopCoordinator(jdbcTemplate, properties);
     }
 }
