@@ -69,11 +69,11 @@ Open `http://localhost:5173`.
 
 ### Stop a streamed run
 
-Clients can assign a transport-level `requestId` to a streamed chat request:
+The backend assigns a transport-level `requestId` to each streamed chat request and returns it in
+the `X-Request-Id` response header:
 
 ```json
 {
-  "requestId": "3a51dcf8-5df1-44ef-b7e6-e6ea366f2ec3",
   "sessionId": "session-id",
   "content": "Inspect the project"
 }
@@ -83,11 +83,20 @@ Stop that request without exposing the agent's internal `turnId`:
 
 ```bash
 curl -X POST \
-  http://localhost:8080/api/chat/requests/3a51dcf8-5df1-44ef-b7e6-e6ea366f2ec3/stop
+  -H 'Content-Type: application/json' \
+  -d '{"requestId":"req_1234567890abcdef"}' \
+  http://localhost:8080/api/chat/requests/stop
 ```
 
-The frontend generates a UUID for each request, keeps the SSE connection open until it receives
-`agent_stopped`, and uses `AbortController` only as a timeout fallback.
+The frontend reads the backend-generated request ID from the response header, keeps the SSE
+connection open until it receives `agent_stopped`, and uses `AbortController` only as a timeout
+fallback.
+Active runs are coordinated through `RunStopCoordinator`. The JDBC store provides the default
+implementation and records each request in the shared database, so a stop request can reach a run
+owned by another service instance. Each active request watches only its own database row; there is
+no full-table polling. Rows are retained after completion: the status starts as `NORMAL` and changes
+to `STOP_REQUESTED` only when the stop endpoint is called. Backend-generated request IDs are not
+reused. A custom coordinator bean can replace JDBC with Redis or another transport.
 
 ## Spring Boot Usage
 
@@ -122,7 +131,9 @@ This dependency set does not expose any HTTP API. It is for applications that ca
 The Spring Boot starter includes the default OpenAI-compatible provider; add a custom `ModelProvider` bean for another provider.
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
-The schema includes the virtual knowledge filesystem, skill manifest, and prompt binding tables used by database-backed prompts and skills.
+The schema includes the virtual knowledge filesystem, skill manifest, prompt binding, and active
+agent run tables. Multi-instance deployments must point every instance at the same database;
+the default SQLite configuration is intended for local single-host development.
 
 Add the console starter only when you want the bundled Vue console or the `/api/*` management endpoints:
 
@@ -214,6 +225,8 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
+| `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active request to check its own stop row. |
+| `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-request stop listeners. |
 | `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `AGENTS.md` and global file-based skills. |
 | `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
 | `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |

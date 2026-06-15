@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
@@ -71,17 +72,11 @@ public class AgentConsoleWebConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public AgentRunRegistry agentRunRegistry() {
-        return new AgentRunRegistry();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
     public ChatController chatController(SessionManager sessionManager,
                                          AgentHarness agentHarness,
                                          TaskExecutor agentTaskExecutor,
-                                         AgentRunRegistry agentRunRegistry) {
-        return new ChatController(sessionManager, agentHarness, agentTaskExecutor, agentRunRegistry);
+                                         RunStopCoordinator runStopCoordinator) {
+        return new ChatController(sessionManager, agentHarness, agentTaskExecutor, runStopCoordinator);
     }
 
     @Bean

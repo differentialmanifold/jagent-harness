@@ -98,3 +98,14 @@ create table if not exists prompt_bindings (
 
 create unique index if not exists ux_prompt_bindings_file_path on prompt_bindings (file_path);
 create index if not exists ix_prompt_bindings_prompt_name on prompt_bindings (prompt_name, priority);
+
+create table if not exists agent_runs (
+    id integer primary key autoincrement,
+    request_id varchar(128) not null,
+    session_id varchar(64) not null,
+    status varchar(32) not null,
+    created_at bigint not null,
+    updated_at bigint not null
+);
+
+create unique index if not exists ux_agent_runs_request_id on agent_runs (request_id);

@@ -85,6 +85,7 @@ The example backend validates the path, creates a session, and runs file tools r
 export SERVER_PORT=8080
 export JAGENT_DATASOURCE_URL=jdbc:sqlite:jagent-harness.db
 export JAGENT_DATASOURCE_DRIVER=org.sqlite.JDBC
+export JAGENT_STOP_POLL_INTERVAL_MS=1000
 export JAGENT_CONFIG_ROOT=~/.jagent-harness
 export JAGENT_COMPACTION_ENABLED=true
 export JAGENT_CONTEXT_WINDOW_TOKENS=128000

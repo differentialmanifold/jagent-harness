@@ -15,7 +15,7 @@
 
     <div class="messages" ref="messagesEl">
       <MessageItem
-        v-for="message in messages"
+        v-for="message in visibleMessages"
         :key="message.messageId"
         :message="message"
       />
@@ -56,7 +56,7 @@
 </template>
 
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Promotion, VideoPause } from '@element-plus/icons-vue'
 import MessageItem from './MessageItem.vue'
 
@@ -74,6 +74,15 @@ const props = defineProps({
 const emit = defineEmits(['update:draft', 'send', 'stop'])
 const messagesEl = ref(null)
 let scrollFrame = null
+
+const visibleMessages = computed(() => props.messages.filter((message) => {
+  const isToolOnlyAssistant = message.role === 'assistant'
+    && Array.isArray(message.toolCalls)
+    && message.toolCalls.length > 0
+    && !String(message.content || '').trim()
+    && message.stopReason !== 'aborted'
+  return !isToolOnlyAssistant
+}))
 
 watch(
   () => props.messages,

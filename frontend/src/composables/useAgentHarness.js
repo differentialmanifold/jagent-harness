@@ -310,12 +310,12 @@ export function useAgentHarness() {
     stopReady.value = false
     stopRequested = false
     resetTransientRunState()
-    activeRequestId = createRequestId()
+    activeRequestId = null
     streamController = new AbortController()
     try {
       await streamRequest(
         '/api/chat/stream',
-        { requestId: activeRequestId, sessionId, content },
+        { sessionId, content },
         streamController.signal
       )
       await selectSession(sessionId)
@@ -345,8 +345,9 @@ export function useAgentHarness() {
       }
     }, 3000)
     try {
-      await request(`/api/chat/requests/${encodeURIComponent(activeRequestId)}/stop`, {
-        method: 'POST'
+      await request('/api/chat/requests/stop', {
+        method: 'POST',
+        body: JSON.stringify({ requestId: activeRequestId })
       })
     } catch (error) {
       clearStopFallback()
@@ -366,6 +367,10 @@ export function useAgentHarness() {
     if (!response.ok || !response.body) {
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || response.statusText)
+    }
+    activeRequestId = response.headers.get('X-Request-Id')
+    if (!activeRequestId) {
+      throw new Error('Chat stream response is missing X-Request-Id')
     }
     stopReady.value = true
 
@@ -739,13 +744,6 @@ export function useAgentHarness() {
       .find(Boolean) || ''
     const title = firstLine.replace(/\s+/g, ' ').trim()
     return title.length > 36 ? `${title.slice(0, 36)}...` : title
-  }
-
-  function createRequestId() {
-    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-      return window.crypto.randomUUID()
-    }
-    return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`
   }
 
   function clearStopFallback() {
