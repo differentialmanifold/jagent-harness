@@ -2,7 +2,6 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -22,26 +21,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable {
 
-    private static final String STATUS_RUNNING = "RUNNING";
+    private static final String STATUS_NORMAL = "NORMAL";
     private static final String STATUS_STOP_REQUESTED = "STOP_REQUESTED";
 
     private final JdbcTemplate jdbcTemplate;
     private final long pollIntervalMillis;
-    private final long leaseDurationMillis;
-    private final long heartbeatIntervalMillis;
-    private final String instanceId;
     private final ScheduledExecutorService listenerExecutor;
 
     public JdbcRunStopCoordinator(JdbcTemplate jdbcTemplate, JdbcRunStopProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.pollIntervalMillis = positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
-        this.leaseDurationMillis = positive(properties.getLeaseDurationMillis(), "leaseDurationMillis");
-        if (leaseDurationMillis <= pollIntervalMillis) {
-            throw new IllegalArgumentException("leaseDurationMillis must be greater than pollIntervalMillis");
-        }
-        this.heartbeatIntervalMillis = Math.max(pollIntervalMillis, leaseDurationMillis / 3L);
         int listenerThreads = positive(properties.getListenerThreads(), "listenerThreads");
-        this.instanceId = UUID.randomUUID().toString();
         this.listenerExecutor = Executors.newScheduledThreadPool(
                 listenerThreads,
                 new ListenerThreadFactory());
@@ -50,37 +40,26 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     @Override
     public RunStopHandle register(String requestId, String sessionId) {
         long now = System.currentTimeMillis();
-        jdbcTemplate.update(
-                "delete from agent_runs where request_id = ? and lease_until < ?",
-                requestId,
-                now);
         try {
             jdbcTemplate.update(
                     "insert into agent_runs "
-                            + "(request_id, session_id, owner_instance_id, status, lease_until, created_at, updated_at) "
-                            + "values (?, ?, ?, ?, ?, ?, ?)",
+                            + "(request_id, session_id, status, created_at, updated_at) "
+                            + "values (?, ?, ?, ?, ?)",
                     requestId,
                     sessionId,
-                    instanceId,
-                    STATUS_RUNNING,
-                    now + leaseDurationMillis,
+                    STATUS_NORMAL,
                     now,
                     now);
         } catch (DataAccessException e) {
-            if (findRun(requestId) != null) {
+            if (findStatus(requestId) != null) {
                 throw new ActiveRunException(requestId);
             }
             throw e;
         }
 
-        JdbcRunStopHandle handle = new JdbcRunStopHandle(requestId, sessionId, now);
-        try {
-            handle.start();
-            return handle;
-        } catch (RuntimeException e) {
-            removeOwnedRun(requestId);
-            throw e;
-        }
+        JdbcRunStopHandle handle = new JdbcRunStopHandle(requestId, sessionId);
+        handle.start();
+        return handle;
     }
 
     @Override
@@ -88,21 +67,20 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         long now = System.currentTimeMillis();
         int updated = jdbcTemplate.update(
                 "update agent_runs set status = ?, updated_at = ? "
-                        + "where request_id = ? and status = ? and lease_until >= ?",
+                        + "where request_id = ? and status = ?",
                 STATUS_STOP_REQUESTED,
                 now,
                 requestId,
-                STATUS_RUNNING,
-                now);
+                STATUS_NORMAL);
         if (updated > 0) {
             return StopRequestResult.REQUESTED;
         }
 
-        RunRow row = findRun(requestId);
-        if (row == null || row.leaseUntil < now) {
+        String status = findStatus(requestId);
+        if (status == null) {
             return StopRequestResult.NOT_FOUND;
         }
-        return STATUS_STOP_REQUESTED.equals(row.status)
+        return STATUS_STOP_REQUESTED.equals(status)
                 ? StopRequestResult.ALREADY_REQUESTED
                 : StopRequestResult.NOT_FOUND;
     }
@@ -112,26 +90,12 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         listenerExecutor.shutdownNow();
     }
 
-    private RunRow findRun(String requestId) {
-        List<RunRow> rows = jdbcTemplate.query(
-                "select owner_instance_id, status, lease_until from agent_runs where request_id = ?",
-                (resultSet, rowNum) -> new RunRow(
-                        resultSet.getString("owner_instance_id"),
-                        resultSet.getString("status"),
-                        resultSet.getLong("lease_until")),
+    private String findStatus(String requestId) {
+        List<String> rows = jdbcTemplate.query(
+                "select status from agent_runs where request_id = ?",
+                (resultSet, rowNum) -> resultSet.getString("status"),
                 requestId);
         return rows.isEmpty() ? null : rows.get(0);
-    }
-
-    private void removeOwnedRun(String requestId) {
-        try {
-            jdbcTemplate.update(
-                    "delete from agent_runs where request_id = ? and owner_instance_id = ?",
-                    requestId,
-                    instanceId);
-        } catch (RuntimeException ignored) {
-            // The lease allows another instance to reclaim the request after a transient cleanup failure.
-        }
     }
 
     private static long positive(long value, String name) {
@@ -156,15 +120,11 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private final Object listenersMonitor = new Object();
         private final List<Runnable> listeners = new ArrayList<Runnable>();
-        private volatile long lastDatabaseContact;
-        private volatile long nextHeartbeatAt;
         private volatile ScheduledFuture<?> listenerTask;
 
-        private JdbcRunStopHandle(String requestId, String sessionId, long registeredAt) {
+        private JdbcRunStopHandle(String requestId, String sessionId) {
             this.requestId = requestId;
             this.sessionId = sessionId;
-            this.lastDatabaseContact = registeredAt;
-            this.nextHeartbeatAt = registeredAt + heartbeatIntervalMillis;
         }
 
         private void start() {
@@ -228,58 +188,19 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
             synchronized (listenersMonitor) {
                 listeners.clear();
             }
-            removeOwnedRun(requestId);
         }
 
         private void refresh() {
             if (closed.get()) {
                 return;
             }
-            long now = System.currentTimeMillis();
             try {
-                RunRow row = findRun(requestId);
-                if (row == null || !instanceId.equals(row.ownerInstanceId)) {
-                    requestLocalStop();
-                    return;
-                }
-                lastDatabaseContact = now;
-                if (row.leaseUntil < now) {
-                    requestLocalStop();
-                    return;
-                }
-                if (STATUS_STOP_REQUESTED.equals(row.status)) {
-                    requestLocalStop();
-                } else if (!STATUS_RUNNING.equals(row.status)) {
-                    requestLocalStop();
-                    return;
-                }
-                if (now < nextHeartbeatAt) {
-                    return;
-                }
-                int renewed = jdbcTemplate.update(
-                        "update agent_runs set lease_until = ?, updated_at = ? "
-                                + "where request_id = ? and owner_instance_id = ? and status in (?, ?)",
-                        now + leaseDurationMillis,
-                        now,
-                        requestId,
-                        instanceId,
-                        STATUS_RUNNING,
-                        STATUS_STOP_REQUESTED);
-                if (renewed > 0) {
-                    nextHeartbeatAt = now + heartbeatIntervalMillis;
-                    return;
-                }
-                RunRow current = findRun(requestId);
-                if (current == null
-                        || !instanceId.equals(current.ownerInstanceId)
-                        || (!STATUS_RUNNING.equals(current.status)
-                        && !STATUS_STOP_REQUESTED.equals(current.status))) {
+                String status = findStatus(requestId);
+                if (STATUS_STOP_REQUESTED.equals(status)) {
                     requestLocalStop();
                 }
-            } catch (RuntimeException e) {
-                if (now - lastDatabaseContact >= leaseDurationMillis) {
-                    requestLocalStop();
-                }
+            } catch (RuntimeException ignored) {
+                // Retry this request's status lookup on the next polling interval.
             }
         }
 
@@ -308,18 +229,6 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
                 action.run();
             } catch (RuntimeException ignored) {
             }
-        }
-    }
-
-    private static class RunRow {
-        private final String ownerInstanceId;
-        private final String status;
-        private final long leaseUntil;
-
-        private RunRow(String ownerInstanceId, String status, long leaseUntil) {
-            this.ownerInstanceId = ownerInstanceId;
-            this.status = status;
-            this.leaseUntil = leaseUntil;
         }
     }
 

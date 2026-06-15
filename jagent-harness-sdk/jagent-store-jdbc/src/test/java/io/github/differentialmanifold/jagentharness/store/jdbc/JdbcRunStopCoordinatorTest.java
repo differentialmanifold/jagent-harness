@@ -25,8 +25,8 @@ class JdbcRunStopCoordinatorTest {
     @Test
     void propagatesStopBetweenInstancesForOneRequest() throws Exception {
         JdbcTemplate jdbcTemplate = createDatabase();
-        JdbcRunStopCoordinator owner = coordinator(jdbcTemplate, 200L);
-        JdbcRunStopCoordinator apiInstance = coordinator(jdbcTemplate, 200L);
+        JdbcRunStopCoordinator owner = coordinator(jdbcTemplate);
+        JdbcRunStopCoordinator apiInstance = coordinator(jdbcTemplate);
         RunStopHandle first = owner.register("request-1", "session-1");
         RunStopHandle second = owner.register("request-2", "session-1");
         CountDownLatch firstStopped = new CountDownLatch(1);
@@ -48,36 +48,38 @@ class JdbcRunStopCoordinatorTest {
             apiInstance.close();
         }
 
-        assertEquals(StopRequestResult.NOT_FOUND, coordinatorResult(jdbcTemplate, "request-1"));
+        assertEquals(StopRequestResult.ALREADY_REQUESTED, coordinatorResult(jdbcTemplate, "request-1"));
+        assertEquals(
+                "STOP_REQUESTED",
+                jdbcTemplate.queryForObject(
+                        "select status from agent_runs where request_id = ?",
+                        String.class,
+                        "request-1"));
     }
 
     @Test
-    void rejectsDuplicateActiveRequestAndAllowsExpiredRequestToBeReclaimed() {
+    void rejectsDuplicateRequestIdAndRetainsNormalRecordOnClose() {
         JdbcTemplate jdbcTemplate = createDatabase();
         JdbcRunStopCoordinator firstCoordinator = coordinator(jdbcTemplate);
         JdbcRunStopCoordinator secondCoordinator = coordinator(jdbcTemplate);
         RunStopHandle handle = firstCoordinator.register("request-1", "session-1");
 
         try {
+            assertTrue(
+                    jdbcTemplate.queryForObject(
+                            "select id from agent_runs where request_id = ?",
+                            Long.class,
+                            "request-1") > 0L);
             assertThrows(
                     ActiveRunException.class,
                     () -> secondCoordinator.register("request-1", "session-2"));
             handle.close();
-
-            long now = System.currentTimeMillis();
-            jdbcTemplate.update(
-                    "insert into agent_runs "
-                            + "(request_id, session_id, owner_instance_id, status, lease_until, created_at, updated_at) "
-                            + "values (?, ?, ?, ?, ?, ?, ?)",
-                    "expired-request",
-                    "session-1",
-                    "dead-instance",
-                    "RUNNING",
-                    now - 1,
-                    now - 1000,
-                    now - 1000);
-            RunStopHandle reclaimed = secondCoordinator.register("expired-request", "session-2");
-            reclaimed.close();
+            assertEquals(
+                    "NORMAL",
+                    jdbcTemplate.queryForObject(
+                            "select status from agent_runs where request_id = ?",
+                            String.class,
+                            "request-1"));
         } finally {
             handle.close();
             firstCoordinator.close();
@@ -93,13 +95,8 @@ class JdbcRunStopCoordinatorTest {
     }
 
     private JdbcRunStopCoordinator coordinator(JdbcTemplate jdbcTemplate) {
-        return coordinator(jdbcTemplate, 1000L);
-    }
-
-    private JdbcRunStopCoordinator coordinator(JdbcTemplate jdbcTemplate, long leaseDurationMillis) {
         JdbcRunStopProperties properties = new JdbcRunStopProperties();
         properties.setPollIntervalMillis(20L);
-        properties.setLeaseDurationMillis(leaseDurationMillis);
         properties.setListenerThreads(1);
         return new JdbcRunStopCoordinator(jdbcTemplate, properties);
     }

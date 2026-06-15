@@ -100,13 +100,12 @@ create unique index if not exists ux_prompt_bindings_file_path on prompt_binding
 create index if not exists ix_prompt_bindings_prompt_name on prompt_bindings (prompt_name, priority);
 
 create table if not exists agent_runs (
-    request_id varchar(128) primary key,
+    id integer primary key autoincrement,
+    request_id varchar(128) not null,
     session_id varchar(64) not null,
-    owner_instance_id varchar(64) not null,
     status varchar(32) not null,
-    lease_until bigint not null,
     created_at bigint not null,
     updated_at bigint not null
 );
 
-create index if not exists ix_agent_runs_lease_until on agent_runs (lease_until);
+create unique index if not exists ux_agent_runs_request_id on agent_runs (request_id);

@@ -5,7 +5,6 @@ import java.util.Map;
 public class ChatRunRequest {
 
     private String sessionId;
-    private String requestId;
     private String content;
     private String traceId;
     private Map<String, Object> attributes;
@@ -16,14 +15,6 @@ public class ChatRunRequest {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
-    }
-
-    public String getRequestId() {
-        return requestId;
-    }
-
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
     }
 
     public String getContent() {

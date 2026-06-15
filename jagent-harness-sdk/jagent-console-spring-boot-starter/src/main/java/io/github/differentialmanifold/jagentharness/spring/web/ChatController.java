@@ -14,10 +14,10 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatRunRequest;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatStopRequest;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +27,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
+
+    static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     private final SessionManager sessionManager;
     private final AgentHarness agentHarness;
@@ -44,11 +46,10 @@ public class ChatController {
     }
 
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestBody ChatRunRequest request) {
+    public ResponseEntity<SseEmitter> stream(@RequestBody ChatRunRequest request) {
         ChatRunRequest effectiveRequest = requireRunRequest(request);
         String sessionId = effectiveRequest.getSessionId();
-        String requestId = requestIdOrCreate(effectiveRequest.getRequestId());
-        effectiveRequest.setRequestId(requestId);
+        String requestId = Ids.newId("req");
         RunStopHandle stopHandle = runStopCoordinator.register(requestId, sessionId);
         SseEmitter emitter = new SseEmitter(0L);
         emitter.onTimeout(() -> runStopCoordinator.requestStop(requestId));
@@ -80,11 +81,14 @@ public class ChatController {
             stopHandle.close();
             throw e;
         }
-        return emitter;
+        return ResponseEntity.ok()
+                .header(REQUEST_ID_HEADER, requestId)
+                .body(emitter);
     }
 
-    @PostMapping("/requests/{requestId}/stop")
-    public ResponseEntity<Void> stop(@PathVariable String requestId) {
+    @PostMapping("/requests/stop")
+    public ResponseEntity<Void> stop(@RequestBody ChatStopRequest request) {
+        String requestId = request == null ? null : request.getRequestId();
         StopRequestResult result = runStopCoordinator.requestStop(requireRequestId(requestId));
         if (result == StopRequestResult.NOT_FOUND) {
             return ResponseEntity.notFound().build();
@@ -111,17 +115,10 @@ public class ChatController {
         return sessionId.trim();
     }
 
-    private String requestIdOrCreate(String requestId) {
-        if (requestId == null || requestId.trim().isEmpty()) {
-            return Ids.newId("req");
-        }
-        return requireRequestId(requestId);
-    }
-
     private String requireRequestId(String requestId) {
         String value = requestId == null ? "" : requestId.trim();
-        if (!value.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")) {
-            throw new IllegalArgumentException("requestId must contain 1-128 safe identifier characters");
+        if (value.isEmpty() || value.length() > 128) {
+            throw new IllegalArgumentException("requestId must contain 1-128 characters");
         }
         return value;
     }

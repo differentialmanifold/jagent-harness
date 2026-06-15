@@ -6,7 +6,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class JdbcRunStopProperties {
 
     private long pollIntervalMillis = 1000L;
-    private long leaseDurationMillis = 10000L;
     private int listenerThreads = 2;
 
     public long getPollIntervalMillis() {
@@ -15,14 +14,6 @@ public class JdbcRunStopProperties {
 
     public void setPollIntervalMillis(long pollIntervalMillis) {
         this.pollIntervalMillis = pollIntervalMillis;
-    }
-
-    public long getLeaseDurationMillis() {
-        return leaseDurationMillis;
-    }
-
-    public void setLeaseDurationMillis(long leaseDurationMillis) {
-        this.leaseDurationMillis = leaseDurationMillis;
     }
 
     public int getListenerThreads() {

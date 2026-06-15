@@ -69,11 +69,11 @@ Open `http://localhost:5173`.
 
 ### Stop a streamed run
 
-Clients can assign a transport-level `requestId` to a streamed chat request:
+The backend assigns a transport-level `requestId` to each streamed chat request and returns it in
+the `X-Request-Id` response header:
 
 ```json
 {
-  "requestId": "3a51dcf8-5df1-44ef-b7e6-e6ea366f2ec3",
   "sessionId": "session-id",
   "content": "Inspect the project"
 }
@@ -83,15 +83,20 @@ Stop that request without exposing the agent's internal `turnId`:
 
 ```bash
 curl -X POST \
-  http://localhost:8080/api/chat/requests/3a51dcf8-5df1-44ef-b7e6-e6ea366f2ec3/stop
+  -H 'Content-Type: application/json' \
+  -d '{"requestId":"req_1234567890abcdef"}' \
+  http://localhost:8080/api/chat/requests/stop
 ```
 
-The frontend generates a UUID for each request, keeps the SSE connection open until it receives
-`agent_stopped`, and uses `AbortController` only as a timeout fallback.
+The frontend reads the backend-generated request ID from the response header, keeps the SSE
+connection open until it receives `agent_stopped`, and uses `AbortController` only as a timeout
+fallback.
 Active runs are coordinated through `RunStopCoordinator`. The JDBC store provides the default
 implementation and records each request in the shared database, so a stop request can reach a run
 owned by another service instance. Each active request watches only its own database row; there is
-no full-table polling. A custom coordinator bean can replace JDBC with Redis or another transport.
+no full-table polling. Rows are retained after completion: the status starts as `NORMAL` and changes
+to `STOP_REQUESTED` only when the stop endpoint is called. Backend-generated request IDs are not
+reused. A custom coordinator bean can replace JDBC with Redis or another transport.
 
 ## Spring Boot Usage
 
@@ -221,7 +226,6 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
 | `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active request to check its own stop row. |
-| `JAGENT_STOP_LEASE_DURATION_MS` | `10000` | Active-run lease duration used to recover from failed instances. |
 | `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-request stop listeners. |
 | `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `AGENTS.md` and global file-based skills. |
 | `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
