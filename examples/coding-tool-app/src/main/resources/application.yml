@@ -15,7 +15,7 @@ spring:
 harness:
   stop:
     jdbc:
-      poll-interval-millis: ${JAGENT_STOP_POLL_INTERVAL_MS:100}
+      poll-interval-millis: ${JAGENT_STOP_POLL_INTERVAL_MS:1000}
       lease-duration-millis: ${JAGENT_STOP_LEASE_DURATION_MS:10000}
       listener-threads: ${JAGENT_STOP_LISTENER_THREADS:2}
   model:

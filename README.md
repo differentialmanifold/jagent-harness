@@ -220,7 +220,7 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
-| `JAGENT_STOP_POLL_INTERVAL_MS` | `100` | Interval for each active request to check its own stop row. |
+| `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active request to check its own stop row. |
 | `JAGENT_STOP_LEASE_DURATION_MS` | `10000` | Active-run lease duration used to recover from failed instances. |
 | `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-request stop listeners. |
 | `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `AGENTS.md` and global file-based skills. |

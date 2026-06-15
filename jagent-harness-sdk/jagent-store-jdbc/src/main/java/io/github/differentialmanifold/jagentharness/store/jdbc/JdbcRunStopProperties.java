@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "harness.stop.jdbc")
 public class JdbcRunStopProperties {
 
-    private long pollIntervalMillis = 100L;
+    private long pollIntervalMillis = 1000L;
     private long leaseDurationMillis = 10000L;
     private int listenerThreads = 2;
 
