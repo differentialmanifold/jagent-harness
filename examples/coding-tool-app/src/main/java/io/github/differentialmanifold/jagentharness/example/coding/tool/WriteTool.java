@@ -32,7 +32,7 @@ public class WriteTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Create or overwrite a UTF-8 text file inside the workspace.";
+        return "Create a new UTF-8 text file or intentionally overwrite a whole file inside the workspace. Prefer edit for localized changes to existing files.";
     }
 
     @Override

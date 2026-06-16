@@ -131,7 +131,7 @@ This dependency set does not expose any HTTP API. It is for applications that ca
 The Spring Boot starter includes the default OpenAI-compatible provider; add a custom `ModelProvider` bean for another provider.
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
-The schema includes the virtual knowledge filesystem, skill manifest, prompt binding, and active
+The schema includes the virtual knowledge filesystem, skill manifest, and active
 agent run tables. Multi-instance deployments must point every instance at the same database;
 the default SQLite configuration is intended for local single-host development.
 

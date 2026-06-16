@@ -49,7 +49,6 @@ class PromptServiceTest {
         PromptService promptService = new PromptService(
                 new SkillRegistry(Collections.emptyList()),
                 globalRoot,
-                store,
                 store);
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
@@ -67,6 +66,29 @@ class PromptServiceTest {
     }
 
     @Test
+    void appendsSystemPromptContributorsBeforeAgentRules() throws IOException {
+        Path globalRoot = tempDir.resolve("global");
+        Path workspaceRoot = tempDir.resolve("workspace");
+        write(workspaceRoot.resolve("AGENTS.md"), "Use user project rules.");
+        PromptService promptService = new PromptService(
+                new SkillRegistry(Collections.emptyList()),
+                globalRoot,
+                null,
+                Collections.singletonList(context -> "Use application-specific tool rules."));
+
+        String prompt = promptService.buildSystemPrompt(new PromptContext(
+                Collections.emptyList(),
+                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null)));
+
+        assertInOrder(prompt,
+                "You are a server-side agent running inside JAgentHarness.",
+                "## Application System Instructions",
+                "Use application-specific tool rules.",
+                "## Agent Rules",
+                "Use user project rules.");
+    }
+
+    @Test
     void appendsAllAgentRuleFilesWithoutOverriding() throws IOException {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
@@ -77,7 +99,6 @@ class PromptServiceTest {
         PromptService promptService = new PromptService(
                 new SkillRegistry(Collections.emptyList()),
                 globalRoot,
-                store,
                 store);
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(

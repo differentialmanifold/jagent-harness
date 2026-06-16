@@ -7,7 +7,6 @@ import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinato
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
@@ -54,7 +53,7 @@ public class JdbcStoreAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean({KnowledgeFileStore.class, SkillManifestStore.class, PromptBindingStore.class})
+    @ConditionalOnMissingBean({KnowledgeFileStore.class, SkillManifestStore.class})
     public JdbcKnowledgeFileStore jdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate) {
         return new JdbcKnowledgeFileStore(jdbcTemplate);
     }

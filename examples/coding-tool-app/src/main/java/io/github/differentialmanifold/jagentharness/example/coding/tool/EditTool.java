@@ -37,17 +37,21 @@ public class EditTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Replace exact text in a UTF-8 file inside the workspace.";
+        return "Modify an existing UTF-8 file inside the workspace. Supports exact replacement, line-range replacement or deletion, and insertion before or after a line. Prefer this over write for localized changes.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
         properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative file path."));
-        properties.set("search", ToolSchemas.stringProperty(objectMapper, "Exact text to replace."));
-        properties.set("replacement", ToolSchemas.stringProperty(objectMapper, "Replacement text."));
+        properties.set("search", ToolSchemas.stringProperty(objectMapper, "Exact text to replace. Use with replacement for exact replacement mode."));
+        properties.set("replacement", ToolSchemas.stringProperty(objectMapper, "Replacement or inserted text. Use an empty string to delete a line range."));
         properties.set("all", ToolSchemas.booleanProperty(objectMapper, "Replace every occurrence. Default false."));
-        return ToolSchemas.objectSchema(objectMapper, properties, "path", "search", "replacement");
+        properties.set("startLine", ToolSchemas.integerProperty(objectMapper, "One-based first line for line-range replacement or deletion."));
+        properties.set("endLine", ToolSchemas.integerProperty(objectMapper, "One-based last line for line-range replacement or deletion."));
+        properties.set("insertBeforeLine", ToolSchemas.integerProperty(objectMapper, "Insert replacement before this one-based line number."));
+        properties.set("insertAfterLine", ToolSchemas.integerProperty(objectMapper, "Insert replacement after this one-based line number. Use 0 to insert at the beginning."));
+        return ToolSchemas.objectSchema(objectMapper, properties, "path");
     }
 
     @Override
@@ -56,21 +60,13 @@ public class EditTool implements ToolDefinition {
         if (!Files.isRegularFile(path)) {
             throw new IllegalArgumentException("File not found: " + pathResolver.relative(context, path));
         }
-        String search = ToolArguments.requiredText(arguments, "search");
-        String replacement = ToolArguments.requiredString(arguments, "replacement");
-        boolean all = arguments.path("all").asBoolean(false);
-
         String content = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-        if (!content.contains(search)) {
-            throw new IllegalArgumentException("Search text not found in " + pathResolver.relative(context, path));
-        }
-        List<ReplacementRegion> regions = new ArrayList<ReplacementRegion>();
-        String updated = replaceText(content, search, replacement, all, regions);
+        String updated = applyEdit(context, path, arguments, content);
         Files.write(path, updated.getBytes(StandardCharsets.UTF_8), StandardOpenOption.TRUNCATE_EXISTING);
 
         boolean changed = !content.equals(updated);
         DiffSummary diff = changed
-                ? buildDiff(content, updated, replacement, regions)
+                ? buildDiff(content, updated)
                 : new DiffSummary(0, 0, objectMapper.createArrayNode());
         ObjectNode result = objectMapper.createObjectNode();
         result.put("path", pathResolver.relative(context, path));
@@ -84,11 +80,54 @@ public class EditTool implements ToolDefinition {
         return ToolExecutionResult.of(result.toString());
     }
 
+    private String applyEdit(ToolContext context, Path path, JsonNode arguments, String content) {
+        boolean hasSearch = has(arguments, "search");
+        boolean hasLineRange = has(arguments, "startLine") || has(arguments, "endLine");
+        boolean hasInsertBefore = has(arguments, "insertBeforeLine");
+        boolean hasInsertAfter = has(arguments, "insertAfterLine");
+        int modes = (hasSearch ? 1 : 0)
+                + (hasLineRange ? 1 : 0)
+                + (hasInsertBefore ? 1 : 0)
+                + (hasInsertAfter ? 1 : 0);
+        if (modes != 1) {
+            throw new IllegalArgumentException(
+                    "Use exactly one edit mode: search replacement, startLine/endLine range, insertBeforeLine, or insertAfterLine");
+        }
+
+        String replacement = optionalString(arguments, "replacement");
+        if (hasSearch) {
+            String search = ToolArguments.requiredText(arguments, "search");
+            if (replacement == null) {
+                throw new IllegalArgumentException("Missing required argument: replacement");
+            }
+            if (!content.contains(search)) {
+                throw new IllegalArgumentException("Search text not found in " + pathResolver.relative(context, path));
+            }
+            return replaceText(content, search, replacement, arguments.path("all").asBoolean(false));
+        }
+
+        if (hasLineRange) {
+            int startLine = requiredLine(arguments, "startLine");
+            int endLine = requiredLine(arguments, "endLine");
+            if (startLine > endLine) {
+                throw new IllegalArgumentException("startLine must be less than or equal to endLine");
+            }
+            return replaceLineRange(content, startLine, endLine, replacement == null ? "" : replacement);
+        }
+
+        if (replacement == null) {
+            throw new IllegalArgumentException("Missing required argument: replacement");
+        }
+        if (hasInsertBefore) {
+            return insertBeforeLine(content, requiredLine(arguments, "insertBeforeLine"), replacement);
+        }
+        return insertAfterLine(content, requiredLine(arguments, "insertAfterLine"), replacement);
+    }
+
     private String replaceText(String content,
                                String search,
                                String replacement,
-                               boolean all,
-                               List<ReplacementRegion> regions) {
+                               boolean all) {
         StringBuilder builder = new StringBuilder(content.length() + replacement.length());
         int cursor = 0;
         while (cursor <= content.length()) {
@@ -99,9 +138,7 @@ public class EditTool implements ToolDefinition {
             }
 
             builder.append(content, cursor, index);
-            int newStartOffset = builder.length();
             builder.append(replacement);
-            regions.add(new ReplacementRegion(index, index + search.length(), newStartOffset));
 
             cursor = index + search.length();
             if (!all) {
@@ -112,59 +149,79 @@ public class EditTool implements ToolDefinition {
         return builder.toString();
     }
 
-    private DiffSummary buildDiff(String before,
-                                  String after,
-                                  String replacement,
-                                  List<ReplacementRegion> regions) {
+    private String replaceLineRange(String content, int startLine, int endLine, String replacement) {
+        List<String> lines = splitLines(content);
+        requireLineRange(lines, startLine, endLine);
+        List<String> updated = new ArrayList<String>();
+        updated.addAll(lines.subList(0, startLine - 1));
+        updated.addAll(splitLines(replacement));
+        updated.addAll(lines.subList(endLine, lines.size()));
+        return joinLines(updated, content.endsWith("\n"));
+    }
+
+    private String insertBeforeLine(String content, int line, String replacement) {
+        List<String> lines = splitLines(content);
+        if (line < 1 || line > lines.size() + 1) {
+            throw new IllegalArgumentException("insertBeforeLine must be between 1 and " + (lines.size() + 1));
+        }
+        List<String> updated = new ArrayList<String>();
+        updated.addAll(lines.subList(0, line - 1));
+        updated.addAll(splitLines(replacement));
+        updated.addAll(lines.subList(line - 1, lines.size()));
+        return joinLines(updated, shouldEndWithNewline(content, replacement));
+    }
+
+    private String insertAfterLine(String content, int line, String replacement) {
+        List<String> lines = splitLines(content);
+        if (line < 0 || line > lines.size()) {
+            throw new IllegalArgumentException("insertAfterLine must be between 0 and " + lines.size());
+        }
+        List<String> updated = new ArrayList<String>();
+        updated.addAll(lines.subList(0, line));
+        updated.addAll(splitLines(replacement));
+        updated.addAll(lines.subList(line, lines.size()));
+        return joinLines(updated, shouldEndWithNewline(content, replacement));
+    }
+
+    private DiffSummary buildDiff(String before, String after) {
         List<String> oldLines = splitLines(before);
         List<String> newLines = splitLines(after);
-        int addedLineCount = splitLines(replacement).size();
         ArrayNode hunks = objectMapper.createArrayNode();
-        int additions = 0;
-        int deletions = 0;
 
-        for (ReplacementRegion region : regions) {
-            int oldStartLine = lineAtOffset(before, region.oldStartOffset);
-            int removedLineCount = Math.max(1, lineAtOffset(before, region.oldEndOffset - 1) - oldStartLine + 1);
-            int newStartLine = lineAtOffset(after, region.newStartOffset);
+        int prefix = commonPrefixLines(oldLines, newLines);
+        int suffix = commonSuffixLines(oldLines, newLines, prefix);
+        int oldChangeEnd = oldLines.size() - suffix;
+        int newChangeEnd = newLines.size() - suffix;
+        int deletions = oldChangeEnd - prefix;
+        int additions = newChangeEnd - prefix;
+        int beforeContext = Math.min(DIFF_CONTEXT_LINES, prefix);
+        int afterContext = Math.min(DIFF_CONTEXT_LINES,
+                Math.min(oldLines.size() - oldChangeEnd, newLines.size() - newChangeEnd));
 
-            int beforeContext = Math.min(DIFF_CONTEXT_LINES, Math.min(oldStartLine, newStartLine));
-            int oldAfterStart = oldStartLine + removedLineCount;
-            int newAfterStart = newStartLine + addedLineCount;
-            int afterContext = Math.min(DIFF_CONTEXT_LINES,
-                    Math.min(Math.max(0, oldLines.size() - oldAfterStart),
-                            Math.max(0, newLines.size() - newAfterStart)));
+        ObjectNode hunk = objectMapper.createObjectNode();
+        hunk.put("oldStart", Math.max(1, prefix - beforeContext + 1));
+        hunk.put("oldLines", beforeContext + deletions + afterContext);
+        hunk.put("newStart", Math.max(1, prefix - beforeContext + 1));
+        hunk.put("newLines", beforeContext + additions + afterContext);
 
-            ObjectNode hunk = objectMapper.createObjectNode();
-            hunk.put("oldStart", Math.max(1, oldStartLine - beforeContext + 1));
-            hunk.put("oldLines", beforeContext + removedLineCount + afterContext);
-            hunk.put("newStart", Math.max(1, newStartLine - beforeContext + 1));
-            hunk.put("newLines", beforeContext + addedLineCount + afterContext);
-
-            ArrayNode lines = objectMapper.createArrayNode();
-            for (int i = 0; i < beforeContext; i++) {
-                int oldIndex = oldStartLine - beforeContext + i;
-                int newIndex = newStartLine - beforeContext + i;
-                appendDiffLine(lines, "context", oldIndex + 1, newIndex + 1, oldLines.get(oldIndex));
-            }
-            for (int i = 0; i < removedLineCount && oldStartLine + i < oldLines.size(); i++) {
-                appendDiffLine(lines, "removed", oldStartLine + i + 1, null, oldLines.get(oldStartLine + i));
-                deletions++;
-            }
-            for (int i = 0; i < addedLineCount && newStartLine + i < newLines.size(); i++) {
-                appendDiffLine(lines, "added", null, newStartLine + i + 1, newLines.get(newStartLine + i));
-                additions++;
-            }
-            for (int i = 0; i < afterContext; i++) {
-                int oldIndex = oldAfterStart + i;
-                int newIndex = newAfterStart + i;
-                appendDiffLine(lines, "context", oldIndex + 1, newIndex + 1, oldLines.get(oldIndex));
-            }
-
-            hunk.set("lines", lines);
-            hunks.add(hunk);
+        ArrayNode lines = objectMapper.createArrayNode();
+        for (int i = prefix - beforeContext; i < prefix; i++) {
+            appendDiffLine(lines, "context", i + 1, i + 1, oldLines.get(i));
+        }
+        for (int i = prefix; i < oldChangeEnd; i++) {
+            appendDiffLine(lines, "removed", i + 1, null, oldLines.get(i));
+        }
+        for (int i = prefix; i < newChangeEnd; i++) {
+            appendDiffLine(lines, "added", null, i + 1, newLines.get(i));
+        }
+        for (int i = 0; i < afterContext; i++) {
+            int oldIndex = oldChangeEnd + i;
+            int newIndex = newChangeEnd + i;
+            appendDiffLine(lines, "context", oldIndex + 1, newIndex + 1, oldLines.get(oldIndex));
         }
 
+        hunk.set("lines", lines);
+        hunks.add(hunk);
         return new DiffSummary(additions, deletions, hunks);
     }
 
@@ -205,30 +262,63 @@ public class EditTool implements ToolDefinition {
         return lines;
     }
 
-    private int lineAtOffset(String content, int offset) {
-        if (content == null || content.isEmpty()) {
-            return 0;
+    private String joinLines(List<String> lines, boolean trailingNewline) {
+        if (lines.isEmpty()) {
+            return "";
         }
-        int bounded = Math.max(0, Math.min(offset, content.length() - 1));
-        int line = 0;
-        for (int i = 0; i < bounded; i++) {
-            if (content.charAt(i) == '\n') {
-                line++;
-            }
-        }
-        return line;
+        String result = String.join("\n", lines);
+        return trailingNewline ? result + "\n" : result;
     }
 
-    private static class ReplacementRegion {
-        private final int oldStartOffset;
-        private final int oldEndOffset;
-        private final int newStartOffset;
+    private boolean shouldEndWithNewline(String content, String replacement) {
+        return content.endsWith("\n") || replacement.endsWith("\n");
+    }
 
-        private ReplacementRegion(int oldStartOffset, int oldEndOffset, int newStartOffset) {
-            this.oldStartOffset = oldStartOffset;
-            this.oldEndOffset = oldEndOffset;
-            this.newStartOffset = newStartOffset;
+    private void requireLineRange(List<String> lines, int startLine, int endLine) {
+        if (startLine < 1 || endLine > lines.size()) {
+            throw new IllegalArgumentException("Line range must be between 1 and " + lines.size());
         }
+    }
+
+    private int requiredLine(JsonNode arguments, String name) {
+        JsonNode node = arguments.path(name);
+        if (node.isMissingNode() || node.isNull() || !node.canConvertToInt()) {
+            throw new IllegalArgumentException("Missing required integer argument: " + name);
+        }
+        return node.asInt();
+    }
+
+    private String optionalString(JsonNode arguments, String name) {
+        JsonNode node = arguments.path(name);
+        return node.isMissingNode() || node.isNull() ? null : node.asText();
+    }
+
+    private boolean has(JsonNode arguments, String name) {
+        JsonNode node = arguments.path(name);
+        return !node.isMissingNode() && !node.isNull();
+    }
+
+    private int commonPrefixLines(List<String> oldLines, List<String> newLines) {
+        int limit = Math.min(oldLines.size(), newLines.size());
+        int index = 0;
+        while (index < limit && oldLines.get(index).equals(newLines.get(index))) {
+            index++;
+        }
+        return index;
+    }
+
+    private int commonSuffixLines(List<String> oldLines, List<String> newLines, int prefix) {
+        int oldIndex = oldLines.size() - 1;
+        int newIndex = newLines.size() - 1;
+        int count = 0;
+        while (oldIndex >= prefix
+                && newIndex >= prefix
+                && oldLines.get(oldIndex).equals(newLines.get(newIndex))) {
+            count++;
+            oldIndex--;
+            newIndex--;
+        }
+        return count;
     }
 
     private static class DiffSummary {

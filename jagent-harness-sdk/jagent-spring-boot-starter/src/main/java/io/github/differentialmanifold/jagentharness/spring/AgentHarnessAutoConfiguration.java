@@ -25,10 +25,10 @@ import io.github.differentialmanifold.jagentharness.core.prompt.FileSkillProvide
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptService;
 import io.github.differentialmanifold.jagentharness.core.prompt.DatabaseSkillProvider;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
+import io.github.differentialmanifold.jagentharness.core.prompt.SystemPromptContributor;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpClient;
@@ -132,12 +132,14 @@ public class AgentHarnessAutoConfiguration {
     public PromptProvider promptProvider(HarnessProperties properties,
                                          SkillRegistry skillRegistry,
                                          ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
-                                         ObjectProvider<PromptBindingStore> promptBindingStore) {
+                                         ObjectProvider<SystemPromptContributor> systemPromptContributors) {
+        List<SystemPromptContributor> contributors = new ArrayList<SystemPromptContributor>();
+        systemPromptContributors.forEach(contributors::add);
         return new PromptService(
                 skillRegistry,
                 PathsSupport.expandUserHome(properties.getPrompt().getConfigRoot()),
                 knowledgeFileStore.getIfAvailable(),
-                promptBindingStore.getIfAvailable());
+                contributors);
     }
 
     @Bean

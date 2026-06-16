@@ -6,7 +6,6 @@ import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinato
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
@@ -43,16 +42,14 @@ public class AgentConsoleWebConfiguration {
                                                          AgentSettings settings,
                                                          SessionManager sessionManager,
                                                          WorkspaceRootResolver workspaceRootResolver,
-                                                         ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
-                                                         ObjectProvider<PromptBindingStore> promptBindingStore) {
+                                                         ObjectProvider<KnowledgeFileStore> knowledgeFileStore) {
         return new AgentContextController(
                 toolRegistry,
                 skillRegistry,
                 settings,
                 sessionManager,
                 workspaceRootResolver,
-                knowledgeFileStore.getIfAvailable(),
-                promptBindingStore.getIfAvailable());
+                knowledgeFileStore.getIfAvailable());
     }
 
     @Bean

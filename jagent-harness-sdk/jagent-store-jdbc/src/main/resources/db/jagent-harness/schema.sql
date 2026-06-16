@@ -87,18 +87,6 @@ create unique index if not exists ux_skill_manifests_skill_key on skill_manifest
 create unique index if not exists ux_skill_manifests_file_path on skill_manifests (skill_file_path);
 create index if not exists ix_skill_manifests_dir_path on skill_manifests (skill_dir_path);
 
-create table if not exists prompt_bindings (
-    id integer primary key autoincrement,
-    prompt_name varchar(128) not null,
-    file_path varchar(1024) not null,
-    priority integer not null,
-    created_at varchar(64) not null,
-    updated_at varchar(64) not null
-);
-
-create unique index if not exists ux_prompt_bindings_file_path on prompt_bindings (file_path);
-create index if not exists ix_prompt_bindings_prompt_name on prompt_bindings (prompt_name, priority);
-
 create table if not exists agent_runs (
     id integer primary key autoincrement,
     request_id varchar(128) not null,
