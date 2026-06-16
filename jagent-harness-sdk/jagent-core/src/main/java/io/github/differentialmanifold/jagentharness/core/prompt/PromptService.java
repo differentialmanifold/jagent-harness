@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
@@ -25,26 +26,34 @@ public class PromptService implements PromptProvider {
     private final SkillRegistry skillRegistry;
     private final Path defaultConfigRoot;
     private final KnowledgeFileStore knowledgeFileStore;
-    private final PromptBindingStore promptBindingStore;
+    private final List<SystemPromptContributor> systemPromptContributors;
 
     public PromptService(SkillRegistry skillRegistry) {
         this(skillRegistry, Paths.get("."));
     }
 
     public PromptService(SkillRegistry skillRegistry, Path defaultConfigRoot) {
-        this(skillRegistry, defaultConfigRoot, null, null);
+        this(skillRegistry, defaultConfigRoot, null, Collections.emptyList());
+    }
+
+    public PromptService(SkillRegistry skillRegistry,
+                         Path defaultConfigRoot,
+                         KnowledgeFileStore knowledgeFileStore) {
+        this(skillRegistry, defaultConfigRoot, knowledgeFileStore, Collections.emptyList());
     }
 
     public PromptService(SkillRegistry skillRegistry,
                          Path defaultConfigRoot,
                          KnowledgeFileStore knowledgeFileStore,
-                         PromptBindingStore promptBindingStore) {
+                         List<SystemPromptContributor> systemPromptContributors) {
         this.skillRegistry = skillRegistry;
         this.defaultConfigRoot = defaultConfigRoot == null
                 ? Paths.get(".").toAbsolutePath().normalize()
                 : defaultConfigRoot.toAbsolutePath().normalize();
         this.knowledgeFileStore = knowledgeFileStore;
-        this.promptBindingStore = promptBindingStore;
+        this.systemPromptContributors = systemPromptContributors == null
+                ? Collections.emptyList()
+                : new ArrayList<SystemPromptContributor>(systemPromptContributors);
     }
 
     public String buildSystemPrompt(Collection<ToolDefinition> tools) {
@@ -67,6 +76,7 @@ public class PromptService implements PromptProvider {
         Path workspaceRoot = workspaceRoot(agentContext);
         StringBuilder prompt = new StringBuilder();
         appendDefaultSystemPrompt(prompt);
+        appendSystemPromptContributors(prompt, effectiveContext);
         appendAgentRules(prompt, root, workspaceRoot);
 
         prompt.append("Available tools:\n");
@@ -104,6 +114,31 @@ public class PromptService implements PromptProvider {
         prompt.append(DEFAULT_SYSTEM_PROMPT).append("\n");
     }
 
+    private void appendSystemPromptContributors(StringBuilder prompt, PromptContext context) {
+        List<String> contents = new ArrayList<String>();
+        for (SystemPromptContributor contributor : systemPromptContributors) {
+            if (contributor == null) {
+                continue;
+            }
+            String content = contributor.contribute(context);
+            if (!isBlank(content)) {
+                contents.add(content.trim());
+            }
+        }
+        if (contents.isEmpty()) {
+            return;
+        }
+
+        prompt.append("## Application System Instructions\n");
+        for (int i = 0; i < contents.size(); i++) {
+            if (i > 0) {
+                prompt.append("\n\n");
+            }
+            prompt.append(contents.get(i));
+        }
+        prompt.append("\n\n");
+    }
+
     private void appendAgentRules(StringBuilder prompt, Path configRoot, Path workspaceRoot) {
         List<String> contents = agentRuleFiles(configRoot, workspaceRoot);
         if (contents.isEmpty()) {
@@ -124,9 +159,7 @@ public class PromptService implements PromptProvider {
         List<String> files = new ArrayList<String>();
         addAgentRuleFile(files, readIfExists(configRoot == null ? null : configRoot.resolve("AGENTS.md")));
         addAgentRuleFile(files, readIfExists(workspaceRoot == null ? null : workspaceRoot.resolve("AGENTS.md")));
-        for (String content : readKnowledgePromptFiles("AGENTS.md")) {
-            addAgentRuleFile(files, content);
-        }
+        addAgentRuleFile(files, readKnowledgeIfExists("AGENTS.md"));
         return files;
     }
 
@@ -136,34 +169,10 @@ public class PromptService implements PromptProvider {
         }
     }
 
-    private List<String> readKnowledgePromptFiles(String promptName) {
-        List<String> contents = new ArrayList<String>();
-        if (knowledgeFileStore == null) {
-            return contents;
-        }
-        boolean readBinding = false;
-        if (promptBindingStore != null) {
-            for (PromptBinding binding : promptBindingStore.listBindings(promptName)) {
-                if (binding == null || isBlank(binding.getFilePath())) {
-                    continue;
-                }
-                String content = readKnowledgeIfExists(binding.getFilePath());
-                if (!content.isEmpty()) {
-                    contents.add(content);
-                    readBinding = true;
-                }
-            }
-        }
-        if (!readBinding) {
-            String content = readKnowledgeIfExists(promptName);
-            if (!content.isEmpty()) {
-                contents.add(content);
-            }
-        }
-        return contents;
-    }
-
     private String readKnowledgeIfExists(String path) {
+        if (knowledgeFileStore == null) {
+            return "";
+        }
         KnowledgeFile file = knowledgeFileStore.readFile(path);
         if (file == null) {
             return "";

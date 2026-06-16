@@ -13,8 +13,6 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBinding;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
@@ -42,22 +40,19 @@ public class AgentContextController {
     private final SessionManager sessionManager;
     private final WorkspaceRootResolver workspaceRootResolver;
     private final KnowledgeFileStore knowledgeFileStore;
-    private final PromptBindingStore promptBindingStore;
 
     public AgentContextController(ToolRegistry toolRegistry,
                                   SkillRegistry skillRegistry,
                                   AgentSettings settings,
                                   SessionManager sessionManager,
                                   WorkspaceRootResolver workspaceRootResolver,
-                                  KnowledgeFileStore knowledgeFileStore,
-                                  PromptBindingStore promptBindingStore) {
+                                  KnowledgeFileStore knowledgeFileStore) {
         this.toolRegistry = toolRegistry;
         this.skillRegistry = skillRegistry;
         this.settings = settings;
         this.sessionManager = sessionManager;
         this.workspaceRootResolver = workspaceRootResolver;
         this.knowledgeFileStore = knowledgeFileStore;
-        this.promptBindingStore = promptBindingStore;
     }
 
     @GetMapping
@@ -139,31 +134,14 @@ public class AgentContextController {
         if (knowledgeFileStore == null) {
             return;
         }
-        boolean addedBinding = false;
-        if (promptBindingStore != null) {
-            for (PromptBinding binding : promptBindingStore.listBindings(name)) {
-                KnowledgeFile promptFile = binding == null ? null : knowledgeFileStore.readFile(binding.getFilePath());
-                if (promptFile != null && promptFile.getContent() != null && !promptFile.getContent().trim().isEmpty()) {
-                    files.add(new PromptFileResponse(
-                            name,
-                            promptFile.getPath(),
-                            true,
-                            mode,
-                            description));
-                    addedBinding = true;
-                }
-            }
-        }
-        if (!addedBinding) {
-            KnowledgeFile promptFile = knowledgeFileStore.readFile(name);
-            if (promptFile != null && promptFile.getContent() != null && !promptFile.getContent().trim().isEmpty()) {
-                files.add(new PromptFileResponse(
-                        name,
-                        promptFile.getPath(),
-                        true,
-                        mode,
-                        description));
-            }
+        KnowledgeFile promptFile = knowledgeFileStore.readFile(name);
+        if (promptFile != null && promptFile.getContent() != null && !promptFile.getContent().trim().isEmpty()) {
+            files.add(new PromptFileResponse(
+                    name,
+                    promptFile.getPath(),
+                    true,
+                    mode,
+                    description));
         }
     }
 

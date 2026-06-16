@@ -38,7 +38,7 @@ public class ReadTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Read UTF-8 text lines from a file inside the workspace.";
+        return "Read UTF-8 text lines from a file inside the workspace. Supports offset and limit for reading a specific line range.";
     }
 
     @Override

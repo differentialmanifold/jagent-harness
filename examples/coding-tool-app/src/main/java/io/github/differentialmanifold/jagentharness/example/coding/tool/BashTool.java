@@ -51,7 +51,7 @@ public class BashTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Execute a shell command in the workspace and return exit code, stdout, and stderr.";
+        return "Execute a shell command in the workspace and return exit code, stdout, and stderr. Prefer dedicated tools first when they directly cover finding, reading, searching, or editing files.";
     }
 
     @Override

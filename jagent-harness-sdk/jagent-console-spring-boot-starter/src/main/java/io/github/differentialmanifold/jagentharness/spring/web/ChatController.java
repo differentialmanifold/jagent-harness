@@ -52,8 +52,6 @@ public class ChatController {
         String requestId = Ids.newId("req");
         RunStopHandle stopHandle = runStopCoordinator.register(requestId, sessionId);
         SseEmitter emitter = new SseEmitter(0L);
-        emitter.onTimeout(() -> runStopCoordinator.requestStop(requestId));
-        emitter.onError(error -> runStopCoordinator.requestStop(requestId));
         try {
             agentTaskExecutor.execute(() -> {
                 try {

@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Collections;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,10 +29,20 @@ class JAgentHarnessApplicationTest {
     @Autowired
     private MessageRepository messageRepository;
 
+    @Autowired
+    private PromptProvider promptProvider;
+
     @Test
     void contextLoads() {
         assertNotNull(toolRegistry.get("skill"));
         assertNotNull(toolRegistry.get("read"));
+
+        String prompt = promptProvider.buildSystemPrompt(new PromptContext(
+                toolRegistry.all(),
+                new AgentContext("session", "turn", null, null, null, null)));
+        assertTrue(prompt.contains("## Application System Instructions"));
+        assertTrue(prompt.contains("### Coding Tool Usage"));
+        assertTrue(prompt.contains("Prefer dedicated tools over bash when a tool directly covers the operation."));
 
         AgentMessage message = AgentMessage.assistant("stop-reason-test", "", Collections.emptyList());
         message.setStopReason(AgentMessage.STOP_REASON_ABORTED);

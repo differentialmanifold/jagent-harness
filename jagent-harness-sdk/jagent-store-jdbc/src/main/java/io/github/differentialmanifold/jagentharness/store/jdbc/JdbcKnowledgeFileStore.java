@@ -8,8 +8,6 @@ import java.util.List;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBinding;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifest;
@@ -17,7 +15,7 @@ import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestSto
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
-public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifestStore, PromptBindingStore {
+public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifestStore {
 
     private static final String DEFAULT_CONTENT_TYPE = "text/markdown";
     private static final String DIRECTORY_CONTENT_TYPE = "inode/directory";
@@ -38,12 +36,6 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
             rs.getString("skill_file_path"),
             rs.getString("name"),
             rs.getString("description"),
-            JdbcTimeCodec.decode(rs.getString("updated_at")));
-
-    private final RowMapper<PromptBinding> promptBindingMapper = (rs, rowNum) -> new PromptBinding(
-            rs.getString("prompt_name"),
-            rs.getString("file_path"),
-            rs.getInt("priority"),
             JdbcTimeCodec.decode(rs.getString("updated_at")));
 
     public JdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate) {
@@ -93,21 +85,12 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     public void deleteFile(String path) {
         String normalizedPath = KnowledgeFilePaths.normalize(path);
         jdbcTemplate.update("delete from knowledge_files where path = ?", normalizedPath);
-        deletePromptBinding(normalizedPath);
         deleteSkillManifest(normalizedPath);
     }
 
     @Override
     public List<SkillManifest> listManifests() {
         return jdbcTemplate.query("select * from skill_manifests order by skill_key asc", skillManifestMapper);
-    }
-
-    @Override
-    public List<PromptBinding> listBindings(String promptName) {
-        return jdbcTemplate.query(
-                "select * from prompt_bindings where prompt_name = ? order by priority asc, file_path asc",
-                promptBindingMapper,
-                promptName);
     }
 
     private void ensureDirectories(String path) {
@@ -162,33 +145,8 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     }
 
     private void syncIndexes(String path, String content) {
-        if ("AGENTS.md".equals(path)) {
-            upsertPromptBinding("AGENTS.md", path, 100);
-        }
         if (KnowledgeFilePaths.isSkillManifestFile(path)) {
             upsertSkillManifest(path, content);
-        }
-    }
-
-    private void upsertPromptBinding(String promptName, String filePath, int priority) {
-        Instant now = Instant.now();
-        boolean exists = exists("prompt_bindings", "file_path", filePath);
-        if (exists) {
-            jdbcTemplate.update(
-                    "update prompt_bindings set prompt_name = ?, priority = ?, updated_at = ? where file_path = ?",
-                    promptName,
-                    priority,
-                    JdbcTimeCodec.encode(now),
-                    filePath);
-        } else {
-            jdbcTemplate.update(
-                    "insert into prompt_bindings (prompt_name, file_path, priority, created_at, updated_at) "
-                            + "values (?, ?, ?, ?, ?)",
-                    promptName,
-                    filePath,
-                    priority,
-                    JdbcTimeCodec.encode(now),
-                    JdbcTimeCodec.encode(now));
         }
     }
 
@@ -221,10 +179,6 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
                     JdbcTimeCodec.encode(now),
                     JdbcTimeCodec.encode(now));
         }
-    }
-
-    private void deletePromptBinding(String filePath) {
-        jdbcTemplate.update("delete from prompt_bindings where file_path = ?", filePath);
     }
 
     private void deleteSkillManifest(String skillFilePath) {

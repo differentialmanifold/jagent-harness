@@ -50,6 +50,56 @@ class EditToolTest {
                 + "line three\n", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
     }
 
+    @Test
+    void replacesLineRange() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        EditTool tool = new EditTool(objectMapper, new WorkspacePathResolver());
+
+        Path file = workspaceRoot.resolve("example.py");
+        Files.write(file, ("one\n"
+                + "two\n"
+                + "three\n"
+                + "four\n").getBytes(StandardCharsets.UTF_8));
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "example.py");
+        arguments.put("startLine", 2);
+        arguments.put("endLine", 3);
+        arguments.put("replacement", "new two\nnew three");
+
+        JsonNode result = objectMapper.readTree(tool.execute(toolContext(), arguments).getContent());
+
+        assertEquals(2, result.path("additions").asInt());
+        assertEquals(2, result.path("deletions").asInt());
+        assertEquals("one\n"
+                + "new two\n"
+                + "new three\n"
+                + "four\n", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void insertsAfterLine() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        EditTool tool = new EditTool(objectMapper, new WorkspacePathResolver());
+
+        Path file = workspaceRoot.resolve("example.py");
+        Files.write(file, ("one\n"
+                + "two\n").getBytes(StandardCharsets.UTF_8));
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "example.py");
+        arguments.put("insertAfterLine", 1);
+        arguments.put("replacement", "inserted");
+
+        JsonNode result = objectMapper.readTree(tool.execute(toolContext(), arguments).getContent());
+
+        assertEquals(1, result.path("additions").asInt());
+        assertEquals(0, result.path("deletions").asInt());
+        assertEquals("one\n"
+                + "inserted\n"
+                + "two\n", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+    }
+
     private ToolContext toolContext() {
         return new ToolContext("session", "turn", workspaceRoot);
     }

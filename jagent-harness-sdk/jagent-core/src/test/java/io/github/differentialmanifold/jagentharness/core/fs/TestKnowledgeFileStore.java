@@ -8,18 +8,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBinding;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptBindingStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifest;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 
-public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifestStore, PromptBindingStore {
+public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifestStore {
 
     private final Map<String, KnowledgeFile> files = new LinkedHashMap<String, KnowledgeFile>();
     private final Map<String, SkillManifest> skillManifests = new LinkedHashMap<String, SkillManifest>();
-    private final Map<String, PromptBinding> promptBindings = new LinkedHashMap<String, PromptBinding>();
 
     @Override
     public KnowledgeFile readFile(String path) {
@@ -67,7 +64,6 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     public void deleteFile(String path) {
         String normalizedPath = KnowledgeFilePaths.normalize(path);
         files.remove(normalizedPath);
-        promptBindings.remove(normalizedPath);
         if (KnowledgeFilePaths.isSkillManifestFile(normalizedPath)) {
             skillManifests.remove(KnowledgeFilePaths.skillKey(normalizedPath));
         }
@@ -78,19 +74,6 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         List<SkillManifest> manifests = new ArrayList<SkillManifest>(skillManifests.values());
         Collections.sort(manifests, Comparator.comparing(SkillManifest::getSkillKey));
         return manifests;
-    }
-
-    @Override
-    public List<PromptBinding> listBindings(String promptName) {
-        List<PromptBinding> bindings = new ArrayList<PromptBinding>();
-        for (PromptBinding binding : promptBindings.values()) {
-            if (binding.getPromptName().equals(promptName)) {
-                bindings.add(binding);
-            }
-        }
-        Collections.sort(bindings, Comparator.comparing(PromptBinding::getPriority)
-                .thenComparing(PromptBinding::getFilePath));
-        return bindings;
     }
 
     private void ensureDirectories(String path) {
@@ -120,9 +103,6 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     }
 
     private void syncIndexes(KnowledgeFile file) {
-        if ("AGENTS.md".equals(file.getPath())) {
-            promptBindings.put(file.getPath(), new PromptBinding("AGENTS.md", file.getPath(), 100, file.getUpdatedAt()));
-        }
         if (KnowledgeFilePaths.isSkillManifestFile(file.getPath())) {
             String skillKey = KnowledgeFilePaths.skillKey(file.getPath());
             SkillDescriptor descriptor = SkillFileParser.readDescriptor(file.getContent(), skillKey, file.getPath());
