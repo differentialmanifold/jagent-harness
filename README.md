@@ -85,7 +85,7 @@ Stop that request without exposing the agent's internal `turnId`:
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{"requestId":"req_1234567890abcdef"}' \
-  http://localhost:8080/api/chat/requests/stop
+  http://localhost:18080/api/chat/requests/stop
 ```
 
 The frontend reads the backend-generated request ID from the response header, keeps the SSE
@@ -221,6 +221,7 @@ Common environment variables used by the example applications:
 | `JAGENT_MODEL` | `glm-5.2` | Model name configured by the example `application.yml`. |
 | `JAGENT_MODEL_STREAM_ENABLED` | `true` | Set to `false` for OpenAI-compatible endpoints that do not support SSE streaming. |
 | `JAGENT_TEMPERATURE` | empty | Optional. If empty, `temperature` is not sent. |
+| `SERVER_PORT` | `18080` | HTTP port used by the example applications. |
 | `JAGENT_DATASOURCE_URL` | `jdbc:sqlite:jagent-harness.db` | JDBC URL used by the examples. |
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |

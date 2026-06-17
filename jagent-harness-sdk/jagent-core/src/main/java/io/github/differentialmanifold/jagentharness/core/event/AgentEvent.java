@@ -17,6 +17,8 @@ public class AgentEvent {
     public static final String TOOL_EXECUTION_START = "tool_execution_start";
     public static final String TOOL_EXECUTION_UPDATE = "tool_execution_update";
     public static final String TOOL_EXECUTION_END = "tool_execution_end";
+    public static final String TOOL_APPROVAL_REQUESTED = "tool_approval_requested";
+    public static final String TOOL_APPROVAL_RESOLVED = "tool_approval_resolved";
     public static final String COMPACTION_START = "compaction_start";
     public static final String COMPACTION_END = "compaction_end";
 

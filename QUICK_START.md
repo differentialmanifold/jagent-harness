@@ -47,12 +47,12 @@ mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
 java -jar examples/coding-tool-app/target/coding-tool-app-0.2.1.jar
 ```
 
-The backend listens on `http://localhost:8080`.
+The backend listens on `http://localhost:18080`.
 
 Health check:
 
 ```bash
-curl http://localhost:8080/api/health
+curl http://localhost:18080/api/health
 ```
 
 The example uses Spring Boot `spring.datasource.*` configuration. By default it points to
@@ -71,7 +71,7 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-The Vite dev server proxies `/api` to `http://localhost:8080`.
+The Vite dev server proxies `/api` to `http://localhost:18080`.
 
 ## 4. Create a Project
 
@@ -82,7 +82,7 @@ The example backend validates the path, creates a session, and runs file tools r
 ## 5. Useful Configuration
 
 ```bash
-export SERVER_PORT=8080
+export SERVER_PORT=18080
 export JAGENT_DATASOURCE_URL=jdbc:sqlite:jagent-harness.db
 export JAGENT_DATASOURCE_DRIVER=org.sqlite.JDBC
 export JAGENT_STOP_POLL_INTERVAL_MS=1000

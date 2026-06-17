@@ -30,6 +30,7 @@ export function useAgentHarness() {
   const running = ref(false)
   const stopping = ref(false)
   const stopReady = ref(false)
+  const approvalMode = ref(loadJson('jagent.approvalMode', 'ask_approval'))
   const hiddenProjectKeys = ref(loadJson('jagent.hiddenProjects', []))
   const projectAliases = ref(loadJson('jagent.projectAliases', {}))
   const projectDialogOpen = ref(false)
@@ -53,12 +54,15 @@ export function useAgentHarness() {
 
   const statusText = computed(() => {
     if (!currentSession.value) return 'Create or select a session to begin'
+    const pendingApproval = messages.value.find((message) => message.role === 'tool' && message.approval?.pending)
     const runningTool = messages.value.find((message) => message.role === 'tool' && message.running)
     const thinking = messages.value.find((message) => message.role === 'assistant' && message.thinking)
     const prefix = stopping.value
       ? 'Stopping agent run'
       : running.value && !stopReady.value
         ? 'Starting agent run'
+      : pendingApproval
+        ? `Waiting for ${pendingApproval.toolName || 'tool'} approval`
       : runningTool
         ? `Running ${runningTool.toolName || 'tool'}`
       : thinking
@@ -315,7 +319,7 @@ export function useAgentHarness() {
     try {
       await streamRequest(
         '/api/chat/stream',
-        { sessionId, content },
+        { sessionId, content, approvalMode: approvalMode.value },
         streamController.signal
       )
       await selectSession(sessionId)
@@ -445,6 +449,14 @@ export function useAgentHarness() {
     } else if (type === 'tool_execution_update') {
       if (!options.replay) {
         updateToolExecution(payload)
+      }
+    } else if (type === 'tool_approval_requested') {
+      if (!options.replay) {
+        requestToolApproval(event, payload)
+      }
+    } else if (type === 'tool_approval_resolved') {
+      if (!options.replay) {
+        resolveToolApprovalEvent(payload)
       }
     } else if (type === 'tool_execution_end') {
       if (!options.replay) {
@@ -595,6 +607,71 @@ export function useAgentHarness() {
     message.completedAt = Date.now()
     message.content = payload.result || ''
     message.stopped = payload.stopped === true
+    if (message.approval) {
+      message.approval.pending = false
+      message.approval.responding = false
+    }
+  }
+
+  function requestToolApproval(event, payload) {
+    const approval = {
+      requestId: payload.requestId || activeRequestId,
+      approvalId: payload.approvalId,
+      title: payload.title || 'Approval required',
+      message: payload.message || '',
+      action: payload.action || '',
+      target: payload.target || '',
+      approved: null,
+      pending: true,
+      responding: false
+    }
+    const message = pendingToolMessage(payload.toolCallId)
+    if (message) {
+      message.approval = approval
+      message.progress = approval.title
+      return
+    }
+    messages.value.push({
+      messageId: `approval:${approval.approvalId || Date.now()}`,
+      sessionId: event.sessionId,
+      role: 'status',
+      content: `${approval.title}: ${approval.target || approval.action || 'tool execution'}`
+    })
+  }
+
+  function resolveToolApprovalEvent(payload) {
+    const message = pendingToolMessage(payload.toolCallId)
+    if (!message || !message.approval) return
+    message.approval.pending = false
+    message.approval.responding = false
+    message.approval.approved = payload.approved === true
+    message.approval.reason = payload.reason || ''
+    message.progress = message.approval.approved ? 'Approved' : 'Denied'
+  }
+
+  async function resolveToolApproval({ approvalId, requestId, approved }) {
+    if (!approvalId) return
+    const message = messages.value.find((item) => item.approval?.approvalId === approvalId)
+    const approval = message ? message.approval : null
+    if (approval) {
+      approval.responding = true
+    }
+    try {
+      await request('/api/chat/approvals/resolve', {
+        method: 'POST',
+        body: JSON.stringify({
+          requestId: requestId || approval?.requestId || activeRequestId,
+          approvalId,
+          approved,
+          reason: approved ? 'Approved by user' : 'Denied by user'
+        })
+      })
+    } catch (error) {
+      if (approval) {
+        approval.responding = false
+      }
+      appendLocalErrorMessage(`Failed to resolve approval: ${error.message}`)
+    }
   }
 
   function replacePendingToolMessage(message) {
@@ -714,6 +791,11 @@ export function useAgentHarness() {
     }
   }
 
+  function setApprovalMode(value) {
+    approvalMode.value = value === 'full_access' ? 'full_access' : 'ask_approval'
+    saveJson('jagent.approvalMode', approvalMode.value)
+  }
+
   function shouldAutoNameChat(session, currentMessages) {
     if (!session || currentMessages.length > 0) return false
     const title = session.title || ''
@@ -768,6 +850,7 @@ export function useAgentHarness() {
     running,
     stopping,
     stopReady,
+    approvalMode,
     projectDialogOpen,
     projectSubmitting,
     renameDialogOpen,
@@ -793,6 +876,8 @@ export function useAgentHarness() {
     selectProject,
     selectSession,
     sendMessage,
-    stopMessage
+    stopMessage,
+    setApprovalMode,
+    resolveToolApproval
   }
 }

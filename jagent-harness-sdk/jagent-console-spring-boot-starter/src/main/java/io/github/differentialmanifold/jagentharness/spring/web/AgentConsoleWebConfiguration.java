@@ -1,13 +1,14 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
-import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
+import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
+import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
 import org.springframework.beans.factory.ObjectProvider;
@@ -69,11 +70,25 @@ public class AgentConsoleWebConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public ToolApprovalCoordinator toolApprovalCoordinator() {
+        return new ToolApprovalCoordinator();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public ChatController chatController(SessionManager sessionManager,
                                          AgentHarness agentHarness,
                                          TaskExecutor agentTaskExecutor,
-                                         RunStopCoordinator runStopCoordinator) {
-        return new ChatController(sessionManager, agentHarness, agentTaskExecutor, runStopCoordinator);
+                                         RunStopCoordinator runStopCoordinator,
+                                         ToolApprovalCoordinator toolApprovalCoordinator,
+                                         ObjectMapper objectMapper) {
+        return new ChatController(
+                sessionManager,
+                agentHarness,
+                agentTaskExecutor,
+                runStopCoordinator,
+                toolApprovalCoordinator,
+                objectMapper);
     }
 
     @Bean

@@ -31,7 +31,11 @@ public class CodingToolContextFactory implements ToolContextFactory {
                 workspaceRoot(session),
                 settings.getConfigRoot(),
                 effectiveOptions.getAttributes(),
-                effectiveOptions.getStopSignal());
+                effectiveOptions.getStopSignal(),
+                effectiveOptions.getApprovalMode(),
+                effectiveOptions.getApprovalHandler(),
+                null,
+                null);
     }
 
     private Path workspaceRoot(SessionRecord session) {

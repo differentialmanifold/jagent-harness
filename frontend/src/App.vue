@@ -42,8 +42,11 @@
           :running="running"
           :stopping="stopping"
           :stop-ready="stopReady"
+          :approval-mode="approvalMode"
+          @update:approval-mode="setApprovalMode"
           @send="sendMessage"
           @stop="stopMessage"
+          @resolve-tool-approval="resolveToolApproval"
         />
 
         <InspectorPanel
@@ -116,6 +119,7 @@ const {
   running,
   stopping,
   stopReady,
+  approvalMode,
   projectDialogOpen,
   projectSubmitting,
   renameDialogOpen,
@@ -140,7 +144,9 @@ const {
   selectProject,
   selectSession,
   sendMessage,
-  stopMessage
+  stopMessage,
+  setApprovalMode,
+  resolveToolApproval
 } = useAgentHarness()
 
 async function selectSessionAndShowChat(sessionId) {

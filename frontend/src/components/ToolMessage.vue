@@ -10,6 +10,33 @@
       </span>
     </div>
     <div class="tool-progress-track" aria-hidden="true"><span></span></div>
+    <div v-if="message.approval" class="tool-approval-card">
+      <div>
+        <strong>{{ message.approval.title || 'Approval required' }}</strong>
+        <span v-if="message.approval.message">{{ message.approval.message }}</span>
+        <code v-if="message.approval.target">{{ message.approval.target }}</code>
+      </div>
+      <div class="tool-approval-actions">
+        <el-button
+          size="small"
+          type="primary"
+          :icon="Check"
+          :loading="message.approval.responding"
+          :disabled="!message.approval.pending || message.approval.responding"
+          @click="$emit('resolveApproval', approvalPayload(true))"
+        >
+          Allow
+        </el-button>
+        <el-button
+          size="small"
+          :icon="Close"
+          :disabled="!message.approval.pending || message.approval.responding"
+          @click="$emit('resolveApproval', approvalPayload(false))"
+        >
+          Deny
+        </el-button>
+      </div>
+    </div>
   </div>
 
   <details v-else class="tool-run" :open="isFailedToolMessage(message)">
@@ -75,7 +102,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Loading } from '@element-plus/icons-vue'
+import { Check, Close, Loading } from '@element-plus/icons-vue'
 import {
   diffHunkKey,
   diffLineClass,
@@ -101,6 +128,8 @@ const props = defineProps({
   message: { type: Object, required: true }
 })
 
+defineEmits(['resolveApproval'])
+
 const now = ref(Date.now())
 let timer = null
 
@@ -111,6 +140,14 @@ const elapsedText = computed(() => {
     ? `${elapsedSeconds}s`
     : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`
 })
+
+function approvalPayload(approved) {
+  return {
+    approvalId: props.message.approval?.approvalId,
+    requestId: props.message.approval?.requestId,
+    approved
+  }
+}
 
 watch(
   () => props.message.running,

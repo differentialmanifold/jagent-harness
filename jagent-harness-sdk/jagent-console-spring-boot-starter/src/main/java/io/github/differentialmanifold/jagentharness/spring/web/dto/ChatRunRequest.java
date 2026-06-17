@@ -7,6 +7,7 @@ public class ChatRunRequest {
     private String sessionId;
     private String content;
     private String traceId;
+    private String approvalMode;
     private Map<String, Object> attributes;
 
     public String getSessionId() {
@@ -31,6 +32,14 @@ public class ChatRunRequest {
 
     public void setTraceId(String traceId) {
         this.traceId = traceId;
+    }
+
+    public String getApprovalMode() {
+        return approvalMode;
+    }
+
+    public void setApprovalMode(String approvalMode) {
+        this.approvalMode = approvalMode;
     }
 
     public Map<String, Object> getAttributes() {

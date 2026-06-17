@@ -1,6 +1,10 @@
 <template>
   <article :class="messageClass(message)">
-    <ToolMessage v-if="message.role === 'tool'" :message="message" />
+    <ToolMessage
+      v-if="message.role === 'tool'"
+      :message="message"
+      @resolve-approval="$emit('resolveToolApproval', $event)"
+    />
 
     <template v-else>
       <div class="message-meta">
@@ -43,4 +47,6 @@ import { messageClass, summarizeToolArguments } from '../utils/toolDisplay'
 defineProps({
   message: { type: Object, required: true }
 })
+
+defineEmits(['resolveToolApproval'])
 </script>

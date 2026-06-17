@@ -53,13 +53,16 @@ class ReadToolTest {
     }
 
     @Test
-    void rejectsPathOutsideWorkspace() throws Exception {
+    void readsAbsolutePathOutsideWorkspace() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         ReadTool tool = new ReadTool(objectMapper, new WorkspacePathResolver());
         Path outside = Files.createTempFile("outside", ".txt");
+        Files.write(outside, "outside\ncontent\n".getBytes(StandardCharsets.UTF_8));
 
-        assertThrows(IllegalArgumentException.class,
-                () -> tool.execute(toolContext(), arguments(objectMapper, outside.toString(), null, null)));
+        JsonNode result = execute(objectMapper, tool, arguments(objectMapper, outside.toString(), null, null));
+
+        assertEquals(outside.toAbsolutePath().normalize().toString(), result.path("path").asText());
+        assertEquals("outside\ncontent", result.path("content").asText());
     }
 
     @Test

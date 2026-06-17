@@ -45,19 +45,19 @@ public class FindTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Find files and directories inside the workspace by glob, name, type, depth, and exclusions. Prefer this over bash find.";
+        return "Find files and directories by glob, name, type, depth, and exclusions. Relative paths resolve from the workspace; absolute paths are allowed. Prefer this over bash find.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
-        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative directory path. Default ."));
-        properties.set("glob", ToolSchemas.stringProperty(objectMapper, "Glob applied to workspace-relative paths. Default **/*"));
+        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute directory path. Default ."));
+        properties.set("glob", ToolSchemas.stringProperty(objectMapper, "Glob applied to paths relative to the searched directory. Default **/*"));
         properties.set("name", ToolSchemas.stringProperty(objectMapper, "Glob applied only to file or directory names, such as *.java. Optional."));
         properties.set("type", ToolSchemas.stringProperty(objectMapper, "all, file, or directory. Default all."));
         properties.set("maxDepth", ToolSchemas.integerProperty(objectMapper, "Maximum directory depth below path. Default unlimited."));
         properties.set("maxResults", ToolSchemas.integerProperty(objectMapper, "Maximum number of results to return. Default 200, maximum 1000."));
-        properties.set("exclude", ToolSchemas.stringProperty(objectMapper, "Comma-separated workspace-relative glob patterns to skip. Default .git/**,target/**,node_modules/**,dist/**,build/**."));
+        properties.set("exclude", ToolSchemas.stringProperty(objectMapper, "Comma-separated glob patterns relative to the searched directory to skip. Default .git/**,target/**,node_modules/**,dist/**,build/**."));
         properties.set("includeHidden", ToolSchemas.booleanProperty(objectMapper, "Include hidden files and directories. Default false."));
         return ToolSchemas.objectSchema(objectMapper, properties);
     }
@@ -95,7 +95,7 @@ public class FindTool implements ToolDefinition {
                 if (root.equals(dir)) {
                     return FileVisitResult.CONTINUE;
                 }
-                Path relative = relativePath(context, dir);
+                Path relative = root.relativize(dir.toAbsolutePath().normalize());
                 if ((!includeHidden && hasHiddenSegment(relative)) || isExcluded(relative, excludeMatchers)) {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
@@ -109,7 +109,7 @@ public class FindTool implements ToolDefinition {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 context.getStopSignal().throwIfAborted();
-                Path relative = relativePath(context, file);
+                Path relative = root.relativize(file.toAbsolutePath().normalize());
                 if ((!includeHidden && hasHiddenSegment(relative)) || isExcluded(relative, excludeMatchers)) {
                     return FileVisitResult.CONTINUE;
                 }
@@ -147,10 +147,6 @@ public class FindTool implements ToolDefinition {
         result.put("truncated", truncated[0]);
         result.set("matches", entries);
         return ToolExecutionResult.of(result.toString());
-    }
-
-    private Path relativePath(ToolContext context, Path path) {
-        return pathResolver.workspaceRoot(context).relativize(path.toAbsolutePath().normalize());
     }
 
     private boolean addMatchIfNeeded(Path path,
