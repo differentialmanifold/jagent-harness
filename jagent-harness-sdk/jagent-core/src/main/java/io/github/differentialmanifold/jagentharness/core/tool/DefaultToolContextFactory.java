@@ -26,6 +26,10 @@ public class DefaultToolContextFactory implements ToolContextFactory {
                 null,
                 settings == null ? null : settings.getConfigRoot(),
                 effectiveOptions.getAttributes(),
-                effectiveOptions.getStopSignal());
+                effectiveOptions.getStopSignal(),
+                effectiveOptions.getApprovalMode(),
+                effectiveOptions.getApprovalHandler(),
+                null,
+                null);
     }
 }

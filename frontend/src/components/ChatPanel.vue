@@ -18,10 +18,30 @@
         v-for="message in visibleMessages"
         :key="message.messageId"
         :message="message"
+        @resolve-tool-approval="$emit('resolveToolApproval', $event)"
       />
     </div>
 
     <form class="composer" @submit.prevent="submit">
+      <div class="composer-toolbar">
+        <el-radio-group
+          class="approval-mode"
+          :model-value="approvalMode"
+          size="small"
+          :disabled="running"
+          aria-label="Tool access"
+          @update:model-value="$emit('update:approvalMode', $event)"
+        >
+          <el-radio-button value="ask_approval">
+            <el-icon><Lock /></el-icon>
+            <span>Ask</span>
+          </el-radio-button>
+          <el-radio-button value="full_access">
+            <el-icon><Unlock /></el-icon>
+            <span>Full access</span>
+          </el-radio-button>
+        </el-radio-group>
+      </div>
       <el-input
         class="composer-input"
         type="textarea"
@@ -57,7 +77,8 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { Promotion, VideoPause } from '@element-plus/icons-vue'
+import { ElRadioButton, ElRadioGroup } from 'element-plus'
+import { Lock, Promotion, Unlock, VideoPause } from '@element-plus/icons-vue'
 import MessageItem from './MessageItem.vue'
 
 const props = defineProps({
@@ -68,10 +89,11 @@ const props = defineProps({
   running: { type: Boolean, required: true },
   stopping: { type: Boolean, required: true },
   stopReady: { type: Boolean, required: true },
+  approvalMode: { type: String, required: true },
   draft: { type: String, required: true }
 })
 
-const emit = defineEmits(['update:draft', 'send', 'stop'])
+const emit = defineEmits(['update:draft', 'update:approvalMode', 'send', 'stop', 'resolveToolApproval'])
 const messagesEl = ref(null)
 let scrollFrame = null
 

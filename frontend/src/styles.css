@@ -500,6 +500,45 @@ textarea {
   animation: tool-progress 1.4s infinite ease-in-out;
 }
 
+.tool-approval-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.tool-approval-card strong {
+  display: block;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.tool-approval-card span {
+  display: block;
+  margin-top: 3px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.tool-approval-card code {
+  display: block;
+  margin-top: 8px;
+  color: #24292f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tool-approval-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .tool-run summary::-webkit-details-marker {
   display: none;
 }
@@ -780,10 +819,28 @@ textarea {
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 110px;
+  grid-template-rows: auto auto;
   gap: 10px;
   border-top: 1px solid #d7dde6;
   background: #fff;
   padding: 14px;
+}
+
+.composer-toolbar {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.approval-mode .el-radio-button__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.composer-input {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .composer .el-textarea__inner {
@@ -792,7 +849,9 @@ textarea {
   padding: 10px 12px;
 }
 
-.composer .el-button {
+.composer > .el-button {
+  grid-column: 2;
+  grid-row: 2;
   min-height: 74px;
   border-radius: 8px;
 }
@@ -1503,6 +1562,39 @@ dd {
   .messages {
     min-height: 360px;
     max-height: calc(100vh - 260px);
+  }
+
+  .composer {
+    grid-template-columns: 1fr;
+  }
+
+  .composer-toolbar {
+    justify-content: stretch;
+  }
+
+  .approval-mode,
+  .approval-mode .el-radio-button,
+  .approval-mode .el-radio-button__inner {
+    width: 100%;
+  }
+
+  .composer-input {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .composer > .el-button {
+    grid-column: 1;
+    grid-row: 3;
+    min-height: 48px;
+  }
+
+  .tool-approval-card {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-approval-actions {
+    justify-content: flex-end;
   }
 
   .sidebar,

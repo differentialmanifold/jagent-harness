@@ -258,7 +258,8 @@ public class AgentRunner implements AgentHarness {
     }
 
     private ToolExecutionResult executeToolCall(ToolContext toolContext, ToolCall call) {
-        StopSignal stopSignal = toolContext.getStopSignal();
+        ToolContext callContext = toolContext.forToolCall(call.getToolCallId(), call.getName());
+        StopSignal stopSignal = callContext.getStopSignal();
         stopSignal.throwIfAborted();
         ToolDefinition tool = toolRegistry.get(call.getName());
         if (tool == null) {
@@ -266,7 +267,7 @@ public class AgentRunner implements AgentHarness {
         }
         try (StopRegistration ignored = stopSignal.onStop(Thread.currentThread()::interrupt)) {
             JsonNode arguments = parseArguments(call.getArgumentsJson());
-            ToolExecutionResult result = tool.execute(toolContext, arguments);
+            ToolExecutionResult result = tool.execute(callContext, arguments);
             stopSignal.throwIfAborted();
             return result;
         } catch (StopRequestedException e) {
@@ -319,7 +320,11 @@ public class AgentRunner implements AgentHarness {
                 null,
                 null,
                 options.getAttributes(),
-                options.getStopSignal()));
+                options.getStopSignal(),
+                options.getApprovalMode(),
+                options.getApprovalHandler(),
+                null,
+                null));
     }
 
     private ToolContext withConfigRoot(ToolContext context) {
@@ -333,7 +338,11 @@ public class AgentRunner implements AgentHarness {
                 context.getWorkspaceRoot(),
                 settings.getConfigRoot(),
                 context.getAttributes(),
-                context.getStopSignal());
+                context.getStopSignal(),
+                context.getApprovalMode(),
+                context.getApprovalHandler(),
+                context.getCurrentToolCallId(),
+                context.getCurrentToolName());
     }
 
     private AgentMessage appendStoppedAssistantMessage(String sessionId,

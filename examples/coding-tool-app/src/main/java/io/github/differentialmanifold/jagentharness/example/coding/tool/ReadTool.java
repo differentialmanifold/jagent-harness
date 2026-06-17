@@ -38,13 +38,13 @@ public class ReadTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Read UTF-8 text lines from a file inside the workspace. Supports offset and limit for reading a specific line range.";
+        return "Read UTF-8 text lines from a file. Relative paths resolve from the workspace; absolute paths are allowed. Supports offset and limit for reading a specific line range.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
-        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative file path."));
+        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute file path."));
         properties.set("offset", ToolSchemas.integerProperty(
                 objectMapper,
                 "One-based line number to start reading from. Default 1."));

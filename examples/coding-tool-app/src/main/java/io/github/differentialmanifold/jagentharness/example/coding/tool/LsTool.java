@@ -35,13 +35,13 @@ public class LsTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "List files and directories inside the workspace.";
+        return "List files and directories. Relative paths resolve from the workspace; absolute paths are allowed.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
-        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative directory path. Default ."));
+        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute directory path. Default ."));
         return ToolSchemas.objectSchema(objectMapper, properties);
     }
 

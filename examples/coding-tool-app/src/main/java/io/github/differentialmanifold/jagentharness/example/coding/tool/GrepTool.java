@@ -37,15 +37,15 @@ public class GrepTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Search text file contents inside the workspace.";
+        return "Search text file contents. Relative paths resolve from the workspace; absolute paths are allowed.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
         properties.set("query", ToolSchemas.stringProperty(objectMapper, "Text to search for."));
-        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative directory path. Default ."));
-        properties.set("glob", ToolSchemas.stringProperty(objectMapper, "Glob applied to workspace-relative paths. Default **/*"));
+        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute directory path. Default ."));
+        properties.set("glob", ToolSchemas.stringProperty(objectMapper, "Glob applied to paths relative to the searched directory. Default **/*"));
         properties.set("caseSensitive", ToolSchemas.booleanProperty(objectMapper, "Case-sensitive search. Default true."));
         return ToolSchemas.objectSchema(objectMapper, properties, "query");
     }
@@ -67,7 +67,7 @@ public class GrepTool implements ToolDefinition {
 
         try (Stream<Path> stream = Files.walk(root)) {
             stream.filter(Files::isRegularFile)
-                    .forEach(path -> searchFile(context, path, matcher, glob, needle, caseSensitive, matches));
+                    .forEach(path -> searchFile(context, root, path, matcher, glob, needle, caseSensitive, matches));
         }
 
         ObjectNode result = objectMapper.createObjectNode();
@@ -79,6 +79,7 @@ public class GrepTool implements ToolDefinition {
     }
 
     private void searchFile(ToolContext context,
+                            Path root,
                             Path path,
                             PathMatcher matcher,
                             String glob,
@@ -86,7 +87,7 @@ public class GrepTool implements ToolDefinition {
                             boolean caseSensitive,
                             ArrayNode matches) {
         context.getStopSignal().throwIfAborted();
-        Path relative = pathResolver.workspaceRoot(context).relativize(path.toAbsolutePath().normalize());
+        Path relative = root.relativize(path.toAbsolutePath().normalize());
         if (!matchesGlob(relative, matcher, glob)) {
             return;
         }
@@ -98,7 +99,7 @@ public class GrepTool implements ToolDefinition {
                 String haystack = caseSensitive ? line : line.toLowerCase();
                 if (haystack.contains(needle)) {
                     ObjectNode match = objectMapper.createObjectNode();
-                    match.put("path", relative.toString());
+                    match.put("path", pathResolver.relative(context, path));
                     match.put("line", i + 1);
                     match.put("preview", line.trim());
                     matches.add(match);

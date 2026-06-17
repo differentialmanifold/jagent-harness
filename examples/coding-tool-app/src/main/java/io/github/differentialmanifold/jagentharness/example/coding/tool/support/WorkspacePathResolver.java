@@ -10,11 +10,9 @@ public class WorkspacePathResolver {
     public Path resolve(ToolContext context, String input) {
         Path root = workspaceRoot(context);
         Path path = Paths.get(input);
-        Path resolved = path.isAbsolute() ? path.normalize() : root.resolve(path).normalize();
-        if (!resolved.startsWith(root)) {
-            throw new IllegalArgumentException("Path escapes workspace root: " + input);
-        }
-        return resolved;
+        return path.isAbsolute()
+                ? path.toAbsolutePath().normalize()
+                : root.resolve(path).toAbsolutePath().normalize();
     }
 
     public Path workspaceRoot(ToolContext context) {
@@ -25,6 +23,15 @@ public class WorkspacePathResolver {
     }
 
     public String relative(ToolContext context, Path path) {
-        return workspaceRoot(context).relativize(path.toAbsolutePath().normalize()).toString();
+        Path root = workspaceRoot(context);
+        Path normalized = path.toAbsolutePath().normalize();
+        if (normalized.startsWith(root)) {
+            return root.relativize(normalized).toString();
+        }
+        return normalized.toString();
+    }
+
+    public boolean isInsideWorkspace(ToolContext context, Path path) {
+        return path.toAbsolutePath().normalize().startsWith(workspaceRoot(context));
     }
 }

@@ -78,6 +78,56 @@ class EditToolTest {
     }
 
     @Test
+    void replacesReadStyleTextInCrlfFile() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        EditTool tool = new EditTool(objectMapper, new WorkspacePathResolver());
+
+        Path file = workspaceRoot.resolve("windows.txt");
+        Files.write(file, ("one\r\n"
+                + "two\r\n"
+                + "three\r\n").getBytes(StandardCharsets.UTF_8));
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "windows.txt");
+        arguments.put("search", "two\nthree");
+        arguments.put("replacement", "new two\nnew three");
+
+        JsonNode result = objectMapper.readTree(tool.execute(toolContext(), arguments).getContent());
+
+        assertEquals(2, result.path("additions").asInt());
+        assertEquals(2, result.path("deletions").asInt());
+        assertEquals("two", result.path("diff").path("hunks").get(0).path("lines").get(1).path("content").asText());
+        assertEquals("one\r\n"
+                + "new two\r\n"
+                + "new three\r\n", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void preservesCrlfWhenReplacingLineRange() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        EditTool tool = new EditTool(objectMapper, new WorkspacePathResolver());
+
+        Path file = workspaceRoot.resolve("windows.txt");
+        Files.write(file, ("one\r\n"
+                + "two\r\n"
+                + "three\r\n").getBytes(StandardCharsets.UTF_8));
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "windows.txt");
+        arguments.put("startLine", 2);
+        arguments.put("endLine", 2);
+        arguments.put("replacement", "dos");
+
+        JsonNode result = objectMapper.readTree(tool.execute(toolContext(), arguments).getContent());
+
+        assertEquals(1, result.path("additions").asInt());
+        assertEquals(1, result.path("deletions").asInt());
+        assertEquals("one\r\n"
+                + "dos\r\n"
+                + "three\r\n", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+    }
+
+    @Test
     void insertsAfterLine() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         EditTool tool = new EditTool(objectMapper, new WorkspacePathResolver());

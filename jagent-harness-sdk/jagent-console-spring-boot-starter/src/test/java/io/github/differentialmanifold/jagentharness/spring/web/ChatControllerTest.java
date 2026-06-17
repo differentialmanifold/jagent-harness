@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
@@ -31,7 +32,9 @@ class ChatControllerTest {
                 null,
                 task -> {
                 },
-                coordinator);
+                coordinator,
+                new ToolApprovalCoordinator(),
+                new ObjectMapper());
         ChatRunRequest request = new ChatRunRequest();
         request.setSessionId("session-1");
         request.setContent("hello");
@@ -72,7 +75,13 @@ class ChatControllerTest {
     }
 
     private ChatController controller(StopRequestResult result) {
-        return new ChatController(null, null, null, new RecordingCoordinator(result));
+        return new ChatController(
+                null,
+                null,
+                null,
+                new RecordingCoordinator(result),
+                new ToolApprovalCoordinator(),
+                new ObjectMapper());
     }
 
     private ChatStopRequest stopRequest(String requestId) {
