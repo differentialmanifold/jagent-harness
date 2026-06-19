@@ -16,6 +16,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedExce
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalDecision;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalHandler;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalMode;
@@ -211,6 +212,7 @@ public class ChatController {
                                                  StopSignal stopSignal) throws Exception {
         ToolApprovalDecision decision = toolApprovalCoordinator.awaitDecision(
                 requestId,
+                sessionId,
                 approvalRequest,
                 stopSignal,
                 () -> sendApprovalEvent(

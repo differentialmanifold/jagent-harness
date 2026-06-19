@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.RowMapper;
 public class JdbcCompactionStore implements CompactionStore {
 
     private final JdbcTemplate jdbcTemplate;
+    private final String applicationId;
     private final RowMapper<CompactionState> mapper = (rs, rowNum) -> {
         CompactionState state = new CompactionState();
         state.setSessionId(rs.getString("session_id"));
@@ -22,15 +23,17 @@ public class JdbcCompactionStore implements CompactionStore {
         return state;
     };
 
-    public JdbcCompactionStore(JdbcTemplate jdbcTemplate) {
+    public JdbcCompactionStore(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.applicationId = properties.requireApplicationId();
     }
 
     @Override
     public CompactionState findBySessionId(String sessionId) {
         List<CompactionState> states = jdbcTemplate.query(
-                "select * from compaction_states where session_id = ?",
+                "select * from compaction_states where application_id = ? and session_id = ?",
                 mapper,
+                applicationId,
                 sessionId);
         return states.isEmpty() ? null : states.get(0);
     }
@@ -41,16 +44,18 @@ public class JdbcCompactionStore implements CompactionStore {
         int updated = jdbcTemplate.update(
                 "update compaction_states "
                         + "set summary = ?, cursor_message_id = ?, version = version + 1, updated_at = ? "
-                        + "where session_id = ?",
+                        + "where application_id = ? and session_id = ?",
                 summary,
                 cursorMessageId,
                 now,
+                applicationId,
                 sessionId);
         if (updated == 0) {
             jdbcTemplate.update(
                     "insert into compaction_states "
-                            + "(session_id, summary, cursor_message_id, version, metadata_json, updated_at) "
-                            + "values (?, ?, ?, ?, ?, ?)",
+                            + "(application_id, session_id, summary, cursor_message_id, version, metadata_json, updated_at) "
+                            + "values (?, ?, ?, ?, ?, ?, ?)",
+                    applicationId,
                     sessionId,
                     summary,
                     cursorMessageId,

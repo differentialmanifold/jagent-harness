@@ -15,6 +15,6 @@
     <modules>
         <module>jagent-harness-sdk</module>
         <module>examples/coding-tool-app</module>
-        <module>examples/order-system-agent</module>
+        <module>examples/business-system-agent-demo</module>
     </modules>
 </project>

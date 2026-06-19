@@ -52,8 +52,9 @@ class JdbcRunStopCoordinatorTest {
         assertEquals(
                 "STOP_REQUESTED",
                 jdbcTemplate.queryForObject(
-                        "select status from agent_runs where request_id = ?",
+                        "select status from agent_runs where application_id = ? and request_id = ?",
                         String.class,
+                        "default",
                         "request-1"));
     }
 
@@ -67,8 +68,9 @@ class JdbcRunStopCoordinatorTest {
         try {
             assertTrue(
                     jdbcTemplate.queryForObject(
-                            "select id from agent_runs where request_id = ?",
+                            "select id from agent_runs where application_id = ? and request_id = ?",
                             Long.class,
+                            "default",
                             "request-1") > 0L);
             assertThrows(
                     ActiveRunException.class,
@@ -77,8 +79,9 @@ class JdbcRunStopCoordinatorTest {
             assertEquals(
                     "NORMAL",
                     jdbcTemplate.queryForObject(
-                            "select status from agent_runs where request_id = ?",
+                            "select status from agent_runs where application_id = ? and request_id = ?",
                             String.class,
+                            "default",
                             "request-1"));
         } finally {
             handle.close();
@@ -98,7 +101,7 @@ class JdbcRunStopCoordinatorTest {
         JdbcRunStopProperties properties = new JdbcRunStopProperties();
         properties.setPollIntervalMillis(20L);
         properties.setListenerThreads(1);
-        return new JdbcRunStopCoordinator(jdbcTemplate, properties);
+        return new JdbcRunStopCoordinator(jdbcTemplate, storeProperties("default"), properties);
     }
 
     private StopRequestResult coordinatorResult(JdbcTemplate jdbcTemplate, String requestId) {
@@ -108,5 +111,11 @@ class JdbcRunStopCoordinatorTest {
         } finally {
             coordinator.close();
         }
+    }
+
+    private JdbcStoreProperties storeProperties(String applicationId) {
+        JdbcStoreProperties properties = new JdbcStoreProperties();
+        properties.setApplicationId(applicationId);
+        return properties;
     }
 }

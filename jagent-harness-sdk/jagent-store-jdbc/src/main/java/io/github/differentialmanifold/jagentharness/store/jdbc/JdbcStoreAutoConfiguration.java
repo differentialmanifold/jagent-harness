@@ -10,6 +10,7 @@ import io.github.differentialmanifold.jagentharness.core.message.MessageReposito
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -19,7 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 @ConditionalOnClass(JdbcTemplate.class)
-@EnableConfigurationProperties(JdbcRunStopProperties.class)
+@EnableConfigurationProperties({JdbcStoreProperties.class, JdbcRunStopProperties.class, JdbcToolApprovalProperties.class})
 public class JdbcStoreAutoConfiguration {
 
     @Bean(initMethod = "initialize")
@@ -30,38 +31,54 @@ public class JdbcStoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(SessionRepository.class)
-    public JdbcSessionRepository jdbcSessionRepository(JdbcTemplate jdbcTemplate) {
-        return new JdbcSessionRepository(jdbcTemplate);
+    public JdbcSessionRepository jdbcSessionRepository(JdbcTemplate jdbcTemplate,
+                                                       JdbcStoreProperties properties) {
+        return new JdbcSessionRepository(jdbcTemplate, properties);
     }
 
     @Bean
     @ConditionalOnMissingBean(MessageRepository.class)
-    public JdbcMessageRepository jdbcMessageRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
-        return new JdbcMessageRepository(jdbcTemplate, objectMapper);
+    public JdbcMessageRepository jdbcMessageRepository(JdbcTemplate jdbcTemplate,
+                                                       ObjectMapper objectMapper,
+                                                       JdbcStoreProperties properties) {
+        return new JdbcMessageRepository(jdbcTemplate, objectMapper, properties);
     }
 
     @Bean
     @ConditionalOnMissingBean(TimelineEventRepository.class)
-    public JdbcTimelineEventRepository jdbcTimelineEventRepository(JdbcTemplate jdbcTemplate) {
-        return new JdbcTimelineEventRepository(jdbcTemplate);
+    public JdbcTimelineEventRepository jdbcTimelineEventRepository(JdbcTemplate jdbcTemplate,
+                                                                   JdbcStoreProperties properties) {
+        return new JdbcTimelineEventRepository(jdbcTemplate, properties);
     }
 
     @Bean
     @ConditionalOnMissingBean(CompactionStore.class)
-    public JdbcCompactionStore jdbcCompactionStore(JdbcTemplate jdbcTemplate) {
-        return new JdbcCompactionStore(jdbcTemplate);
+    public JdbcCompactionStore jdbcCompactionStore(JdbcTemplate jdbcTemplate,
+                                                   JdbcStoreProperties properties) {
+        return new JdbcCompactionStore(jdbcTemplate, properties);
     }
 
     @Bean
     @ConditionalOnMissingBean({KnowledgeFileStore.class, SkillManifestStore.class})
-    public JdbcKnowledgeFileStore jdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate) {
-        return new JdbcKnowledgeFileStore(jdbcTemplate);
+    public JdbcKnowledgeFileStore jdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate,
+                                                         JdbcStoreProperties properties) {
+        return new JdbcKnowledgeFileStore(jdbcTemplate, properties);
     }
 
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(RunStopCoordinator.class)
     public JdbcRunStopCoordinator jdbcRunStopCoordinator(JdbcTemplate jdbcTemplate,
+                                                         JdbcStoreProperties storeProperties,
                                                          JdbcRunStopProperties properties) {
-        return new JdbcRunStopCoordinator(jdbcTemplate, properties);
+        return new JdbcRunStopCoordinator(jdbcTemplate, storeProperties, properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ToolApprovalCoordinator.class)
+    public JdbcToolApprovalCoordinator jdbcToolApprovalCoordinator(JdbcTemplate jdbcTemplate,
+                                                                   ObjectMapper objectMapper,
+                                                                   JdbcStoreProperties storeProperties,
+                                                                   JdbcToolApprovalProperties properties) {
+        return new JdbcToolApprovalCoordinator(jdbcTemplate, objectMapper, storeProperties, properties);
     }
 }

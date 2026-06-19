@@ -10,16 +10,19 @@ import org.springframework.jdbc.core.RowMapper;
 public class JdbcTimelineEventRepository implements TimelineEventRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final String applicationId;
 
-    public JdbcTimelineEventRepository(JdbcTemplate jdbcTemplate) {
+    public JdbcTimelineEventRepository(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.applicationId = properties.requireApplicationId();
     }
 
     @Override
     public void append(AgentEvent event) {
         jdbcTemplate.update("insert into timeline_events "
-                        + "(event_id, session_id, turn_id, type, payload_json, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?)",
+                        + "(application_id, event_id, session_id, turn_id, type, payload_json, created_at) "
+                        + "values (?, ?, ?, ?, ?, ?, ?)",
+                applicationId,
                 event.getEventId(),
                 event.getSessionId(),
                 event.getTurnId(),
@@ -31,9 +34,10 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
     @Override
     public List<AgentEvent> findBySessionId(String sessionId) {
         return jdbcTemplate.query(
-                "select * from timeline_events where session_id = ? "
+                "select * from timeline_events where application_id = ? and session_id = ? "
                         + "order by id asc, created_at asc",
                 mapper(),
+                applicationId,
                 sessionId);
     }
 
