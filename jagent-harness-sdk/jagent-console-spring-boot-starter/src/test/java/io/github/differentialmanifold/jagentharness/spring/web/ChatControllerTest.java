@@ -12,9 +12,13 @@ import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinato
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.session.SessionDetails;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalDecision;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatRunRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatStopRequest;
 import org.junit.jupiter.api.Test;
@@ -33,7 +37,7 @@ class ChatControllerTest {
                 task -> {
                 },
                 coordinator,
-                new ToolApprovalCoordinator(),
+                new NoopToolApprovalCoordinator(),
                 new ObjectMapper());
         ChatRunRequest request = new ChatRunRequest();
         request.setSessionId("session-1");
@@ -80,7 +84,7 @@ class ChatControllerTest {
                 null,
                 null,
                 new RecordingCoordinator(result),
-                new ToolApprovalCoordinator(),
+                new NoopToolApprovalCoordinator(),
                 new ObjectMapper());
     }
 
@@ -181,6 +185,30 @@ class ChatControllerTest {
         @Override
         public StopRequestResult requestStop(String requestId) {
             return stopResult;
+        }
+    }
+
+    private static class NoopToolApprovalCoordinator implements ToolApprovalCoordinator {
+
+        @Override
+        public ToolApprovalDecision awaitDecision(String requestId,
+                                                  String sessionId,
+                                                  ToolApprovalRequest request,
+                                                  StopSignal stopSignal,
+                                                  Runnable onPending) {
+            if (onPending != null) {
+                onPending.run();
+            }
+            return ToolApprovalDecision.approved();
+        }
+
+        @Override
+        public boolean resolve(String requestId, String approvalId, boolean approved, String reason) {
+            return false;
+        }
+
+        @Override
+        public void cancelRequest(String requestId) {
         }
     }
 }

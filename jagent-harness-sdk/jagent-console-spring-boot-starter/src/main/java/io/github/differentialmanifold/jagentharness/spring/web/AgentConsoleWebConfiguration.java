@@ -9,6 +9,7 @@ import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
 import org.springframework.beans.factory.ObjectProvider;
@@ -66,12 +67,6 @@ public class AgentConsoleWebConfiguration {
                 settings,
                 sessionManager,
                 workspaceRootResolver);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public ToolApprovalCoordinator toolApprovalCoordinator() {
-        return new ToolApprovalCoordinator();
     }
 
     @Bean

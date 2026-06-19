@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>io.github.differentialmanifold</groupId>
-    <artifactId>order-system-agent</artifactId>
+    <artifactId>business-system-agent-demo</artifactId>
     <version>0.2.1</version>
-    <name>JAgentHarness Order System Example</name>
+    <name>JAgentHarness Business System Agent Demo</name>
 
     <properties>
         <java.version>1.8</java.version>
@@ -31,18 +31,22 @@
         </dependency>
         <dependency>
             <groupId>io.github.differentialmanifold</groupId>
-            <artifactId>jagent-console-spring-boot-starter</artifactId>
+            <artifactId>jagent-store-jdbc</artifactId>
             <version>${jagent-harness.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.github.differentialmanifold</groupId>
-            <artifactId>jagent-store-jdbc</artifactId>
-            <version>${jagent-harness.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>${sqlite.jdbc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

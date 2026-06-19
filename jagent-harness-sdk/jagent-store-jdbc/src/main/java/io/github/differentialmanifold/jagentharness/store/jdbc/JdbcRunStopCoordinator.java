@@ -25,11 +25,15 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     private static final String STATUS_STOP_REQUESTED = "STOP_REQUESTED";
 
     private final JdbcTemplate jdbcTemplate;
+    private final String applicationId;
     private final long pollIntervalMillis;
     private final ScheduledExecutorService listenerExecutor;
 
-    public JdbcRunStopCoordinator(JdbcTemplate jdbcTemplate, JdbcRunStopProperties properties) {
+    public JdbcRunStopCoordinator(JdbcTemplate jdbcTemplate,
+                                  JdbcStoreProperties storeProperties,
+                                  JdbcRunStopProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.applicationId = storeProperties.requireApplicationId();
         this.pollIntervalMillis = positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
         int listenerThreads = positive(properties.getListenerThreads(), "listenerThreads");
         this.listenerExecutor = Executors.newScheduledThreadPool(
@@ -43,8 +47,9 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         try {
             jdbcTemplate.update(
                     "insert into agent_runs "
-                            + "(request_id, session_id, status, created_at, updated_at) "
-                            + "values (?, ?, ?, ?, ?)",
+                            + "(application_id, request_id, session_id, status, created_at, updated_at) "
+                            + "values (?, ?, ?, ?, ?, ?)",
+                    applicationId,
                     requestId,
                     sessionId,
                     STATUS_NORMAL,
@@ -67,9 +72,10 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         long now = System.currentTimeMillis();
         int updated = jdbcTemplate.update(
                 "update agent_runs set status = ?, updated_at = ? "
-                        + "where request_id = ? and status = ?",
+                        + "where application_id = ? and request_id = ? and status = ?",
                 STATUS_STOP_REQUESTED,
                 now,
+                applicationId,
                 requestId,
                 STATUS_NORMAL);
         if (updated > 0) {
@@ -92,8 +98,9 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
 
     private String findStatus(String requestId) {
         List<String> rows = jdbcTemplate.query(
-                "select status from agent_runs where request_id = ?",
+                "select status from agent_runs where application_id = ? and request_id = ?",
                 (resultSet, rowNum) -> resultSet.getString("status"),
+                applicationId,
                 requestId);
         return rows.isEmpty() ? null : rows.get(0);
     }

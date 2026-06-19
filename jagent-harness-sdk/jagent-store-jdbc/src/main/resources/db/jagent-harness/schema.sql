@@ -1,5 +1,6 @@
 create table if not exists sessions (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     session_id varchar(64) not null,
     title varchar(512),
     workspace_path varchar(1024),
@@ -9,10 +10,12 @@ create table if not exists sessions (
     updated_at varchar(64) not null
 );
 
-create unique index if not exists ux_sessions_session_id on sessions (session_id);
+create unique index if not exists ux_sessions_application_session
+    on sessions (application_id, session_id);
 
 create table if not exists compaction_states (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     session_id varchar(64) not null,
     summary text,
     cursor_message_id varchar(64),
@@ -21,10 +24,12 @@ create table if not exists compaction_states (
     updated_at varchar(64) not null
 );
 
-create unique index if not exists ux_compaction_states_session_id on compaction_states (session_id);
+create unique index if not exists ux_compaction_states_application_session
+    on compaction_states (application_id, session_id);
 
 create table if not exists messages (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     message_id varchar(64) not null,
     session_id varchar(64) not null,
     turn_id varchar(64),
@@ -39,10 +44,14 @@ create table if not exists messages (
     created_at varchar(64) not null
 );
 
-create unique index if not exists ux_messages_message_id on messages (message_id);
+create unique index if not exists ux_messages_application_message
+    on messages (application_id, message_id);
+create index if not exists ix_messages_application_session
+    on messages (application_id, session_id);
 
 create table if not exists timeline_events (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     event_id varchar(64) not null,
     session_id varchar(64) not null,
     turn_id varchar(64),
@@ -51,10 +60,14 @@ create table if not exists timeline_events (
     created_at varchar(64) not null
 );
 
-create unique index if not exists ux_timeline_events_event_id on timeline_events (event_id);
+create unique index if not exists ux_timeline_events_application_event
+    on timeline_events (application_id, event_id);
+create index if not exists ix_timeline_events_application_session
+    on timeline_events (application_id, session_id);
 
 create table if not exists knowledge_files (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     path varchar(1024) not null,
     parent_path varchar(1024) not null,
     name varchar(256) not null,
@@ -67,13 +80,18 @@ create table if not exists knowledge_files (
     updated_at varchar(64) not null
 );
 
-create unique index if not exists ux_knowledge_files_path on knowledge_files (path);
-create index if not exists ix_knowledge_files_parent_path on knowledge_files (parent_path);
-create index if not exists ix_knowledge_files_name on knowledge_files (name);
-create index if not exists ix_knowledge_files_node_type on knowledge_files (node_type);
+create unique index if not exists ux_knowledge_files_application_path
+    on knowledge_files (application_id, path);
+create index if not exists ix_knowledge_files_application_parent
+    on knowledge_files (application_id, parent_path);
+create index if not exists ix_knowledge_files_application_name
+    on knowledge_files (application_id, name);
+create index if not exists ix_knowledge_files_application_node_type
+    on knowledge_files (application_id, node_type);
 
 create table if not exists skill_manifests (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     skill_key varchar(256) not null,
     skill_dir_path varchar(1024) not null,
     skill_file_path varchar(1024) not null,
@@ -83,12 +101,16 @@ create table if not exists skill_manifests (
     updated_at varchar(64) not null
 );
 
-create unique index if not exists ux_skill_manifests_skill_key on skill_manifests (skill_key);
-create unique index if not exists ux_skill_manifests_file_path on skill_manifests (skill_file_path);
-create index if not exists ix_skill_manifests_dir_path on skill_manifests (skill_dir_path);
+create unique index if not exists ux_skill_manifests_application_skill_key
+    on skill_manifests (application_id, skill_key);
+create unique index if not exists ux_skill_manifests_application_file_path
+    on skill_manifests (application_id, skill_file_path);
+create index if not exists ix_skill_manifests_application_dir_path
+    on skill_manifests (application_id, skill_dir_path);
 
 create table if not exists agent_runs (
     id integer primary key autoincrement,
+    application_id varchar(128) not null,
     request_id varchar(128) not null,
     session_id varchar(64) not null,
     status varchar(32) not null,
@@ -96,4 +118,30 @@ create table if not exists agent_runs (
     updated_at bigint not null
 );
 
-create unique index if not exists ux_agent_runs_request_id on agent_runs (request_id);
+create unique index if not exists ux_agent_runs_application_request
+    on agent_runs (application_id, request_id);
+
+create table if not exists agent_approvals (
+    id integer primary key autoincrement,
+    application_id varchar(128) not null,
+    request_id varchar(128) not null,
+    approval_id varchar(128) not null,
+    session_id varchar(64) not null,
+    tool_call_id varchar(128),
+    tool_name varchar(128),
+    status varchar(32) not null,
+    title varchar(512),
+    message text,
+    action varchar(128),
+    target varchar(2048),
+    metadata_json text,
+    decision_reason text,
+    created_at bigint not null,
+    updated_at bigint not null,
+    resolved_at bigint
+);
+
+create unique index if not exists ux_agent_approvals_request_approval
+    on agent_approvals (application_id, request_id, approval_id);
+create index if not exists ix_agent_approvals_request_status
+    on agent_approvals (application_id, request_id, status);

@@ -21,6 +21,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     private static final String DIRECTORY_CONTENT_TYPE = "inode/directory";
 
     private final JdbcTemplate jdbcTemplate;
+    private final String applicationId;
 
     private final RowMapper<KnowledgeFile> fileMapper = (rs, rowNum) -> new KnowledgeFile(
             rs.getString("path"),
@@ -38,15 +39,17 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
             rs.getString("description"),
             JdbcTimeCodec.decode(rs.getString("updated_at")));
 
-    public JdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate) {
+    public JdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
+        this.applicationId = properties.requireApplicationId();
     }
 
     @Override
     public KnowledgeFile readFile(String path) {
         List<KnowledgeFile> files = jdbcTemplate.query(
-                "select * from knowledge_files where path = ? and node_type = ?",
+                "select * from knowledge_files where application_id = ? and path = ? and node_type = ?",
                 fileMapper,
+                applicationId,
                 KnowledgeFilePaths.normalize(path),
                 KnowledgeFile.TYPE_FILE);
         return files.isEmpty() ? null : files.get(0);
@@ -57,13 +60,17 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         String normalizedPrefix = KnowledgeFilePaths.normalizePrefix(prefix);
         if (normalizedPrefix.isEmpty()) {
             return jdbcTemplate.query(
-                    "select * from knowledge_files where node_type = ? order by path asc",
+                    "select * from knowledge_files where application_id = ? and node_type = ? order by path asc",
                     fileMapper,
+                    applicationId,
                     KnowledgeFile.TYPE_FILE);
         }
         return jdbcTemplate.query(
-                "select * from knowledge_files where node_type = ? and (path = ? or path like ?) order by path asc",
+                "select * from knowledge_files "
+                        + "where application_id = ? and node_type = ? and (path = ? or path like ?) "
+                        + "order by path asc",
                 fileMapper,
+                applicationId,
                 KnowledgeFile.TYPE_FILE,
                 normalizedPrefix,
                 normalizedPrefix + "/%");
@@ -84,13 +91,19 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     @Override
     public void deleteFile(String path) {
         String normalizedPath = KnowledgeFilePaths.normalize(path);
-        jdbcTemplate.update("delete from knowledge_files where path = ?", normalizedPath);
+        jdbcTemplate.update(
+                "delete from knowledge_files where application_id = ? and path = ?",
+                applicationId,
+                normalizedPath);
         deleteSkillManifest(normalizedPath);
     }
 
     @Override
     public List<SkillManifest> listManifests() {
-        return jdbcTemplate.query("select * from skill_manifests order by skill_key asc", skillManifestMapper);
+        return jdbcTemplate.query(
+                "select * from skill_manifests where application_id = ? order by skill_key asc",
+                skillManifestMapper,
+                applicationId);
     }
 
     private void ensureDirectories(String path) {
@@ -116,7 +129,8 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         if (exists) {
             jdbcTemplate.update(
                     "update knowledge_files set parent_path = ?, name = ?, node_type = ?, content = ?, "
-                            + "content_type = ?, size = ?, content_hash = ?, updated_at = ? where path = ?",
+                            + "content_type = ?, size = ?, content_hash = ?, updated_at = ? "
+                            + "where application_id = ? and path = ?",
                     KnowledgeFilePaths.parent(path),
                     KnowledgeFilePaths.fileName(path),
                     nodeType,
@@ -125,12 +139,14 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
                     bytes.length,
                     sha256(bytes),
                     JdbcTimeCodec.encode(now),
+                    applicationId,
                     path);
         } else {
             jdbcTemplate.update(
                     "insert into knowledge_files "
-                            + "(path, parent_path, name, node_type, content, content_type, size, content_hash, created_at, updated_at) "
-                            + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "(application_id, path, parent_path, name, node_type, content, content_type, size, content_hash, created_at, updated_at) "
+                            + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    applicationId,
                     path,
                     KnowledgeFilePaths.parent(path),
                     KnowledgeFilePaths.fileName(path),
@@ -159,18 +175,20 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         if (exists) {
             jdbcTemplate.update(
                     "update skill_manifests set skill_dir_path = ?, skill_file_path = ?, name = ?, "
-                            + "description = ?, updated_at = ? where skill_key = ?",
+                            + "description = ?, updated_at = ? where application_id = ? and skill_key = ?",
                     skillDirPath,
                     skillFilePath,
                     descriptor.getName(),
                     descriptor.getDescription(),
                     JdbcTimeCodec.encode(now),
+                    applicationId,
                     skillKey);
         } else {
             jdbcTemplate.update(
                     "insert into skill_manifests "
-                            + "(skill_key, skill_dir_path, skill_file_path, name, description, created_at, updated_at) "
-                            + "values (?, ?, ?, ?, ?, ?, ?)",
+                            + "(application_id, skill_key, skill_dir_path, skill_file_path, name, description, created_at, updated_at) "
+                            + "values (?, ?, ?, ?, ?, ?, ?, ?)",
+                    applicationId,
                     skillKey,
                     skillDirPath,
                     skillFilePath,
@@ -183,14 +201,18 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
 
     private void deleteSkillManifest(String skillFilePath) {
         if (KnowledgeFilePaths.isSkillManifestFile(skillFilePath)) {
-            jdbcTemplate.update("delete from skill_manifests where skill_file_path = ?", skillFilePath);
+            jdbcTemplate.update(
+                    "delete from skill_manifests where application_id = ? and skill_file_path = ?",
+                    applicationId,
+                    skillFilePath);
         }
     }
 
     private boolean exists(String table, String column, String value) {
         Integer count = jdbcTemplate.queryForObject(
-                "select count(*) from " + table + " where " + column + " = ?",
+                "select count(*) from " + table + " where application_id = ? and " + column + " = ?",
                 Integer.class,
+                applicationId,
                 value);
         return count != null && count.intValue() > 0;
     }

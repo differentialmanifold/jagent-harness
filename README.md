@@ -34,7 +34,7 @@ JAgentHarness/
     jagent-store-jdbc/            JDBC session and timeline store
   examples/
     coding-tool-app/              Spring Boot coding-agent example backend
-    order-system-agent/           Business-system embedding example
+    business-system-agent-demo/   Business-system SDK embedding example
   frontend/                       Vue example UI for coding-tool-app
   plan/                           Design notes
 ```
@@ -130,6 +130,7 @@ Add the modules your application needs:
 This dependency set does not expose any HTTP API. It is for applications that call the agent from their own Java services.
 The Spring Boot starter includes the default OpenAI-compatible provider; add a custom `ModelProvider` bean for another provider.
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
+When multiple host applications share one database, set a distinct `harness.store.jdbc.application-id` for each application so sessions, messages, prompt files, skills, approvals, and stop requests stay isolated.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
 The schema includes the virtual knowledge filesystem, skill manifest, and active
 agent run tables. Multi-instance deployments must point every instance at the same database;

@@ -16,19 +16,24 @@ public class JdbcMessageRepository implements MessageRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final String applicationId;
 
-    public JdbcMessageRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public JdbcMessageRepository(JdbcTemplate jdbcTemplate,
+                                 ObjectMapper objectMapper,
+                                 JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.applicationId = properties.requireApplicationId();
     }
 
     @Override
     public void append(AgentMessage message) {
         jdbcTemplate.update("insert into messages "
-                        + "(message_id, session_id, turn_id, parent_message_id, role, content, "
+                        + "(application_id, message_id, session_id, turn_id, parent_message_id, role, content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
                         + "stop_reason, metadata_json, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                applicationId,
                 message.getMessageId(),
                 message.getSessionId(),
                 message.getTurnId(),
@@ -46,9 +51,10 @@ public class JdbcMessageRepository implements MessageRepository {
     @Override
     public List<AgentMessage> findBySessionId(String sessionId) {
         return jdbcTemplate.query(
-                "select * from messages where session_id = ? "
+                "select * from messages where application_id = ? and session_id = ? "
                         + "order by id asc, created_at asc",
                 mapper(),
+                applicationId,
                 sessionId);
     }
 
