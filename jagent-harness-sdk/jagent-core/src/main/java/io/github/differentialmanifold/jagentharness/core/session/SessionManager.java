@@ -6,6 +6,10 @@ public interface SessionManager {
 
     SessionRecord createSession(String title, String workspacePath);
 
+    default SessionRecord createSession(String title, String workspacePath, String projectName) {
+        return createSession(title, workspacePath);
+    }
+
     SessionRecord requireSession(String sessionId);
 
     List<SessionRecord> listSessions();

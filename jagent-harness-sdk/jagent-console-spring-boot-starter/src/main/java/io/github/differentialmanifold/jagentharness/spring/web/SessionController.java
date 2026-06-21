@@ -32,7 +32,8 @@ public class SessionController {
         String title = request == null ? null : request.getTitle();
         String workspacePath = request == null ? null : request.getWorkspacePath();
         String normalizedWorkspacePath = workspaceRootResolver.normalizeWorkspacePath(workspacePath);
-        return sessionManager.createSession(title, normalizedWorkspacePath);
+        String projectName = request == null ? null : request.getProjectName();
+        return sessionManager.createSession(title, normalizedWorkspacePath, projectName);
     }
 
     @GetMapping
@@ -68,4 +69,5 @@ public class SessionController {
         }
         return sessionId.trim();
     }
+
 }

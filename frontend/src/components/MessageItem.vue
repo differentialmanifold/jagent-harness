@@ -18,12 +18,29 @@
           Stopped by user
         </el-tag>
       </div>
-      <div v-if="message.thinking && !message.content" class="assistant-thinking" aria-live="polite">
+      <div
+        v-if="message.thinking && !message.content && !message.reasoningContent"
+        class="assistant-thinking"
+        aria-live="polite"
+      >
         <el-icon class="is-loading"><Loading /></el-icon>
         <span>Thinking</span>
         <span class="activity-dots" aria-hidden="true"><i></i><i></i><i></i></span>
       </div>
+      <div v-if="message.reasoningContent" class="message-reasoning">
+        <div class="message-reasoning-label">Reasoning</div>
+        <pre><span>{{ message.reasoningContent }}</span><span
+          v-if="message.streaming && !message.content"
+          class="stream-cursor"
+          aria-hidden="true"
+        ></span></pre>
+      </div>
       <pre v-else-if="message.content"><span>{{ message.content }}</span><span
+        v-if="message.streaming"
+        class="stream-cursor"
+        aria-hidden="true"
+      ></span></pre>
+      <pre v-if="message.reasoningContent && message.content"><span>{{ message.content }}</span><span
         v-if="message.streaming"
         class="stream-cursor"
         aria-hidden="true"

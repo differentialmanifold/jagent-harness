@@ -1,14 +1,23 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-const apiTarget = process.env.JAGENT_API_TARGET || 'http://localhost:18080'
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiTarget = env.JAGENT_API_TARGET || 'http://localhost:18080'
 
-export default defineConfig({
-  plugins: [vue()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': apiTarget
+  return {
+    plugins: [vue()],
+    server: {
+      port: 5173,
+      proxy: {
+        '/api': apiTarget
+      }
+    },
+    preview: {
+      port: 4173,
+      proxy: {
+        '/api': apiTarget
+      }
     }
   }
 })

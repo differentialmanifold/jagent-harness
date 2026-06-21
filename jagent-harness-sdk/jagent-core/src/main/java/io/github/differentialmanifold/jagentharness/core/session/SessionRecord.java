@@ -9,6 +9,7 @@ public class SessionRecord {
 
     private String sessionId;
     private String title;
+    private String projectName;
     private String workspacePath;
     private String status;
     private String metadataJson;
@@ -29,6 +30,14 @@ public class SessionRecord {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getProjectName() {
+        return projectName;
+    }
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
     }
 
     public String getWorkspacePath() {

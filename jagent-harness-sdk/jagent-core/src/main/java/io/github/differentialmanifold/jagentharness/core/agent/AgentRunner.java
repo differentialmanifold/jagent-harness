@@ -23,6 +23,7 @@ import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
@@ -99,6 +100,7 @@ public class AgentRunner implements AgentHarness {
         String answer = "";
         int iterations = 0;
         StringBuilder partialAnswer = new StringBuilder();
+        StringBuilder partialReasoning = new StringBuilder();
         StopSignal stopSignal = effectiveOptions.getStopSignal();
 
         try {
@@ -106,6 +108,7 @@ public class AgentRunner implements AgentHarness {
                 stopSignal.throwIfAborted();
                 iterations++;
                 partialAnswer.setLength(0);
+                partialReasoning.setLength(0);
                 publish(sessionId, turnId, AgentEvent.MESSAGE_START,
                         singleton("iteration", iterations));
 
@@ -130,16 +133,30 @@ public class AgentRunner implements AgentHarness {
                 request.setMessages(conversationContext.getMessages());
                 request.setTools(tools);
 
-                final int[] deltaIndex = new int[]{0};
+                final int[] contentDeltaIndex = new int[]{0};
+                final int[] reasoningDeltaIndex = new int[]{0};
                 ModelResponse response = provider.chat(
                         request,
-                        delta -> {
-                            partialAnswer.append(delta);
-                            publishAssistantTextUpdate(
-                                    sessionId,
-                                    turnId,
-                                    delta,
-                                    deltaIndex[0]++);
+                        new ModelDeltaConsumer() {
+                            @Override
+                            public void onContentDelta(String delta) {
+                                partialAnswer.append(delta);
+                                publishAssistantTextUpdate(
+                                        sessionId,
+                                        turnId,
+                                        delta,
+                                        contentDeltaIndex[0]++);
+                            }
+
+                            @Override
+                            public void onReasoningDelta(String delta) {
+                                partialReasoning.append(delta);
+                                publishAssistantReasoningUpdate(
+                                        sessionId,
+                                        turnId,
+                                        delta,
+                                        reasoningDeltaIndex[0]++);
+                            }
                         },
                         stopSignal);
                 stopSignal.throwIfAborted();
@@ -147,12 +164,13 @@ public class AgentRunner implements AgentHarness {
                         sessionId,
                         response.getContent(),
                         response.getToolCalls());
+                assistantMessage.setReasoningContent(response.getReasoningContent());
                 assistantMessage.setTurnId(turnId);
                 assistantMessage.setParentMessageId(parentMessageId);
-                assistantMessage.setMetadataJson(response.getRawJson());
                 sessionStore.appendMessage(assistantMessage);
                 parentMessageId = assistantMessage.getMessageId();
                 partialAnswer.setLength(0);
+                partialReasoning.setLength(0);
                 publish(sessionId, turnId, AgentEvent.MESSAGE_END,
                         eventPayload("message", assistantMessage));
 
@@ -172,7 +190,8 @@ public class AgentRunner implements AgentHarness {
             AgentMessage stoppedMessage = appendStoppedAssistantMessage(
                     sessionId,
                     turnId,
-                    partialAnswer.toString());
+                    partialAnswer.toString(),
+                    partialReasoning.toString());
             publishStopped(sessionId, turnId, iterations, stoppedMessage.getMessageId());
             sessionStore.touch(sessionId);
             throw e;
@@ -181,7 +200,8 @@ public class AgentRunner implements AgentHarness {
                 AgentMessage stoppedMessage = appendStoppedAssistantMessage(
                         sessionId,
                         turnId,
-                        partialAnswer.toString());
+                        partialAnswer.toString(),
+                        partialReasoning.toString());
                 publishStopped(sessionId, turnId, iterations, stoppedMessage.getMessageId());
                 sessionStore.touch(sessionId);
                 throw new StopRequestedException(e);
@@ -347,11 +367,13 @@ public class AgentRunner implements AgentHarness {
 
     private AgentMessage appendStoppedAssistantMessage(String sessionId,
                                                        String turnId,
-                                                       String content) {
+                                                       String content,
+                                                       String reasoningContent) {
         AgentMessage message = AgentMessage.assistant(
                 sessionId,
                 content == null ? "" : content,
                 Collections.<ToolCall>emptyList());
+        message.setReasoningContent(reasoningContent == null ? "" : reasoningContent);
         message.setTurnId(turnId);
         message.setParentMessageId(lastMessageId(sessionStore.findMessages(sessionId)));
         message.setStopReason(AgentMessage.STOP_REASON_ABORTED);
@@ -429,6 +451,20 @@ public class AgentRunner implements AgentHarness {
         payload.put("delta", delta);
         payload.put("index", index);
         publish(sessionId, turnId, AgentEvent.MESSAGE_UPDATE, payload);
+    }
+
+    private void publishAssistantReasoningUpdate(String sessionId,
+                                                 String turnId,
+                                                 String delta,
+                                                 int index) {
+        if (delta == null || delta.isEmpty()) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("role", AgentMessage.ROLE_ASSISTANT);
+        payload.put("delta", delta);
+        payload.put("index", index);
+        publish(sessionId, turnId, AgentEvent.MESSAGE_REASONING_UPDATE, payload);
     }
 
     private AgentEvent publish(String sessionId,

@@ -66,7 +66,7 @@ In another terminal:
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev:coding
 ```
 
 Open `http://localhost:5173`.
@@ -75,7 +75,8 @@ The Vite dev server proxies `/api` to `http://localhost:18080`.
 
 ## 4. Create a Project
 
-In the UI, click `Add new project` and enter a directory path that the backend process can access.
+In the UI, click `Add new project`, enter a project name, and enter a workspace directory path that the backend process can access.
+The name defaults from the final segment of the workspace path, but you can edit it before creating the project.
 
 The example backend validates the path, creates a session, and runs file tools relative to that project directory.
 

@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "npm run dev:coding",
+    "dev:coding": "vite --host 0.0.0.0 --port 5173 --strictPort --mode coding",
+    "dev:business": "vite --host 0.0.0.0 --port 5174 --strictPort --mode business",
+    "build": "vite build --mode coding",
+    "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort --mode coding"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

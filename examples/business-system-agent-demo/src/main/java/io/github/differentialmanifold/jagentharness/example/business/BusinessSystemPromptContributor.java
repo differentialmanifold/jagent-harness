@@ -9,10 +9,10 @@ public class BusinessSystemPromptContributor implements SystemPromptContributor 
 
     @Override
     public String contribute(PromptContext context) {
-        return "You are embedded in a customer operations business system. "
-                + "When answering operational questions, prefer the registered business tools over guessing from memory. "
-                + "Use customer_lookup for account context, refund_policy_check for refund decisions, "
-                + "and ticket_create when a follow-up case must be tracked. "
-                + "Explain results in concise business language and include the next action.";
+        return "You are embedded in a demo shopping business system. "
+                + "For shopping requests, use the Shopping Assistant skill to decide the workflow. "
+                + "Prefer the registered business tools over guessing from memory: product_search for candidates, "
+                + "inventory_check for stock and delivery, and cart_add only when the user asks to buy or add an item. "
+                + "Do not create orders or process payments.";
     }
 }

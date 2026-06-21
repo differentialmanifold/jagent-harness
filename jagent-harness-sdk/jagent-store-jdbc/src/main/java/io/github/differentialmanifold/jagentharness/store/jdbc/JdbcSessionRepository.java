@@ -17,6 +17,7 @@ public class JdbcSessionRepository implements SessionRepository {
         SessionRecord session = new SessionRecord();
         session.setSessionId(rs.getString("session_id"));
         session.setTitle(rs.getString("title"));
+        session.setProjectName(rs.getString("project_name"));
         session.setWorkspacePath(rs.getString("workspace_path"));
         session.setStatus(rs.getString("status"));
         session.setMetadataJson(rs.getString("metadata_json"));
@@ -32,21 +33,28 @@ public class JdbcSessionRepository implements SessionRepository {
 
     @Override
     public SessionRecord create(String title, String workspacePath) {
+        return create(title, workspacePath, null);
+    }
+
+    @Override
+    public SessionRecord create(String title, String workspacePath, String projectName) {
         Instant now = Instant.now();
         SessionRecord session = new SessionRecord();
         session.setSessionId(Ids.newId("ses"));
         session.setTitle(title == null || title.trim().isEmpty() ? "New Session" : title.trim());
+        session.setProjectName(projectName == null || projectName.trim().isEmpty() ? null : projectName.trim());
         session.setWorkspacePath(workspacePath);
         session.setStatus(SessionRecord.STATUS_ACTIVE);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
         jdbcTemplate.update("insert into sessions "
-                        + "(application_id, session_id, title, workspace_path, status, metadata_json, "
+                        + "(application_id, session_id, title, project_name, workspace_path, status, metadata_json, "
                         + "created_at, updated_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 session.getSessionId(),
                 session.getTitle(),
+                session.getProjectName(),
                 session.getWorkspacePath(),
                 session.getStatus(),
                 session.getMetadataJson(),

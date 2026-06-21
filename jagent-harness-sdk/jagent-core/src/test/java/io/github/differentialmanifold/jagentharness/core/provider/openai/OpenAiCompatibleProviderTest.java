@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.github.differentialmanifold.jagentharness.core.agent.MutableStopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import org.junit.jupiter.api.Test;
@@ -61,6 +62,55 @@ class OpenAiCompatibleProviderTest {
             assertEquals("hello", response.getContent());
             assertEquals(Collections.singletonList("hello"), deltas);
             assertTrue(requestBody.get().contains("\"stream\":false"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void streamingResponseCapturesReasoningContentAndEmitsReasoningDeltas() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            readAll(exchange.getRequestBody());
+            byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think \"}}]}\n\n"
+                    + "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"
+                    + "data: [DONE]\n\n")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, response.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+                outputStream.write(response);
+            }
+        });
+        server.start();
+        try {
+            OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
+            config.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            config.setStreamEnabled(true);
+
+            OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper());
+            ModelRequest request = new ModelRequest();
+            request.setModel("test-model");
+            request.setMessages(Collections.emptyList());
+            List<String> reasoningDeltas = new ArrayList<String>();
+            List<String> contentDeltas = new ArrayList<String>();
+
+            ModelResponse response = provider.chat(request, new ModelDeltaConsumer() {
+                @Override
+                public void onContentDelta(String delta) {
+                    contentDeltas.add(delta);
+                }
+
+                @Override
+                public void onReasoningDelta(String delta) {
+                    reasoningDeltas.add(delta);
+                }
+            });
+
+            assertEquals("think ", response.getReasoningContent());
+            assertEquals("answer", response.getContent());
+            assertEquals(Collections.singletonList("think "), reasoningDeltas);
+            assertEquals(Collections.singletonList("answer"), contentDeltas);
         } finally {
             server.stop(0);
         }

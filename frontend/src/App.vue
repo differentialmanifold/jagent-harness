@@ -71,10 +71,12 @@
     </div>
 
     <ProjectDialog
-      v-model="projectPathDraft"
+      v-model:project-name="projectNameDraft"
+      v-model:workspace-path="projectWorkspaceDraft"
       :open="projectDialogOpen"
       :submitting="projectSubmitting"
       :error="projectError"
+      :workspace-enabled="workspaceProjectsEnabled"
       @submit="submitProjectDialog"
       @close="closeProjectDialog"
     />
@@ -112,7 +114,8 @@ const {
   agentContext,
   provider,
   draft,
-  projectPathDraft,
+  projectNameDraft,
+  projectWorkspaceDraft,
   projectError,
   renameTitleDraft,
   renameError,
@@ -126,6 +129,7 @@ const {
   renameSubmitting,
   providerLabel,
   statusText,
+  workspaceProjectsEnabled,
   currentProjectKey,
   renameDialogTitle,
   renameDialogLabel,

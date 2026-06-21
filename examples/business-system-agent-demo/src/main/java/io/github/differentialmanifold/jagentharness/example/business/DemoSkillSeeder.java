@@ -1,81 +1,52 @@
 package io.github.differentialmanifold.jagentharness.example.business;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.stream.Stream;
 
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StreamUtils;
 
 @Component
 public class DemoSkillSeeder implements ApplicationRunner {
 
-    private final KnowledgeFileStore knowledgeFileStore;
-    private final BusinessSystemDemoProperties properties;
+    private static final String RESOURCE_ROOT = "business-demo/";
+    private static final String[] SKILL_PATHS = {
+            "skills/shopping-assistant/SKILL.md",
+            "skills/shopping-assistant/recommendation-rules.md"
+    };
 
-    public DemoSkillSeeder(KnowledgeFileStore knowledgeFileStore,
-                           BusinessSystemDemoProperties properties) {
+    private final KnowledgeFileStore knowledgeFileStore;
+
+    public DemoSkillSeeder(KnowledgeFileStore knowledgeFileStore) {
         this.knowledgeFileStore = knowledgeFileStore;
-        this.properties = properties;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        Path skillsRoot = resolveSkillsRoot();
-        if (!Files.isDirectory(skillsRoot)) {
-            throw new IllegalStateException("Business demo skills directory not found: " + skillsRoot);
-        }
-
-        for (Path path : regularFiles(skillsRoot)) {
-            String logicalPath = "skills/" + toUnixPath(skillsRoot.relativize(path));
-            knowledgeFileStore.writeFile(logicalPath, read(path), contentType(path));
+        for (String path : SKILL_PATHS) {
+            Resource resource = new ClassPathResource(RESOURCE_ROOT + path);
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new IllegalStateException("Business demo skill resource not found: classpath:" + RESOURCE_ROOT + path);
+            }
+            knowledgeFileStore.writeFile(path, read(resource), contentType(path));
         }
     }
 
-    private Path resolveSkillsRoot() {
-        Path configured = PathsSupport.expandUserHome(properties.getSkillsSource());
-        if (Files.isDirectory(configured)) {
-            return configured;
-        }
-        Path moduleLocal = PathsSupport.expandUserHome("skills");
-        if (Files.isDirectory(moduleLocal)) {
-            return moduleLocal;
-        }
-        return configured;
-    }
-
-    private List<Path> regularFiles(Path root) {
-        try (Stream<Path> stream = Files.walk(root)) {
-            List<Path> files = new ArrayList<Path>();
-            stream.filter(Files::isRegularFile).forEach(files::add);
-            Collections.sort(files);
-            return files;
+    private String read(Resource resource) {
+        try (InputStream input = resource.getInputStream()) {
+            return StreamUtils.copyToString(input, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to scan business demo skills under " + root, e);
+            throw new IllegalStateException("Failed to read business demo skill resource " + resource.getDescription(), e);
         }
     }
 
-    private String read(Path path) {
-        try {
-            return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read business demo skill file " + path, e);
-        }
-    }
-
-    private String contentType(Path path) {
-        return path.getFileName().toString().endsWith(".md") ? "text/markdown" : "text/plain";
-    }
-
-    private String toUnixPath(Path path) {
-        return path.toString().replace('\\', '/');
+    private String contentType(String path) {
+        return path.endsWith(".md") ? "text/markdown" : "text/plain";
     }
 }

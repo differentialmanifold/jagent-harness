@@ -3,6 +3,7 @@ create table if not exists sessions (
     application_id varchar(128) not null,
     session_id varchar(64) not null,
     title varchar(512),
+    project_name varchar(512),
     workspace_path varchar(1024),
     status varchar(32) not null,
     metadata_json text,
@@ -12,6 +13,8 @@ create table if not exists sessions (
 
 create unique index if not exists ux_sessions_application_session
     on sessions (application_id, session_id);
+create index if not exists ix_sessions_application_project_name
+    on sessions (application_id, project_name);
 
 create table if not exists compaction_states (
     id integer primary key autoincrement,
@@ -36,11 +39,11 @@ create table if not exists messages (
     parent_message_id varchar(64),
     role varchar(32) not null,
     content text,
+    reasoning_content text,
     tool_call_id varchar(128),
     tool_name varchar(128),
     tool_calls_json text,
     stop_reason varchar(32),
-    metadata_json text,
     created_at varchar(64) not null
 );
 

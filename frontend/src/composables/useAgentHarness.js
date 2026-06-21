@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { request } from '../api/http'
 import { loadJson, saveJson } from '../utils/storage'
-import { projectName, projectPathLabel, workspaceKey } from '../utils/workspace'
+import { projectName, projectPathLabel } from '../utils/workspace'
 
 const ignoredCoreEvents = new Set([
   'agent_start',
@@ -9,7 +9,11 @@ const ignoredCoreEvents = new Set([
   'turn_end'
 ])
 
+const DEFAULT_PROJECT_NAME = 'Default Project'
+
 export function useAgentHarness() {
+  const consoleTarget = import.meta.env.VITE_JAGENT_CONSOLE_TARGET === 'business' ? 'business' : 'coding'
+  const workspaceProjectsEnabled = consoleTarget === 'coding'
   const sessions = ref([])
   const currentSession = ref(null)
   const messages = ref([])
@@ -23,7 +27,8 @@ export function useAgentHarness() {
   })
   const provider = ref(null)
   const draft = ref('')
-  const projectPathDraft = ref('')
+  const projectNameDraft = ref('')
+  const projectWorkspaceDraft = ref('')
   const projectError = ref('')
   const renameTitleDraft = ref('')
   const renameError = ref('')
@@ -70,24 +75,26 @@ export function useAgentHarness() {
       : running.value
         ? 'Agent loop is streaming events'
         : `${messages.value.length} messages`
-    return `${prefix} | ${projectPathLabel(currentSession.value.workspacePath)}`
+    return `${prefix} | ${currentProjectLabel(currentSession.value.workspacePath)}`
   })
 
-  const currentProjectKey = computed(() => currentSession.value ? workspaceKey(currentSession.value.workspacePath) : '')
+  const currentProjectKey = computed(() => currentSession.value ? projectKey(sessionProjectName(currentSession.value)) : '')
   const renameDialogTitle = computed(() => renameTargetType.value === 'project' ? 'Rename project' : 'Rename chat')
   const renameDialogLabel = computed(() => renameTargetType.value === 'project' ? 'Project name' : 'Chat title')
 
   const projectGroups = computed(() => {
     const groups = new Map()
     for (const session of sessions.value) {
-      const key = workspaceKey(session.workspacePath)
+      const sessionProjectNameValue = sessionProjectName(session)
+      const key = projectKey(sessionProjectNameValue)
       if (hiddenProjectKeys.value.includes(key)) continue
       if (!groups.has(key)) {
         groups.set(key, {
           key,
+          projectName: sessionProjectNameValue,
           workspacePath: session.workspacePath || '',
-          name: projectAliases.value[key] || projectName(session.workspacePath),
-          pathLabel: projectPathLabel(session.workspacePath),
+          name: projectAliases.value[key] || sessionProjectNameValue,
+          pathLabel: session.workspacePath ? projectPathLabel(session.workspacePath) : 'No workspace',
           sessions: []
         })
       }
@@ -136,15 +143,29 @@ export function useAgentHarness() {
     sessions.value = await request('/api/sessions')
   }
 
-  async function createSession(workspacePath = null) {
-    const targetWorkspace = workspacePath || (currentSession.value && currentSession.value.workspacePath) || ''
+  async function createSession(project = null) {
+    const targetProjectName = normalizeProjectName(
+      project && project.projectName
+        ? project.projectName
+        : currentSession.value
+          ? sessionProjectName(currentSession.value)
+          : DEFAULT_PROJECT_NAME)
+    const targetWorkspace = workspaceProjectsEnabled
+      ? project && project.workspacePath
+        ? project.workspacePath
+        : currentSession.value && currentSession.value.workspacePath
+          ? currentSession.value.workspacePath
+          : ''
+      : ''
     projectError.value = ''
-    showProject(workspaceKey(targetWorkspace))
+    showProject(projectKey(targetProjectName))
+    const title = `New Chat - ${projectAliases.value[projectKey(targetProjectName)] || targetProjectName}`
     const session = await request('/api/sessions', {
       method: 'POST',
       body: JSON.stringify({
-        title: `New Chat - ${projectAliases.value[workspaceKey(targetWorkspace)] || projectName(targetWorkspace)}`,
-        workspacePath: targetWorkspace
+        title,
+        workspacePath: targetWorkspace,
+        projectName: targetProjectName
       })
     })
     await loadSessions()
@@ -166,9 +187,10 @@ export function useAgentHarness() {
     await loadSessions()
   }
 
-  function openProjectDialog() {
+  async function openProjectDialog() {
     projectError.value = ''
-    projectPathDraft.value = ''
+    projectNameDraft.value = ''
+    projectWorkspaceDraft.value = ''
     projectDialogOpen.value = true
   }
 
@@ -179,14 +201,19 @@ export function useAgentHarness() {
   }
 
   async function submitProjectDialog() {
-    const workspacePath = projectPathDraft.value.trim()
-    if (!workspacePath) return
+    const projectName = normalizeProjectName(projectNameDraft.value)
+    const workspacePath = projectWorkspaceDraft.value.trim()
+    if (!projectName || (workspaceProjectsEnabled && !workspacePath)) return
     projectError.value = ''
     projectSubmitting.value = true
     try {
-      await createSession(workspacePath)
+      await createSession({
+        projectName,
+        workspacePath: workspaceProjectsEnabled ? workspacePath : ''
+      })
       projectDialogOpen.value = false
-      projectPathDraft.value = ''
+      projectNameDraft.value = ''
+      projectWorkspaceDraft.value = ''
     } catch (error) {
       projectError.value = error.message
     } finally {
@@ -195,7 +222,7 @@ export function useAgentHarness() {
   }
 
   async function createSessionFromProject(project) {
-    await createSession(project.workspacePath)
+    await createSession(project)
   }
 
   async function removeProject(project) {
@@ -440,6 +467,10 @@ export function useAgentHarness() {
       if (!options.replay) {
         appendStreamingText(event, payload)
       }
+    } else if (type === 'message_reasoning_update') {
+      if (!options.replay) {
+        appendStreamingReasoning(event, payload)
+      }
     } else if (type === 'message_end') {
       mergeMessage(payload.message)
     } else if (type === 'tool_execution_start') {
@@ -510,6 +541,20 @@ export function useAgentHarness() {
     }
   }
 
+  function appendStreamingReasoning(event, payload) {
+    if (!activeStreamId) {
+      activeStreamId = `stream:${event.turnId}:active`
+    }
+    ensureStreamingMessage(event)
+    const delta = payload.delta || ''
+    if (!delta) return
+    const message = messages.value.find((item) => item.messageId === activeStreamId)
+    if (message) {
+      message.reasoningContent = `${message.reasoningContent || ''}${delta}`
+      message.thinking = false
+    }
+  }
+
   function startThinkingMessage(event, payload) {
     clearEmptyThinkingMessage()
     activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
@@ -518,6 +563,7 @@ export function useAgentHarness() {
       sessionId: event.sessionId,
       role: 'assistant',
       content: '',
+      reasoningContent: '',
       streaming: true,
       thinking: true,
       startedAt: Date.now()
@@ -532,6 +578,7 @@ export function useAgentHarness() {
         sessionId: event.sessionId,
         role: 'assistant',
         content: '',
+        reasoningContent: '',
         streaming: true,
         thinking: true,
         startedAt: Date.now()
@@ -570,7 +617,9 @@ export function useAgentHarness() {
   function clearEmptyThinkingMessage() {
     if (!activeStreamId) return
     const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
-    if (index >= 0 && !messages.value[index].content) {
+    if (index >= 0
+        && !messages.value[index].content
+        && !messages.value[index].reasoningContent) {
       messages.value.splice(index, 1)
     }
     activeStreamId = null
@@ -770,11 +819,36 @@ export function useAgentHarness() {
 
   function firstVisibleSession() {
     for (const session of sessions.value) {
-      if (!hiddenProjectKeys.value.includes(workspaceKey(session.workspacePath))) {
+      if (!hiddenProjectKeys.value.includes(projectKey(sessionProjectName(session)))) {
         return session
       }
     }
     return null
+  }
+
+  function currentProjectLabel(workspacePath) {
+    return currentSession.value ? projectAliases.value[currentProjectKey.value] || sessionProjectName(currentSession.value) : projectPathLabel(workspacePath)
+  }
+
+  function sessionProjectName(session) {
+    if (!session) {
+      return DEFAULT_PROJECT_NAME
+    }
+    if (session.projectName && String(session.projectName).trim()) {
+      return normalizeProjectName(session.projectName)
+    }
+    if (session.workspacePath) {
+      return normalizeProjectName(projectName(session.workspacePath))
+    }
+    return DEFAULT_PROJECT_NAME
+  }
+
+  function normalizeProjectName(name) {
+    return String(name || '').replace(/\s+/g, ' ').trim()
+  }
+
+  function projectKey(name) {
+    return normalizeProjectName(name).toLowerCase() || '__default__'
   }
 
   function hideProject(key) {
@@ -843,7 +917,8 @@ export function useAgentHarness() {
     agentContext,
     provider,
     draft,
-    projectPathDraft,
+    projectNameDraft,
+    projectWorkspaceDraft,
     projectError,
     renameTitleDraft,
     renameError,
@@ -857,6 +932,7 @@ export function useAgentHarness() {
     renameSubmitting,
     providerLabel,
     statusText,
+    workspaceProjectsEnabled,
     currentProjectKey,
     renameDialogTitle,
     renameDialogLabel,
