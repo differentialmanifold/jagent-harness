@@ -18,12 +18,34 @@ public interface ModelProvider {
         return response;
     }
 
+    default ModelResponse chat(ModelRequest request, ModelDeltaConsumer deltaConsumer) {
+        Consumer<String> contentDeltaConsumer = deltaConsumer == null ? null : deltaConsumer::onContentDelta;
+        ModelResponse response = chat(request, contentDeltaConsumer);
+        if (deltaConsumer != null
+                && response != null
+                && response.getReasoningContent() != null
+                && !response.getReasoningContent().isEmpty()) {
+            deltaConsumer.onReasoningDelta(response.getReasoningContent());
+        }
+        return response;
+    }
+
     default ModelResponse chat(ModelRequest request,
                                Consumer<String> contentDeltaConsumer,
                                StopSignal stopSignal) {
         StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         effectiveSignal.throwIfAborted();
         ModelResponse response = chat(request, contentDeltaConsumer);
+        effectiveSignal.throwIfAborted();
+        return response;
+    }
+
+    default ModelResponse chat(ModelRequest request,
+                               ModelDeltaConsumer deltaConsumer,
+                               StopSignal stopSignal) {
+        StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
+        effectiveSignal.throwIfAborted();
+        ModelResponse response = chat(request, deltaConsumer);
         effectiveSignal.throwIfAborted();
         return response;
     }

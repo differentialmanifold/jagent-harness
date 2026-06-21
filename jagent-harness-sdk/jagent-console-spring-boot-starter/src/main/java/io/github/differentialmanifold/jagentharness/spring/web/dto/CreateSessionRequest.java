@@ -4,6 +4,7 @@ public class CreateSessionRequest {
 
     private String title;
     private String workspacePath;
+    private String projectName;
 
     public String getTitle() {
         return title;
@@ -19,5 +20,13 @@ public class CreateSessionRequest {
 
     public void setWorkspacePath(String workspacePath) {
         this.workspacePath = workspacePath;
+    }
+
+    public String getProjectName() {
+        return projectName;
+    }
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
     }
 }

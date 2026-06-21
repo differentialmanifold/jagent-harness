@@ -15,6 +15,7 @@ import io.github.differentialmanifold.jagentharness.core.conversation.Conversati
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
@@ -55,6 +56,28 @@ class AgentRunnerStopTest {
         assertEquals("partial answer", store.messages.get(1).getContent());
         assertEquals(AgentMessage.STOP_REASON_ABORTED, store.messages.get(1).getStopReason());
         assertStoppedEvent(events, store.messages.get(1), objectMapper);
+    }
+
+    @Test
+    void publishesReasoningUpdatesAndPersistsReasoningContent() {
+        FakeSessionStore store = new FakeSessionStore();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(new ReasoningModelProvider());
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<AgentEvent> events = new ArrayList<AgentEvent>();
+
+        AgentRunner runner = createRunner(store, providers, objectMapper);
+        AgentRunResult result = runner.run(
+                "s1",
+                "reason about this",
+                AgentRunOptions.builder().eventConsumer(events::add).build());
+
+        AgentMessage assistantMessage = store.messages.get(store.messages.size() - 1);
+        assertEquals("final answer", result.getAnswer());
+        assertEquals("think first", assistantMessage.getReasoningContent());
+        assertEquals("final answer", assistantMessage.getContent());
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.MESSAGE_REASONING_UPDATE.equals(event.getType())));
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType())));
     }
 
     @Test
@@ -153,6 +176,32 @@ class AgentRunnerStopTest {
             control.requestStop();
             ModelResponse response = new ModelResponse();
             response.setContent("partial answer");
+            response.setToolCalls(Collections.<ToolCall>emptyList());
+            return response;
+        }
+    }
+
+    private static class ReasoningModelProvider implements ModelProvider {
+
+        @Override
+        public String getName() {
+            return "stopping";
+        }
+
+        @Override
+        public ModelResponse chat(ModelRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ModelResponse chat(ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
+            deltaConsumer.onReasoningDelta("think ");
+            deltaConsumer.onReasoningDelta("first");
+            deltaConsumer.onContentDelta("final ");
+            deltaConsumer.onContentDelta("answer");
+            ModelResponse response = new ModelResponse();
+            response.setReasoningContent("think first");
+            response.setContent("final answer");
             response.setToolCalls(Collections.<ToolCall>emptyList());
             return response;
         }

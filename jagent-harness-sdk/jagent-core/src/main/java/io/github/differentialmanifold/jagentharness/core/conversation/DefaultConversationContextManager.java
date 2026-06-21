@@ -175,7 +175,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 compactionUserPrompt(previousSummary, messagesToCompact))));
         request.setTools(Collections.<ToolDefinition>emptyList());
 
-        ModelResponse response = provider.chat(request, null, stopSignal);
+        ModelResponse response = provider.chat(request, (java.util.function.Consumer<String>) null, stopSignal);
         String summary = response == null ? null : response.getContent();
         if (summary == null || summary.trim().isEmpty()) {
             return previousSummary == null ? "" : previousSummary;

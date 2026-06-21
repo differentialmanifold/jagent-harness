@@ -18,7 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
-                "spring.datasource.url=jdbc:sqlite:target/context-application-id.db",
+                "spring.datasource.url=jdbc:sqlite:file:context-application-id-test?mode=memory&cache=shared",
                 "spring.datasource.driver-class-name=org.sqlite.JDBC"
         })
 class JAgentHarnessApplicationTest {

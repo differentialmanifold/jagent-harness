@@ -4,7 +4,7 @@ Embeddable Java agent harness SDK for server-side applications.
 
 JAgentHarness is designed to run inside an application process, not as a central service that hosts unrelated agents. The host application registers tools, skills, prompts, model providers, and storage providers, then calls the harness from normal Java or Spring Boot code.
 
-This repository also includes a coding-tool example with a Spring Boot backend and a Vue UI.
+This repository also includes coding and business-system examples with Spring Boot backends and a shared Vue console UI.
 
 ## Features
 
@@ -35,7 +35,9 @@ JAgentHarness/
   examples/
     coding-tool-app/              Spring Boot coding-agent example backend
     business-system-agent-demo/   Business-system SDK embedding example
-  frontend/                       Vue example UI for coding-tool-app
+    business-system-agent-console-demo/
+                                  Business-system example backend with Console API
+  frontend/                       Vue console UI for Console Spring Boot examples
   plan/                           Design notes
 ```
 
@@ -62,7 +64,7 @@ In another terminal:
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev:coding
 ```
 
 Open `http://localhost:5173`.

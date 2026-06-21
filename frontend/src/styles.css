@@ -412,6 +412,25 @@ textarea {
   line-height: 1.5;
 }
 
+.message-reasoning {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid #b7c4d6;
+  background: #f7f9fc;
+  color: #526070;
+}
+
+.message-reasoning-label {
+  margin-bottom: 6px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.message-reasoning pre {
+  color: #526070;
+}
+
 .assistant-thinking {
   display: flex;
   align-items: center;

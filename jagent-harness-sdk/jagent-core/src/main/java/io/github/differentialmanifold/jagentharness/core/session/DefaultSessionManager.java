@@ -22,7 +22,12 @@ public class DefaultSessionManager implements SessionManager {
 
     @Override
     public SessionRecord createSession(String title, String workspacePath) {
-        return sessionRepository.create(title, normalizeWorkspacePath(workspacePath));
+        return createSession(title, workspacePath, null);
+    }
+
+    @Override
+    public SessionRecord createSession(String title, String workspacePath, String projectName) {
+        return sessionRepository.create(title, normalizeWorkspacePath(workspacePath), normalizeProjectName(projectName));
     }
 
     @Override
@@ -69,6 +74,14 @@ public class DefaultSessionManager implements SessionManager {
             return null;
         }
         String trimmed = workspacePath.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeProjectName(String projectName) {
+        if (projectName == null) {
+            return null;
+        }
+        String trimmed = projectName.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
 }

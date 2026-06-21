@@ -1,7 +1,3 @@
-export function workspaceKey(workspacePath) {
-  return workspacePath || '__default__'
-}
-
 export function projectName(workspacePath) {
   if (!workspacePath) return 'Default Workspace'
   const normalized = workspacePath.replace(/[\\/]+$/, '')

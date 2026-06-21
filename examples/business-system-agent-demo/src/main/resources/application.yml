@@ -40,7 +40,3 @@ harness:
   prompt:
     config-root: ${JAGENT_CONFIG_ROOT:~/.jagent-harness}
     skills-dir: ${JAGENT_SKILLS_DIR:skills}
-
-business-demo:
-  workspace-path: ${BUSINESS_DEMO_WORKSPACE_PATH:examples/business-system-agent-demo}
-  skills-source: ${BUSINESS_DEMO_SKILLS_SOURCE:examples/business-system-agent-demo/skills}

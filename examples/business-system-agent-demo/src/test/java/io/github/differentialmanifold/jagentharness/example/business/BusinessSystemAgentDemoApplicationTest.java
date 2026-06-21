@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:sqlite:target/business-demo-context.db",
+        "spring.datasource.url=jdbc:sqlite:file:business-demo-test?mode=memory&cache=shared",
         "spring.datasource.driver-class-name=org.sqlite.JDBC",
         "spring.main.web-application-type=none",
         "harness.store.jdbc.application-id=business-system-agent-demo"
@@ -25,9 +25,9 @@ class BusinessSystemAgentDemoApplicationTest {
 
     @Test
     void seedsSourceSkillsIntoApplicationScopedDatabaseStore() {
-        assertNotNull(knowledgeFileStore.readFile("skills/customer-support/SKILL.md"));
-        assertNotNull(knowledgeFileStore.readFile("skills/customer-support/refund-guidelines.md"));
+        assertNotNull(knowledgeFileStore.readFile("skills/shopping-assistant/SKILL.md"));
+        assertNotNull(knowledgeFileStore.readFile("skills/shopping-assistant/recommendation-rules.md"));
         assertEquals(1, skillManifestStore.listManifests().size());
-        assertEquals("Customer Support Workflow", skillManifestStore.listManifests().get(0).getName());
+        assertEquals("Shopping Assistant", skillManifestStore.listManifests().get(0).getName());
     }
 }

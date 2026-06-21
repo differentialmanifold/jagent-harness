@@ -8,6 +8,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 public class ModelResponse {
 
     private String content;
+    private String reasoningContent;
     private List<ToolCall> toolCalls = new ArrayList<ToolCall>();
     private String rawJson;
 
@@ -17,6 +18,14 @@ public class ModelResponse {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getReasoningContent() {
+        return reasoningContent;
+    }
+
+    public void setReasoningContent(String reasoningContent) {
+        this.reasoningContent = reasoningContent;
     }
 
     public List<ToolCall> getToolCalls() {

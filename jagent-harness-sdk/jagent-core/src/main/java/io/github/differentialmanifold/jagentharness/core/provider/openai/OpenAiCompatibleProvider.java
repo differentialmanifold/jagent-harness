@@ -20,6 +20,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedExce
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
@@ -72,19 +73,36 @@ public class OpenAiCompatibleProvider implements ModelProvider {
 
     @Override
     public ModelResponse chat(ModelRequest request, Consumer<String> contentDeltaConsumer) {
-        return chat(request, contentDeltaConsumer, StopSignal.none());
+        return chat(request, ModelDeltaConsumer.contentOnly(contentDeltaConsumer), StopSignal.none());
     }
 
     @Override
     public ModelResponse chat(ModelRequest request,
                               Consumer<String> contentDeltaConsumer,
                               StopSignal stopSignal) {
+        return chat(request, ModelDeltaConsumer.contentOnly(contentDeltaConsumer), stopSignal);
+    }
+
+    @Override
+    public ModelResponse chat(ModelRequest request, ModelDeltaConsumer deltaConsumer) {
+        return chat(request, deltaConsumer, StopSignal.none());
+    }
+
+    @Override
+    public ModelResponse chat(ModelRequest request,
+                              ModelDeltaConsumer deltaConsumer,
+                              StopSignal stopSignal) {
         StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         effectiveSignal.throwIfAborted();
         if (!config.isStreamEnabled()) {
             ModelResponse response = chatNonStreaming(request, effectiveSignal);
-            if (contentDeltaConsumer != null && response.getContent() != null) {
-                contentDeltaConsumer.accept(response.getContent());
+            if (deltaConsumer != null) {
+                if (response.getReasoningContent() != null && !response.getReasoningContent().isEmpty()) {
+                    deltaConsumer.onReasoningDelta(response.getReasoningContent());
+                }
+                if (response.getContent() != null && !response.getContent().isEmpty()) {
+                    deltaConsumer.onContentDelta(response.getContent());
+                }
             }
             effectiveSignal.throwIfAborted();
             return response;
@@ -93,7 +111,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         try {
             return postStream(
                     objectMapper.writeValueAsString(payload),
-                    contentDeltaConsumer,
+                    deltaConsumer,
                     effectiveSignal);
         } catch (IOException e) {
             if (effectiveSignal.isAborted()) {
@@ -110,11 +128,11 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private ModelResponse postStream(String body,
-                                     Consumer<String> contentDeltaConsumer,
+                                     ModelDeltaConsumer deltaConsumer,
                                      StopSignal stopSignal) throws IOException {
         return httpClient.postStream(
                 new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
-                inputStream -> parseStreamResponse(inputStream, contentDeltaConsumer),
+                inputStream -> parseStreamResponse(inputStream, deltaConsumer),
                 stopSignal);
     }
 
@@ -213,6 +231,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         if (!contentNode.isMissingNode() && !contentNode.isNull()) {
             response.setContent(contentNode.asText());
         }
+        JsonNode reasoningNode = message.path("reasoning_content");
+        if (!reasoningNode.isMissingNode() && !reasoningNode.isNull()) {
+            response.setReasoningContent(reasoningNode.asText());
+        }
         List<ToolCall> toolCalls = new ArrayList<ToolCall>();
         JsonNode toolCallsNode = message.path("tool_calls");
         if (toolCallsNode.isArray()) {
@@ -230,14 +252,14 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private ModelResponse parseStreamResponse(InputStream inputStream,
-                                              Consumer<String> contentDeltaConsumer) throws IOException {
+                                              ModelDeltaConsumer deltaConsumer) throws IOException {
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
         StreamAccumulator accumulator = new StreamAccumulator();
         StringBuilder data = new StringBuilder();
         String line;
         while ((line = reader.readLine()) != null) {
             if (line.trim().isEmpty()) {
-                consumeSseData(data, accumulator, contentDeltaConsumer);
+                consumeSseData(data, accumulator, deltaConsumer);
                 data.setLength(0);
             } else if (line.startsWith("data:")) {
                 if (data.length() > 0) {
@@ -246,13 +268,13 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 data.append(line.substring("data:".length()).trim());
             }
         }
-        consumeSseData(data, accumulator, contentDeltaConsumer);
+        consumeSseData(data, accumulator, deltaConsumer);
         return accumulator.toResponse(objectMapper);
     }
 
     private void consumeSseData(StringBuilder data,
                                 StreamAccumulator accumulator,
-                                Consumer<String> contentDeltaConsumer) throws IOException {
+                                ModelDeltaConsumer deltaConsumer) throws IOException {
         if (data.length() == 0) {
             return;
         }
@@ -264,12 +286,20 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         JsonNode root = objectMapper.readTree(value);
         JsonNode choice = root.path("choices").path(0);
         JsonNode delta = choice.path("delta");
+        JsonNode reasoningNode = delta.path("reasoning_content");
+        if (!reasoningNode.isMissingNode() && !reasoningNode.isNull()) {
+            String reasoningDelta = reasoningNode.asText();
+            accumulator.reasoningContent.append(reasoningDelta);
+            if (deltaConsumer != null && !reasoningDelta.isEmpty()) {
+                deltaConsumer.onReasoningDelta(reasoningDelta);
+            }
+        }
         JsonNode contentNode = delta.path("content");
         if (!contentNode.isMissingNode() && !contentNode.isNull()) {
             String contentDelta = contentNode.asText();
             accumulator.content.append(contentDelta);
-            if (contentDeltaConsumer != null && !contentDelta.isEmpty()) {
-                contentDeltaConsumer.accept(contentDelta);
+            if (deltaConsumer != null && !contentDelta.isEmpty()) {
+                deltaConsumer.onContentDelta(contentDelta);
             }
         }
 
@@ -330,12 +360,14 @@ public class OpenAiCompatibleProvider implements ModelProvider {
 
     private static class StreamAccumulator {
         private final StringBuilder content = new StringBuilder();
+        private final StringBuilder reasoningContent = new StringBuilder();
         private final Map<Integer, ToolCallAccumulator> toolCalls = new TreeMap<Integer, ToolCallAccumulator>();
         private final List<String> rawChunks = new ArrayList<String>();
 
         private ModelResponse toResponse(ObjectMapper objectMapper) {
             ModelResponse response = new ModelResponse();
             response.setContent(content.toString());
+            response.setReasoningContent(reasoningContent.toString());
             List<ToolCall> calls = new ArrayList<ToolCall>();
             for (Map.Entry<Integer, ToolCallAccumulator> entry : toolCalls.entrySet()) {
                 ToolCallAccumulator toolCall = entry.getValue();

@@ -30,8 +30,9 @@ public class JdbcMessageRepository implements MessageRepository {
     public void append(AgentMessage message) {
         jdbcTemplate.update("insert into messages "
                         + "(application_id, message_id, session_id, turn_id, parent_message_id, role, content, "
+                        + "reasoning_content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
-                        + "stop_reason, metadata_json, created_at) "
+                        + "stop_reason, created_at) "
                         + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 message.getMessageId(),
@@ -40,11 +41,11 @@ public class JdbcMessageRepository implements MessageRepository {
                 message.getParentMessageId(),
                 message.getRole(),
                 message.getContent(),
+                message.getReasoningContent(),
                 message.getToolCallId(),
                 message.getToolName(),
                 writeToolCalls(message.getToolCalls()),
                 message.getStopReason(),
-                message.getMetadataJson(),
                 JdbcTimeCodec.encode(message.getCreatedAt()));
     }
 
@@ -67,11 +68,11 @@ public class JdbcMessageRepository implements MessageRepository {
             message.setParentMessageId(rs.getString("parent_message_id"));
             message.setRole(rs.getString("role"));
             message.setContent(rs.getString("content"));
+            message.setReasoningContent(rs.getString("reasoning_content"));
             message.setToolCallId(rs.getString("tool_call_id"));
             message.setToolName(rs.getString("tool_name"));
             message.setToolCalls(readToolCalls(rs.getString("tool_calls_json")));
             message.setStopReason(rs.getString("stop_reason"));
-            message.setMetadataJson(rs.getString("metadata_json"));
             message.setCreatedAt(JdbcTimeCodec.decode(rs.getString("created_at")));
             return message;
         };

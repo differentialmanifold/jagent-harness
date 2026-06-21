@@ -1,0 +1,48 @@
+server:
+  port: ${SERVER_PORT:18082}
+
+spring:
+  application:
+    name: business-system-agent-console-demo
+  datasource:
+    url: ${JAGENT_DATASOURCE_URL:jdbc:sqlite:jagent-harness.db}
+    driver-class-name: ${JAGENT_DATASOURCE_DRIVER:org.sqlite.JDBC}
+    username: ${JAGENT_DATASOURCE_USERNAME:}
+    password: ${JAGENT_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${JAGENT_DATASOURCE_MAX_POOL_SIZE:5}
+
+harness:
+  store:
+    jdbc:
+      application-id: ${JAGENT_APPLICATION_ID:business-system-agent-console-demo}
+  approval:
+    jdbc:
+      poll-interval-millis: ${JAGENT_APPROVAL_POLL_INTERVAL_MS:1000}
+  stop:
+    jdbc:
+      poll-interval-millis: ${JAGENT_STOP_POLL_INTERVAL_MS:1000}
+      listener-threads: ${JAGENT_STOP_LISTENER_THREADS:2}
+  model:
+    provider: ${JAGENT_MODEL_PROVIDER:openai-compatible}
+    model: ${JAGENT_MODEL:glm-5.2}
+    base-url: ${JAGENT_OPENAI_BASE_URL:https://open.bigmodel.cn/api/coding/paas/v4}
+    api-key: ${JAGENT_OPENAI_API_KEY:}
+    temperature: ${JAGENT_TEMPERATURE:}
+    timeout-seconds: ${JAGENT_MODEL_TIMEOUT_SECONDS:120}
+    stream-enabled: ${JAGENT_MODEL_STREAM_ENABLED:true}
+  compaction:
+    enabled: ${JAGENT_COMPACTION_ENABLED:true}
+    context-window-tokens: ${JAGENT_CONTEXT_WINDOW_TOKENS:128000}
+    threshold-ratio: ${JAGENT_COMPACTION_THRESHOLD_RATIO:0.8}
+    recent-messages: ${JAGENT_COMPACTION_RECENT_MESSAGES:20}
+    target-tokens: ${JAGENT_COMPACTION_TARGET_TOKENS:4000}
+  prompt:
+    config-root: ${JAGENT_CONFIG_ROOT:~/.jagent-harness}
+    skills-dir: ${JAGENT_SKILLS_DIR:skills}
+  console:
+    allowed-origins:
+      - ${JAGENT_CORS_ORIGIN:http://localhost:5173}
+      - ${JAGENT_CORS_ORIGIN_127:http://127.0.0.1:5173}
+      - ${JAGENT_BUSINESS_CORS_ORIGIN:http://localhost:5174}
+      - ${JAGENT_BUSINESS_CORS_ORIGIN_127:http://127.0.0.1:5174}

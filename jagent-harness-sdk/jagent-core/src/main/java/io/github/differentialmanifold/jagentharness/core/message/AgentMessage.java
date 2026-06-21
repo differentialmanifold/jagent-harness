@@ -21,6 +21,7 @@ public class AgentMessage {
     private String parentMessageId;
     private String role;
     private String content;
+    private String reasoningContent;
     private String toolCallId;
     private String toolName;
     private List<ToolCall> toolCalls = new ArrayList<ToolCall>();
@@ -104,6 +105,14 @@ public class AgentMessage {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getReasoningContent() {
+        return reasoningContent;
+    }
+
+    public void setReasoningContent(String reasoningContent) {
+        this.reasoningContent = reasoningContent;
     }
 
     public String getToolCallId() {

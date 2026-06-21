@@ -102,6 +102,7 @@ const visibleMessages = computed(() => props.messages.filter((message) => {
     && Array.isArray(message.toolCalls)
     && message.toolCalls.length > 0
     && !String(message.content || '').trim()
+    && !String(message.reasoningContent || '').trim()
     && message.stopReason !== 'aborted'
   return !isToolOnlyAssistant
 }))
