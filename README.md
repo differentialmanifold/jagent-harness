@@ -56,7 +56,7 @@ Short version:
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.2.1.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.3.0.jar
 ```
 
 In another terminal:
@@ -106,7 +106,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.2.1</jagent-harness.version>
+    <jagent-harness.version>0.3.0</jagent-harness.version>
 </properties>
 
 <dependencies>

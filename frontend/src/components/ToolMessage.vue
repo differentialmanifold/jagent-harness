@@ -88,6 +88,10 @@
         <span>content</span>
         <pre>{{ toolTextContent(message) }}</pre>
       </div>
+      <div v-if="toolJsonContent(message)" class="tool-field">
+        <span>result</span>
+        <pre>{{ toolJsonContent(message) }}</pre>
+      </div>
 
       <ul v-if="toolResultItems(message).length > 0" class="tool-result-list">
         <li v-for="item in toolResultItems(message)" :key="item.key">
@@ -114,6 +118,7 @@ import {
   isEditDiffMessage,
   isFailedToolMessage,
   toolCommand,
+  toolJsonContent,
   toolMessageSubtitle,
   toolMessageTitle,
   toolRunningSubtitle,

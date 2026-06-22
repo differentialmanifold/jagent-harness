@@ -165,6 +165,29 @@ export function toolTextContent(message) {
   return result.content || ''
 }
 
+export function toolJsonContent(message) {
+  const result = toolResult(message)
+  if (!hasToolResultObject(result)) return ''
+  if (hasStructuredToolDetails(message, result)) return ''
+  return JSON.stringify(result, null, 2)
+}
+
+function hasToolResultObject(result) {
+  return result && Object.keys(result).length > 0
+}
+
+function hasStructuredToolDetails(message, result) {
+  return Boolean(
+    isEditDiffMessage(message)
+      || result.command
+      || result.stdout
+      || result.stderr
+      || result.content
+      || Array.isArray(result.matches)
+      || Array.isArray(result.entries)
+  )
+}
+
 export function toolResultItems(message) {
   const result = toolResult(message)
   const entries = Array.isArray(result.matches) ? result.matches : result.entries

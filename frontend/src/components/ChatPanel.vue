@@ -13,7 +13,7 @@
       </el-tag>
     </header>
 
-    <div class="messages" ref="messagesEl">
+    <div class="messages" ref="messagesEl" @scroll.passive="handleMessagesScroll">
       <MessageItem
         v-for="message in visibleMessages"
         :key="message.messageId"
@@ -94,8 +94,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:draft', 'update:approvalMode', 'send', 'stop', 'resolveToolApproval'])
+const AUTO_SCROLL_THRESHOLD_PX = 16
 const messagesEl = ref(null)
+const autoFollowMessages = ref(true)
 let scrollFrame = null
+let lastScrollTop = 0
 
 const visibleMessages = computed(() => props.messages.filter((message) => {
   const isToolOnlyAssistant = message.role === 'assistant'
@@ -113,8 +116,18 @@ watch(
   { deep: true }
 )
 
+watch(
+  () => props.currentSession && props.currentSession.sessionId,
+  () => {
+    autoFollowMessages.value = true
+    scrollMessagesToBottom({ force: true })
+  }
+)
+
 function submit() {
   if (!props.currentSession || props.running || !props.draft.trim()) return
+  autoFollowMessages.value = true
+  scrollMessagesToBottom({ force: true })
   emit('send')
 }
 
@@ -125,15 +138,41 @@ function handleKeydown(event) {
   submit()
 }
 
-function scrollMessagesToBottom() {
+function handleMessagesScroll() {
+  const el = messagesEl.value
+  if (!el) return
+  const scrollingUp = el.scrollTop < lastScrollTop - 2
+  lastScrollTop = el.scrollTop
+
+  if (scrollingUp && !isAtBottom(el)) {
+    autoFollowMessages.value = false
+    return
+  }
+  if (isAtBottom(el)) {
+    autoFollowMessages.value = true
+  }
+}
+
+function scrollMessagesToBottom(options = {}) {
+  if (!options.force && !autoFollowMessages.value) return
   if (scrollFrame) return
   scrollFrame = window.requestAnimationFrame(async () => {
     scrollFrame = null
     await nextTick()
     const el = messagesEl.value
-    if (el) {
-      el.scrollTop = el.scrollHeight
-    }
+    if (!el) return
+    if (!options.force && !autoFollowMessages.value) return
+    el.scrollTop = el.scrollHeight
+    lastScrollTop = el.scrollTop
+    autoFollowMessages.value = true
   })
+}
+
+function isAtBottom(el) {
+  return distanceToBottom(el) <= AUTO_SCROLL_THRESHOLD_PX
+}
+
+function distanceToBottom(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight
 }
 </script>
