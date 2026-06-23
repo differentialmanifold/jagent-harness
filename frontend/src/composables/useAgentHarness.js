@@ -497,6 +497,8 @@ export function useAgentHarness() {
       upsertCompactionMessage(event, payload, true)
     } else if (type === 'compaction_end') {
       upsertCompactionMessage(event, payload, false)
+    } else if (type === 'model_retry') {
+      appendModelRetryMessage(event, payload)
     } else if (type === 'agent_end') {
       clearEmptyThinkingMessage()
       completePendingTools('completed')
@@ -510,7 +512,7 @@ export function useAgentHarness() {
       stopReady.value = false
       running.value = false
     } else if (type === 'agent_error') {
-      clearEmptyThinkingMessage()
+      failActiveStreamingMessage()
       completePendingTools('failed')
       throw new Error(payload.message || 'Agent stream failed')
     } else if (!ignoredCoreEvents.has(type)) {
@@ -525,6 +527,33 @@ export function useAgentHarness() {
       role: 'assistant',
       content: `Agent error: ${message || 'Unknown error'}`
     })
+  }
+
+  function appendModelRetryMessage(event, payload) {
+    const attempt = payload.nextAttempt || payload.attempt || '?'
+    const maxAttempts = payload.maxAttempts || '?'
+    const delay = typeof payload.delayMillis === 'number' && payload.delayMillis > 0
+      ? ` in ${formatDelay(payload.delayMillis)}`
+      : ''
+    const lines = [
+      `Model request failed. Retrying attempt ${attempt} of ${maxAttempts}${delay}.`
+    ]
+    if (payload.error) {
+      lines.push(`Original error: ${payload.error}`)
+    }
+    messages.value.push({
+      messageId: `model-retry:${event.eventId || Date.now()}`,
+      sessionId: event.sessionId,
+      role: 'status',
+      content: lines.join('\n'),
+      kind: 'model-retry'
+    })
+  }
+
+  function formatDelay(delayMillis) {
+    if (delayMillis < 1000) return `${delayMillis}ms`
+    const seconds = delayMillis / 1000
+    return Number.isInteger(seconds) ? `${seconds}s` : `${seconds.toFixed(1)}s`
   }
 
   function appendStreamingText(event, payload) {
@@ -621,6 +650,24 @@ export function useAgentHarness() {
         && !messages.value[index].content
         && !messages.value[index].reasoningContent) {
       messages.value.splice(index, 1)
+    }
+    activeStreamId = null
+  }
+
+  function failActiveStreamingMessage() {
+    if (!activeStreamId) return
+    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+    if (index < 0) {
+      activeStreamId = null
+      return
+    }
+    const message = messages.value[index]
+    if (!message.content && !message.reasoningContent) {
+      messages.value.splice(index, 1)
+    } else {
+      message.streaming = false
+      message.thinking = false
+      message.failed = true
     }
     activeStreamId = null
   }

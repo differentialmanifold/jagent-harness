@@ -68,6 +68,10 @@ public class AgentHarnessAutoConfiguration {
         settings.setCompactionThresholdRatio(properties.getCompaction().getThresholdRatio());
         settings.setCompactionRecentMessages(properties.getCompaction().getRecentMessages());
         settings.setCompactionTargetTokens(properties.getCompaction().getTargetTokens());
+        settings.setModelRetryEnabled(properties.getModel().getRetry().isEnabled());
+        settings.setModelRetryMaxAttempts(properties.getModel().getRetry().getMaxAttempts());
+        settings.setModelRetryInitialDelayMillis(properties.getModel().getRetry().getInitialDelayMillis());
+        settings.setModelRetryMaxDelayMillis(properties.getModel().getRetry().getMaxDelayMillis());
         return settings;
     }
 

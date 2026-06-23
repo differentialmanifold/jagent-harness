@@ -41,6 +41,7 @@ public class HarnessProperties {
         private Double temperature;
         private int timeoutSeconds = 120;
         private boolean streamEnabled = true;
+        private Retry retry = new Retry();
 
         public String getProvider() {
             return provider;
@@ -96,6 +97,56 @@ public class HarnessProperties {
 
         public void setStreamEnabled(boolean streamEnabled) {
             this.streamEnabled = streamEnabled;
+        }
+
+        public Retry getRetry() {
+            if (retry == null) {
+                retry = new Retry();
+            }
+            return retry;
+        }
+
+        public void setRetry(Retry retry) {
+            this.retry = retry == null ? new Retry() : retry;
+        }
+
+        public static class Retry {
+            private boolean enabled = true;
+            private int maxAttempts = 3;
+            private long initialDelayMillis = 500L;
+            private long maxDelayMillis = 3000L;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public int getMaxAttempts() {
+                return maxAttempts;
+            }
+
+            public void setMaxAttempts(int maxAttempts) {
+                this.maxAttempts = maxAttempts;
+            }
+
+            public long getInitialDelayMillis() {
+                return initialDelayMillis;
+            }
+
+            public void setInitialDelayMillis(long initialDelayMillis) {
+                this.initialDelayMillis = initialDelayMillis;
+            }
+
+            public long getMaxDelayMillis() {
+                return maxDelayMillis;
+            }
+
+            public void setMaxDelayMillis(long maxDelayMillis) {
+                this.maxDelayMillis = maxDelayMillis;
+            }
         }
     }
 

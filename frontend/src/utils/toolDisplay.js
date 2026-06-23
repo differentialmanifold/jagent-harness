@@ -5,6 +5,9 @@ export function messageClass(message) {
   } else if (message.role === 'tool' && isFailedToolMessage(message)) {
     classes.push('failed')
   }
+  if (message.failed && !classes.includes('failed')) {
+    classes.push('failed')
+  }
   if (message.stopReason === 'aborted') {
     classes.push('interrupted')
   }
