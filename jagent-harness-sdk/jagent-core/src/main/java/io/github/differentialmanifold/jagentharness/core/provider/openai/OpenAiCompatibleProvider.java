@@ -25,6 +25,7 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderE
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpClient;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpException;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.http.OkHttpModelHttpClient;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
@@ -67,7 +68,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             if (stopSignal.isAborted()) {
                 throw new StopRequestedException(e);
             }
-            throw new ModelProviderException("Model provider request failed: " + e.getMessage(), e);
+            throw new ModelProviderException(
+                    "Model provider request failed: " + e.getMessage(),
+                    e,
+                    isRetryable(e));
         }
     }
 
@@ -117,7 +121,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             if (effectiveSignal.isAborted()) {
                 throw new StopRequestedException(e);
             }
-            throw new ModelProviderException("Model provider stream request failed: " + e.getMessage(), e);
+            throw new ModelProviderException(
+                    "Model provider stream request failed: " + e.getMessage(),
+                    e,
+                    isRetryable(e));
         }
     }
 
@@ -356,6 +363,18 @@ public class OpenAiCompatibleProvider implements ModelProvider {
 
     private String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private boolean isRetryable(IOException exception) {
+        if (exception instanceof ModelHttpException) {
+            int statusCode = ((ModelHttpException) exception).getStatusCode();
+            return statusCode == 429
+                    || statusCode == 500
+                    || statusCode == 502
+                    || statusCode == 503
+                    || statusCode == 504;
+        }
+        return true;
     }
 
     private static class StreamAccumulator {

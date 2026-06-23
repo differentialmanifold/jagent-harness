@@ -25,6 +25,7 @@ import com.sun.net.httpserver.HttpServer;
 import io.github.differentialmanifold.jagentharness.core.agent.MutableStopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import org.junit.jupiter.api.Test;
@@ -169,6 +170,52 @@ class OpenAiCompatibleProviderTest {
         } finally {
             responseFuture.cancel(true);
             executor.shutdownNow();
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void marksRetryableHttpFailures() throws Exception {
+        ModelProviderException exception = assertThrows(
+                ModelProviderException.class,
+                () -> callServerReturningStatus(503));
+
+        assertTrue(exception.isRetryable());
+    }
+
+    @Test
+    void marksClientHttpFailuresAsNonRetryable() throws Exception {
+        ModelProviderException exception = assertThrows(
+                ModelProviderException.class,
+                () -> callServerReturningStatus(400));
+
+        assertFalse(exception.isRetryable());
+    }
+
+    private void callServerReturningStatus(int statusCode) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            readAll(exchange.getRequestBody());
+            byte[] response = ("{\"error\":\"status " + statusCode + "\"}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(statusCode, response.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+                outputStream.write(response);
+            }
+        });
+        server.start();
+        try {
+            OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
+            config.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            config.setStreamEnabled(false);
+
+            OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper());
+            ModelRequest request = new ModelRequest();
+            request.setModel("test-model");
+            request.setMessages(Collections.emptyList());
+
+            provider.chat(request);
+        } finally {
             server.stop(0);
         }
     }

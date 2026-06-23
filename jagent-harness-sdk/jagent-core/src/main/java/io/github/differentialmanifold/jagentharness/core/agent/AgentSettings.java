@@ -13,6 +13,10 @@ public class AgentSettings {
     private double compactionThresholdRatio = 0.8d;
     private int compactionRecentMessages = 20;
     private int compactionTargetTokens = 4000;
+    private boolean modelRetryEnabled = true;
+    private int modelRetryMaxAttempts = 3;
+    private long modelRetryInitialDelayMillis = 500L;
+    private long modelRetryMaxDelayMillis = 3000L;
 
     public String getProvider() {
         return provider;
@@ -84,5 +88,37 @@ public class AgentSettings {
 
     public void setCompactionTargetTokens(int compactionTargetTokens) {
         this.compactionTargetTokens = compactionTargetTokens;
+    }
+
+    public boolean isModelRetryEnabled() {
+        return modelRetryEnabled;
+    }
+
+    public void setModelRetryEnabled(boolean modelRetryEnabled) {
+        this.modelRetryEnabled = modelRetryEnabled;
+    }
+
+    public int getModelRetryMaxAttempts() {
+        return modelRetryMaxAttempts;
+    }
+
+    public void setModelRetryMaxAttempts(int modelRetryMaxAttempts) {
+        this.modelRetryMaxAttempts = modelRetryMaxAttempts;
+    }
+
+    public long getModelRetryInitialDelayMillis() {
+        return modelRetryInitialDelayMillis;
+    }
+
+    public void setModelRetryInitialDelayMillis(long modelRetryInitialDelayMillis) {
+        this.modelRetryInitialDelayMillis = modelRetryInitialDelayMillis;
+    }
+
+    public long getModelRetryMaxDelayMillis() {
+        return modelRetryMaxDelayMillis;
+    }
+
+    public void setModelRetryMaxDelayMillis(long modelRetryMaxDelayMillis) {
+        this.modelRetryMaxDelayMillis = modelRetryMaxDelayMillis;
     }
 }

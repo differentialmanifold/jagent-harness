@@ -49,7 +49,7 @@ public class OkHttpModelHttpClient implements ModelHttpClient {
             String body = responseBody == null ? "" : responseBody.string();
             effectiveSignal.throwIfAborted();
             if (!response.isSuccessful()) {
-                throw new IOException("Model provider returned HTTP " + response.code() + ": " + body);
+                throw new ModelHttpException(response.code(), body);
             }
             return new ModelHttpResponse(response.code(), body);
         }
@@ -72,7 +72,7 @@ public class OkHttpModelHttpClient implements ModelHttpClient {
             ResponseBody responseBody = response.body();
             if (!response.isSuccessful()) {
                 String body = responseBody == null ? "" : responseBody.string();
-                throw new IOException("Model provider returned HTTP " + response.code() + ": " + body);
+                throw new ModelHttpException(response.code(), body);
             }
             if (responseBody == null) {
                 throw new IOException("Model provider returned empty response body");

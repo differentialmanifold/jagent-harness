@@ -15,6 +15,7 @@ public class AgentEvent {
     public static final String MESSAGE_UPDATE = "message_update";
     public static final String MESSAGE_REASONING_UPDATE = "message_reasoning_update";
     public static final String MESSAGE_END = "message_end";
+    public static final String MODEL_RETRY = "model_retry";
     public static final String TOOL_EXECUTION_START = "tool_execution_start";
     public static final String TOOL_EXECUTION_UPDATE = "tool_execution_update";
     public static final String TOOL_EXECUTION_END = "tool_execution_end";

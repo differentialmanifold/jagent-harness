@@ -22,6 +22,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
@@ -135,11 +136,16 @@ public class AgentRunner implements AgentHarness {
 
                 final int[] contentDeltaIndex = new int[]{0};
                 final int[] reasoningDeltaIndex = new int[]{0};
-                ModelResponse response = provider.chat(
+                final boolean[] modelOutputStarted = new boolean[]{false};
+                ModelResponse response = callModelWithRetry(
+                        provider,
                         request,
                         new ModelDeltaConsumer() {
                             @Override
                             public void onContentDelta(String delta) {
+                                if (delta != null && !delta.isEmpty()) {
+                                    modelOutputStarted[0] = true;
+                                }
                                 partialAnswer.append(delta);
                                 publishAssistantTextUpdate(
                                         sessionId,
@@ -150,6 +156,9 @@ public class AgentRunner implements AgentHarness {
 
                             @Override
                             public void onReasoningDelta(String delta) {
+                                if (delta != null && !delta.isEmpty()) {
+                                    modelOutputStarted[0] = true;
+                                }
                                 partialReasoning.append(delta);
                                 publishAssistantReasoningUpdate(
                                         sessionId,
@@ -158,7 +167,10 @@ public class AgentRunner implements AgentHarness {
                                         reasoningDeltaIndex[0]++);
                             }
                         },
-                        stopSignal);
+                        stopSignal,
+                        sessionId,
+                        turnId,
+                        modelOutputStarted);
                 stopSignal.throwIfAborted();
                 AgentMessage assistantMessage = AgentMessage.assistant(
                         sessionId,
@@ -318,6 +330,123 @@ public class AgentRunner implements AgentHarness {
             throw new IllegalStateException("No model provider registered for: " + settings.getProvider());
         }
         return provider;
+    }
+
+    private ModelResponse callModelWithRetry(ModelProvider provider,
+                                             ModelRequest request,
+                                             ModelDeltaConsumer deltaConsumer,
+                                             StopSignal stopSignal,
+                                             String sessionId,
+                                             String turnId,
+                                             boolean[] modelOutputStarted) {
+        int maxAttempts = effectiveModelRetryMaxAttempts();
+        long delayMillis = effectiveModelRetryInitialDelayMillis();
+        int attempt = 1;
+        while (true) {
+            stopSignal.throwIfAborted();
+            try {
+                return provider.chat(request, deltaConsumer, stopSignal);
+            } catch (ModelProviderException e) {
+                if (!shouldRetryModelCall(e, attempt, maxAttempts, modelOutputStarted)) {
+                    throw e;
+                }
+                long retryDelayMillis = delayMillis;
+                publishModelRetry(
+                        sessionId,
+                        turnId,
+                        provider,
+                        attempt,
+                        attempt + 1,
+                        maxAttempts,
+                        retryDelayMillis,
+                        e);
+                sleepBeforeModelRetry(retryDelayMillis, stopSignal);
+                delayMillis = nextModelRetryDelayMillis(delayMillis);
+                attempt++;
+            }
+        }
+    }
+
+    private boolean shouldRetryModelCall(ModelProviderException exception,
+                                         int attempt,
+                                         int maxAttempts,
+                                         boolean[] modelOutputStarted) {
+        return settings.isModelRetryEnabled()
+                && exception != null
+                && exception.isRetryable()
+                && attempt < maxAttempts
+                && !hasModelOutputStarted(modelOutputStarted);
+    }
+
+    private boolean hasModelOutputStarted(boolean[] modelOutputStarted) {
+        return modelOutputStarted != null && modelOutputStarted.length > 0 && modelOutputStarted[0];
+    }
+
+    private int effectiveModelRetryMaxAttempts() {
+        if (!settings.isModelRetryEnabled()) {
+            return 1;
+        }
+        return Math.max(1, settings.getModelRetryMaxAttempts());
+    }
+
+    private long effectiveModelRetryInitialDelayMillis() {
+        return Math.max(0L, settings.getModelRetryInitialDelayMillis());
+    }
+
+    private long effectiveModelRetryMaxDelayMillis() {
+        return Math.max(effectiveModelRetryInitialDelayMillis(), settings.getModelRetryMaxDelayMillis());
+    }
+
+    private long nextModelRetryDelayMillis(long currentDelayMillis) {
+        long maxDelayMillis = effectiveModelRetryMaxDelayMillis();
+        if (currentDelayMillis <= 0L) {
+            return Math.min(100L, maxDelayMillis);
+        }
+        long nextDelayMillis = currentDelayMillis * 2L;
+        if (nextDelayMillis < 0L) {
+            return maxDelayMillis;
+        }
+        return Math.min(nextDelayMillis, maxDelayMillis);
+    }
+
+    private void sleepBeforeModelRetry(long delayMillis, StopSignal stopSignal) {
+        long remainingMillis = Math.max(0L, delayMillis);
+        long deadline = System.currentTimeMillis() + remainingMillis;
+        while (remainingMillis > 0L) {
+            stopSignal.throwIfAborted();
+            try {
+                Thread.sleep(Math.min(remainingMillis, 100L));
+            } catch (InterruptedException e) {
+                if (stopSignal.isAborted()) {
+                    Thread.interrupted();
+                    throw new StopRequestedException(e);
+                }
+                Thread.currentThread().interrupt();
+                throw new ModelProviderException("Model retry wait was interrupted", e, false);
+            }
+            remainingMillis = deadline - System.currentTimeMillis();
+        }
+        stopSignal.throwIfAborted();
+    }
+
+    private void publishModelRetry(String sessionId,
+                                   String turnId,
+                                   ModelProvider provider,
+                                   int failedAttempt,
+                                   int nextAttempt,
+                                   int maxAttempts,
+                                   long delayMillis,
+                                   ModelProviderException exception) {
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("attempt", failedAttempt);
+        payload.put("nextAttempt", nextAttempt);
+        payload.put("maxAttempts", maxAttempts);
+        payload.put("delayMillis", delayMillis);
+        payload.put("provider", provider == null ? "" : provider.getName());
+        payload.put("model", settings.getModel());
+        payload.put("message", "Model request failed, retrying attempt " + nextAttempt + " of " + maxAttempts);
+        payload.put("error", exception == null ? "" : exception.getMessage());
+        publish(sessionId, turnId, AgentEvent.MODEL_RETRY, payload);
     }
 
     private String lastMessageId(List<AgentMessage> messages) {
