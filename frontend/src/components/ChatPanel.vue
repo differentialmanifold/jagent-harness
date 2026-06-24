@@ -23,25 +23,6 @@
     </div>
 
     <form class="composer" @submit.prevent="submit">
-      <div class="composer-toolbar">
-        <el-radio-group
-          class="approval-mode"
-          :model-value="approvalMode"
-          size="small"
-          :disabled="running"
-          aria-label="Tool access"
-          @update:model-value="$emit('update:approvalMode', $event)"
-        >
-          <el-radio-button value="ask_approval">
-            <el-icon><Lock /></el-icon>
-            <span>Ask</span>
-          </el-radio-button>
-          <el-radio-button value="full_access">
-            <el-icon><Unlock /></el-icon>
-            <span>Full access</span>
-          </el-radio-button>
-        </el-radio-group>
-      </div>
       <el-input
         class="composer-input"
         type="textarea"
@@ -52,33 +33,70 @@
         @update:model-value="$emit('update:draft', $event)"
         @keydown="handleKeydown"
       />
-      <el-button
-        v-if="running"
-        type="danger"
-        :icon="VideoPause"
-        :disabled="stopping || !stopReady"
-        native-type="button"
-        @click="$emit('stop')"
-      >
-        {{ stopping ? 'Stopping' : 'Stop' }}
-      </el-button>
-      <el-button
-        v-else
-        type="primary"
-        :icon="Promotion"
-        :disabled="!currentSession || !draft.trim()"
-        native-type="submit"
-      >
-        Send
-      </el-button>
+      <div class="composer-footer">
+        <div class="composer-left">
+          <el-dropdown
+            class="approval-dropdown"
+            popper-class="approval-dropdown-menu"
+            trigger="click"
+            :disabled="running"
+            @command="selectApprovalMode"
+          >
+            <button class="approval-trigger" type="button" :disabled="running">
+              <el-icon>
+                <Lock v-if="approvalMode === 'ask_approval'" />
+                <Unlock v-else />
+              </el-icon>
+              <span>{{ approvalModeLabel }}</span>
+              <el-icon class="approval-caret"><CaretBottom /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="ask_approval">
+                  <el-icon><Lock /></el-icon>
+                  <span>Ask</span>
+                </el-dropdown-item>
+                <el-dropdown-item command="full_access">
+                  <el-icon><Unlock /></el-icon>
+                  <span>Full access</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+        <div class="composer-right">
+          <el-button
+            v-if="running"
+            class="composer-stop"
+            type="danger"
+            :icon="VideoPause"
+            :disabled="stopping || !stopReady"
+            native-type="button"
+            :aria-label="stopping ? 'Stopping agent' : 'Stop agent'"
+            :title="stopping ? 'Stopping agent' : 'Stop agent'"
+            circle
+            @click="$emit('stop')"
+          />
+          <el-button
+            v-else
+            class="composer-submit"
+            type="primary"
+            :icon="Top"
+            :disabled="!currentSession || !draft.trim()"
+            native-type="submit"
+            aria-label="Send message"
+            title="Send message"
+            circle
+          />
+        </div>
+      </div>
     </form>
   </section>
 </template>
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { ElRadioButton, ElRadioGroup } from 'element-plus'
-import { Lock, Promotion, Unlock, VideoPause } from '@element-plus/icons-vue'
+import { CaretBottom, Lock, Top, Unlock, VideoPause } from '@element-plus/icons-vue'
 import MessageItem from './MessageItem.vue'
 
 const props = defineProps({
@@ -110,6 +128,8 @@ const visibleMessages = computed(() => props.messages.filter((message) => {
   return !isToolOnlyAssistant
 }))
 
+const approvalModeLabel = computed(() => props.approvalMode === 'full_access' ? 'Full access' : 'Ask')
+
 watch(
   () => props.messages,
   () => scrollMessagesToBottom(),
@@ -129,6 +149,11 @@ function submit() {
   autoFollowMessages.value = true
   scrollMessagesToBottom({ force: true })
   emit('send')
+}
+
+function selectApprovalMode(mode) {
+  if (props.running) return
+  emit('update:approvalMode', mode === 'full_access' ? 'full_access' : 'ask_approval')
 }
 
 function handleKeydown(event) {

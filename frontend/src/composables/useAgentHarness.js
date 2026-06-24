@@ -762,6 +762,15 @@ export function useAgentHarness() {
           reason: approved ? 'Approved by user' : 'Denied by user'
         })
       })
+      if (approval) {
+        approval.pending = false
+        approval.responding = false
+        approval.approved = approved === true
+        approval.reason = approved ? 'Approved by user' : 'Denied by user'
+      }
+      if (message) {
+        message.progress = approved ? 'Approved' : 'Denied'
+      }
     } catch (error) {
       if (approval) {
         approval.responding = false

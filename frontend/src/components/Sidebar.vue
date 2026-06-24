@@ -21,14 +21,14 @@
           :class="['project-group', { active: project.key === currentProjectKey, collapsed: isCollapsed(project.key) }]"
         >
           <div class="project-header">
-            <button class="project-title" @click="toggleProject(project)">
+            <button class="project-title" :title="projectTitle(project)" @click="toggleProject(project)">
               <el-icon class="project-disclosure" aria-hidden="true">
                 <CaretRight v-if="isCollapsed(project.key)" />
                 <CaretBottom v-else />
               </el-icon>
               <span class="project-title-text">
-                <span>{{ project.name }}</span>
-                <small>{{ project.pathLabel }}</small>
+                <span :title="project.name">{{ project.name }}</span>
+                <small :title="project.pathLabel">{{ project.pathLabel }}</small>
               </span>
             </button>
             <el-dropdown trigger="click">
@@ -51,9 +51,8 @@
               :key="session.sessionId"
               :class="['session-item', { active: currentSession && currentSession.sessionId === session.sessionId }]"
             >
-              <button class="session-main" @click="selectSession(session.sessionId)">
-                <span>{{ session.title }}</span>
-                <small>{{ formatDate(session.updatedAt) }}</small>
+              <button class="session-main" :title="session.title" @click="selectSession(session.sessionId)">
+                <span :title="session.title">{{ session.title }}</span>
               </button>
               <el-dropdown trigger="click">
                 <el-button text :icon="MoreFilled" circle title="Chat actions" />
@@ -75,7 +74,6 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { CaretBottom, CaretRight, MoreFilled, Plus } from '@element-plus/icons-vue'
-import { formatDate } from '../utils/format'
 
 const props = defineProps({
   projectGroups: { type: Array, required: true },
@@ -125,6 +123,10 @@ function selectSession(sessionId) {
 
 function isCollapsed(projectKey) {
   return collapsedProjectKeys.value.includes(projectKey)
+}
+
+function projectTitle(project) {
+  return project.pathLabel ? `${project.name}\n${project.pathLabel}` : project.name
 }
 
 function runProjectAction(action, project) {
