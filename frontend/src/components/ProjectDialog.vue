@@ -6,7 +6,16 @@
     align-center
     @close="$emit('close')"
   >
-    <form class="dialog-form" @submit.prevent="$emit('submit')">
+    <el-form class="dialog-form project-dialog-form" label-position="top" @submit.prevent="$emit('submit')">
+      <el-form-item v-if="workspaceEnabled" label="Workspace path">
+        <el-input
+          ref="workspaceInputEl"
+          :model-value="workspacePath"
+          placeholder="/Users/you/work/my-project"
+          :disabled="submitting"
+          @update:model-value="updateWorkspacePath"
+        />
+      </el-form-item>
       <el-form-item label="Project name" :error="error">
         <el-input
           ref="nameInputEl"
@@ -16,26 +25,21 @@
           @update:model-value="updateProjectName"
         />
       </el-form-item>
-      <el-form-item v-if="workspaceEnabled" label="Workspace path">
-        <el-input
-          :model-value="workspacePath"
-          placeholder="/Users/you/work/my-project"
-          :disabled="submitting"
-          @update:model-value="updateWorkspacePath"
-        />
-      </el-form-item>
-    </form>
+    </el-form>
 
     <template #footer>
-      <el-button :disabled="submitting" @click="$emit('close')">Cancel</el-button>
-      <el-button
-        type="primary"
-        :loading="submitting"
-        :disabled="!canSubmit"
-        @click="$emit('submit')"
-      >
-        Add project
-      </el-button>
+      <div class="project-dialog-footer">
+        <el-button :disabled="submitting" @click="$emit('close')">Cancel</el-button>
+        <el-button
+          class="project-dialog-submit"
+          type="primary"
+          :loading="submitting"
+          :disabled="!canSubmit"
+          @click="$emit('submit')"
+        >
+          Add project
+        </el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -55,7 +59,8 @@ const props = defineProps({
 const emit = defineEmits(['update:projectName', 'update:workspacePath', 'submit', 'close'])
 
 const nameInputEl = ref(null)
-const nameTouched = ref(false)
+const workspaceInputEl = ref(null)
+const autoProjectName = ref('')
 
 const canSubmit = computed(() => (
   props.projectName.trim()
@@ -66,22 +71,39 @@ watch(
   () => props.open,
   async (open) => {
     if (!open) return
-    nameTouched.value = Boolean(props.projectName.trim())
+    autoProjectName.value = isGeneratedProjectName(props.projectName, props.workspacePath)
+      ? props.projectName
+      : ''
     await nextTick()
-    if (nameInputEl.value) nameInputEl.value.focus()
+    const input = props.workspaceEnabled ? workspaceInputEl.value : nameInputEl.value
+    if (input) input.focus()
   }
 )
 
 function updateProjectName(value) {
-  nameTouched.value = true
+  if (value !== autoProjectName.value) {
+    autoProjectName.value = ''
+  }
   emit('update:projectName', value)
 }
 
 function updateWorkspacePath(value) {
   emit('update:workspacePath', value)
-  if (!nameTouched.value) {
-    emit('update:projectName', nameFromPath(value))
+  if (shouldAutoUpdateProjectName()) {
+    const nextName = nameFromPath(value)
+    autoProjectName.value = nextName
+    emit('update:projectName', nextName)
   }
+}
+
+function shouldAutoUpdateProjectName() {
+  const currentName = props.projectName.trim()
+  return !currentName || currentName === autoProjectName.value
+}
+
+function isGeneratedProjectName(projectName, workspacePath) {
+  const name = String(projectName || '').trim()
+  return name && name === nameFromPath(workspacePath)
 }
 
 function nameFromPath(path) {

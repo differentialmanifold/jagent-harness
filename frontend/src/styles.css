@@ -153,6 +153,27 @@ textarea {
 
 .project-actions .el-button {
   width: 100%;
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #fff;
+  font-weight: 700;
+}
+
+.project-actions .el-button:hover,
+.project-actions .el-button:focus {
+  border-color: #0a58ca;
+  background: #0a58ca;
+  color: #fff;
+}
+
+.project-actions .el-button.is-disabled,
+.project-actions .el-button.is-disabled:hover,
+.project-actions .el-button.is-disabled:focus {
+  border-color: #d0d7de;
+  background: #eef2f7;
+  color: #98a2b3;
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .session-sidebar-header {
@@ -176,34 +197,68 @@ textarea {
 .projects {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   padding-right: 4px;
 }
 
 .project-group {
   display: grid;
-  gap: 8px;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.project-group:hover {
+  border-color: #d7e3f4;
+  background: #f5f8fc;
+}
+
+.project-group.active {
+  border-color: #b7c9e8;
+  background: #eef5ff;
 }
 
 .project-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
-  gap: 8px;
-  align-items: start;
+  gap: 4px;
+  align-items: center;
+}
+
+.project-header .el-button,
+.session-item .el-button {
+  color: #667085;
+}
+
+.project-header .el-button:hover,
+.session-item .el-button:hover,
+.project-header .el-button:focus,
+.session-item .el-button:focus {
+  background: #e7f0ff;
+  color: #1f6feb;
 }
 
 .project-title {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 6px;
-  align-items: start;
+  align-items: center;
   min-width: 0;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: #18212f;
   cursor: pointer;
-  padding: 0;
+  padding: 8px;
   text-align: left;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.project-title:hover,
+.project-title:focus-visible {
+  background: #e7f0ff;
 }
 
 .project-disclosure {
@@ -233,6 +288,7 @@ textarea {
 .project-title-text small {
   color: #667085;
   font-size: 11px;
+  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -245,31 +301,40 @@ textarea {
 .sessions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
+  padding-left: 24px;
 }
 
 .session-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 4px;
   align-items: center;
   width: 100%;
-  border: 1px solid #d7dde6;
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: #fff;
+  background: transparent;
   color: #18212f;
   cursor: pointer;
-  padding: 10px;
+  min-height: 34px;
+  padding: 5px 8px;
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.session-item:hover {
+  border-color: #d7e3f4;
+  background: #f7faff;
 }
 
 .session-item.active {
-  border-color: #1f6feb;
+  border-color: #9bb8df;
+  background: #e8f1ff;
   box-shadow: inset 3px 0 0 #1f6feb;
 }
 
 .session-main {
-  display: grid;
-  gap: 4px;
+  display: block;
+  width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;
@@ -280,13 +345,13 @@ textarea {
 }
 
 .session-main span {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.session-main small {
-  color: #667085;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .workspace {
@@ -537,14 +602,14 @@ textarea {
   font-size: 13px;
 }
 
-.tool-approval-card span {
+.tool-approval-message {
   display: block;
   margin-top: 3px;
   color: #667085;
   font-size: 12px;
 }
 
-.tool-approval-card code {
+.tool-approval-target {
   display: block;
   margin-top: 8px;
   color: #24292f;
@@ -556,6 +621,33 @@ textarea {
 .tool-approval-actions {
   display: flex;
   gap: 8px;
+}
+
+.tool-approval-actions .tool-approval-allow.el-button {
+  --el-button-text-color: #fff;
+  --el-button-bg-color: #1f6feb;
+  --el-button-border-color: #1f6feb;
+  --el-button-hover-text-color: #fff;
+  --el-button-hover-bg-color: #0f62d8;
+  --el-button-hover-border-color: #0f62d8;
+  --el-button-active-text-color: #fff;
+  --el-button-active-bg-color: #0a53be;
+  --el-button-active-border-color: #0a53be;
+  --el-button-disabled-text-color: #fff;
+  --el-button-disabled-bg-color: #6ea8fe;
+  --el-button-disabled-border-color: #6ea8fe;
+  color: #fff;
+  font-weight: 700;
+}
+
+.tool-approval-actions .tool-approval-deny.el-button {
+  --el-button-text-color: #475467;
+  --el-button-bg-color: #fff;
+  --el-button-border-color: #d0d7de;
+  --el-button-hover-text-color: #1f2937;
+  --el-button-hover-bg-color: #f8fafc;
+  --el-button-hover-border-color: #98a2b3;
+  font-weight: 700;
 }
 
 .tool-run summary::-webkit-details-marker {
@@ -837,42 +929,174 @@ textarea {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px;
-  grid-template-rows: auto auto;
   gap: 10px;
-  border-top: 1px solid #d7dde6;
+  align-self: center;
+  width: calc(100% - 44px);
+  max-width: 980px;
+  margin: 0 auto 18px;
+  border: 1px solid #cfd6e2;
+  border-radius: 24px;
   background: #fff;
-  padding: 14px;
+  padding: 12px;
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.10);
 }
 
-.composer-toolbar {
+.composer-footer {
   display: flex;
-  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+}
+
+.composer-left,
+.composer-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.composer-left {
+  flex: 1;
+}
+
+.composer-right {
   justify-content: flex-end;
 }
 
-.approval-mode .el-radio-button__inner {
+.composer-input {
+  min-width: 0;
+}
+
+.approval-dropdown {
+  max-width: 100%;
+}
+
+.approval-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 190px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #475467;
+  cursor: pointer;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.composer-input {
-  grid-column: 1;
-  grid-row: 2;
+.approval-trigger:hover,
+.approval-trigger:focus-visible {
+  background: #f2f6fb;
+  color: #1f6feb;
+  outline: none;
+}
+
+.approval-trigger:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
+.approval-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.approval-caret {
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.approval-dropdown-menu .el-dropdown-menu__item .el-icon {
+  margin-right: 6px;
 }
 
 .composer .el-textarea__inner {
-  min-height: 74px;
-  border-radius: 8px;
-  padding: 10px 12px;
+  min-height: 78px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  padding: 8px 10px 2px;
+  color: #18212f;
+  font-size: 14px;
+  line-height: 1.55;
+  box-shadow: none;
 }
 
-.composer > .el-button {
-  grid-column: 2;
-  grid-row: 2;
-  min-height: 74px;
-  border-radius: 8px;
+.composer .el-textarea__inner:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer .el-textarea__inner:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+.composer .el-textarea__inner::placeholder {
+  color: #98a2b3;
+}
+
+.composer .composer-submit.el-button,
+.composer .composer-stop.el-button {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 18px;
+}
+
+.composer .composer-submit.el-button--primary {
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #fff;
+}
+
+.composer .composer-submit.el-button--primary:hover,
+.composer .composer-submit.el-button--primary:focus {
+  border-color: #0a58ca;
+  background: #0a58ca;
+  color: #fff;
+}
+
+.composer .composer-submit.el-button.is-disabled,
+.composer .composer-submit.el-button.is-disabled:hover,
+.composer .composer-submit.el-button.is-disabled:focus {
+  border-color: #d0d7de;
+  background: #eef2f7;
+  color: #98a2b3;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.composer .composer-stop.el-button--danger {
+  border-color: #d92d20;
+  background: #d92d20;
+  color: #fff;
+}
+
+.composer .composer-stop.el-button--danger:hover,
+.composer .composer-stop.el-button--danger:focus {
+  border-color: #b42318;
+  background: #b42318;
+  color: #fff;
+}
+
+.composer .composer-stop.el-button.is-disabled,
+.composer .composer-stop.el-button.is-disabled:hover,
+.composer .composer-stop.el-button.is-disabled:focus {
+  border-color: #f2d4d1;
+  background: #fff1f0;
+  color: #d0a19d;
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .primary-button:disabled,
@@ -883,6 +1107,53 @@ textarea {
 
 .dialog-form .el-form-item {
   margin-bottom: 0;
+}
+
+.project-dialog-form {
+  display: grid;
+  gap: 18px;
+  padding-top: 2px;
+}
+
+.project-dialog-form .el-form-item__label {
+  margin-bottom: 6px;
+  color: #344054;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.project-dialog-form .el-input__wrapper {
+  min-height: 40px;
+}
+
+.project-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.project-dialog-footer .project-dialog-submit.el-button--primary {
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #fff;
+  font-weight: 700;
+}
+
+.project-dialog-footer .project-dialog-submit.el-button--primary:hover,
+.project-dialog-footer .project-dialog-submit.el-button--primary:focus {
+  border-color: #0a58ca;
+  background: #0a58ca;
+  color: #fff;
+}
+
+.project-dialog-footer .project-dialog-submit.el-button.is-disabled,
+.project-dialog-footer .project-dialog-submit.el-button.is-disabled:hover,
+.project-dialog-footer .project-dialog-submit.el-button.is-disabled:focus {
+  border-color: #d0d7de;
+  background: #eef2f7;
+  color: #98a2b3;
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .inspector {
@@ -1584,28 +1855,27 @@ dd {
   }
 
   .composer {
-    grid-template-columns: 1fr;
+    width: calc(100% - 24px);
+    margin-bottom: 12px;
+    border-radius: 18px;
   }
 
-  .composer-toolbar {
-    justify-content: stretch;
+  .composer-footer {
+    align-items: center;
+    flex-direction: row;
   }
 
-  .approval-mode,
-  .approval-mode .el-radio-button,
-  .approval-mode .el-radio-button__inner {
-    width: 100%;
+  .composer-left {
+    flex: 1;
   }
 
-  .composer-input {
-    grid-column: 1;
-    grid-row: 2;
+  .composer-right {
+    flex: 0 0 auto;
+    justify-content: flex-end;
   }
 
-  .composer > .el-button {
-    grid-column: 1;
-    grid-row: 3;
-    min-height: 48px;
+  .approval-trigger {
+    max-width: 100%;
   }
 
   .tool-approval-card {

@@ -10,14 +10,19 @@
       </span>
     </div>
     <div class="tool-progress-track" aria-hidden="true"><span></span></div>
-    <div v-if="message.approval" class="tool-approval-card">
-      <div>
+    <div v-if="visibleApproval" class="tool-approval-card">
+      <div class="tool-approval-copy">
         <strong>{{ message.approval.title || 'Approval required' }}</strong>
-        <span v-if="message.approval.message">{{ message.approval.message }}</span>
-        <code v-if="message.approval.target">{{ message.approval.target }}</code>
+        <span v-if="message.approval.message" class="tool-approval-message">
+          {{ message.approval.message }}
+        </span>
+        <code v-if="message.approval.target" class="tool-approval-target">
+          {{ message.approval.target }}
+        </code>
       </div>
       <div class="tool-approval-actions">
         <el-button
+          class="tool-approval-allow"
           size="small"
           type="primary"
           :icon="Check"
@@ -28,6 +33,7 @@
           Allow
         </el-button>
         <el-button
+          class="tool-approval-deny"
           size="small"
           :icon="Close"
           :disabled="!message.approval.pending || message.approval.responding"
@@ -144,6 +150,11 @@ const elapsedText = computed(() => {
   return elapsedSeconds < 60
     ? `${elapsedSeconds}s`
     : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`
+})
+
+const visibleApproval = computed(() => {
+  const approval = props.message.approval
+  return Boolean(approval?.pending || approval?.responding)
 })
 
 function approvalPayload(approved) {
