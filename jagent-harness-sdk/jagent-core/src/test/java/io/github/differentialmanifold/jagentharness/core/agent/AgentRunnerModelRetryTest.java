@@ -1,7 +1,6 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -9,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
@@ -57,22 +57,44 @@ class AgentRunnerModelRetryTest {
     }
 
     @Test
-    void doesNotRetryAfterModelOutputStarted() {
+    void retriesAfterModelOutputStartedAndResetsAttemptState() throws Exception {
         FakeSessionStore store = new FakeSessionStore();
-        FailingAfterDeltaModelProvider provider = new FailingAfterDeltaModelProvider();
+        RetryAfterDeltaModelProvider provider = new RetryAfterDeltaModelProvider();
         ModelProviderRegistry providers = new ModelProviderRegistry();
         providers.register(provider);
         ObjectMapper objectMapper = new ObjectMapper();
         List<AgentEvent> events = new ArrayList<AgentEvent>();
 
-        assertThrows(
-                ModelProviderException.class,
-                () -> createRunner(store, providers, objectMapper)
-                        .run("s1", "hello", AgentRunOptions.builder().eventConsumer(events::add).build()));
+        AgentRunResult result = createRunner(store, providers, objectMapper)
+                .run("s1", "hello", AgentRunOptions.builder().eventConsumer(events::add).build());
 
-        assertEquals(1, provider.attempts.get());
-        assertTrue(events.stream().noneMatch(event -> AgentEvent.MODEL_RETRY.equals(event.getType())));
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType())));
+        assertEquals("recovered", result.getAnswer());
+        assertEquals(2, provider.attempts.get());
+        assertEquals(2, store.messages.size());
+        assertEquals("recovered", store.messages.get(1).getContent());
+        assertEquals("new reasoning", store.messages.get(1).getReasoningContent());
+
+        AgentEvent retryEvent = events.stream()
+                .filter(event -> AgentEvent.MODEL_RETRY.equals(event.getType()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("model_retry event was not published"));
+        assertTrue(objectMapper.readTree(retryEvent.getPayloadJson()).path("resetOutput").asBoolean());
+
+        List<AgentEvent> contentUpdates = events.stream()
+                .filter(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType()))
+                .collect(Collectors.toList());
+        assertEquals(2, contentUpdates.size());
+        assertEquals("partial", objectMapper.readTree(contentUpdates.get(0).getPayloadJson()).path("delta").asText());
+        assertEquals(0, objectMapper.readTree(contentUpdates.get(0).getPayloadJson()).path("index").asInt());
+        assertEquals("recovered", objectMapper.readTree(contentUpdates.get(1).getPayloadJson()).path("delta").asText());
+        assertEquals(0, objectMapper.readTree(contentUpdates.get(1).getPayloadJson()).path("index").asInt());
+
+        List<AgentEvent> reasoningUpdates = events.stream()
+                .filter(event -> AgentEvent.MESSAGE_REASONING_UPDATE.equals(event.getType()))
+                .collect(Collectors.toList());
+        assertEquals(2, reasoningUpdates.size());
+        assertEquals(0, objectMapper.readTree(reasoningUpdates.get(0).getPayloadJson()).path("index").asInt());
+        assertEquals(0, objectMapper.readTree(reasoningUpdates.get(1).getPayloadJson()).path("index").asInt());
     }
 
     private AgentRunner createRunner(FakeSessionStore store,
@@ -129,7 +151,7 @@ class AgentRunnerModelRetryTest {
         }
     }
 
-    private static class FailingAfterDeltaModelProvider implements ModelProvider {
+    private static class RetryAfterDeltaModelProvider implements ModelProvider {
         private final AtomicInteger attempts = new AtomicInteger();
 
         @Override
@@ -146,9 +168,19 @@ class AgentRunnerModelRetryTest {
         public ModelResponse chat(ModelRequest request,
                                   ModelDeltaConsumer deltaConsumer,
                                   StopSignal stopSignal) {
-            attempts.incrementAndGet();
-            deltaConsumer.onContentDelta("partial");
-            throw new ModelProviderException("stream failed", null, true);
+            int attempt = attempts.incrementAndGet();
+            if (attempt == 1) {
+                deltaConsumer.onReasoningDelta("old reasoning");
+                deltaConsumer.onContentDelta("partial");
+                throw new ModelProviderException("stream failed", null, true);
+            }
+            deltaConsumer.onReasoningDelta("new reasoning");
+            deltaConsumer.onContentDelta("recovered");
+            ModelResponse response = new ModelResponse();
+            response.setReasoningContent("new reasoning");
+            response.setContent("recovered");
+            response.setToolCalls(Collections.<ToolCall>emptyList());
+            return response;
         }
     }
 

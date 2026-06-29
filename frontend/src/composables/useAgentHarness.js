@@ -498,6 +498,9 @@ export function useAgentHarness() {
     } else if (type === 'compaction_end') {
       upsertCompactionMessage(event, payload, false)
     } else if (type === 'model_retry') {
+      if (!options.replay && payload.resetOutput) {
+        discardActiveStreamingMessage()
+      }
       appendModelRetryMessage(event, payload)
     } else if (type === 'agent_end') {
       clearEmptyThinkingMessage()
@@ -649,6 +652,15 @@ export function useAgentHarness() {
     if (index >= 0
         && !messages.value[index].content
         && !messages.value[index].reasoningContent) {
+      messages.value.splice(index, 1)
+    }
+    activeStreamId = null
+  }
+
+  function discardActiveStreamingMessage() {
+    if (!activeStreamId) return
+    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+    if (index >= 0) {
       messages.value.splice(index, 1)
     }
     activeStreamId = null
