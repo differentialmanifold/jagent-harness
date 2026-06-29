@@ -136,16 +136,12 @@ public class AgentRunner implements AgentHarness {
 
                 final int[] contentDeltaIndex = new int[]{0};
                 final int[] reasoningDeltaIndex = new int[]{0};
-                final boolean[] modelOutputStarted = new boolean[]{false};
                 ModelResponse response = callModelWithRetry(
                         provider,
                         request,
                         new ModelDeltaConsumer() {
                             @Override
                             public void onContentDelta(String delta) {
-                                if (delta != null && !delta.isEmpty()) {
-                                    modelOutputStarted[0] = true;
-                                }
                                 partialAnswer.append(delta);
                                 publishAssistantTextUpdate(
                                         sessionId,
@@ -156,9 +152,6 @@ public class AgentRunner implements AgentHarness {
 
                             @Override
                             public void onReasoningDelta(String delta) {
-                                if (delta != null && !delta.isEmpty()) {
-                                    modelOutputStarted[0] = true;
-                                }
                                 partialReasoning.append(delta);
                                 publishAssistantReasoningUpdate(
                                         sessionId,
@@ -167,10 +160,18 @@ public class AgentRunner implements AgentHarness {
                                         reasoningDeltaIndex[0]++);
                             }
                         },
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                partialAnswer.setLength(0);
+                                partialReasoning.setLength(0);
+                                contentDeltaIndex[0] = 0;
+                                reasoningDeltaIndex[0] = 0;
+                            }
+                        },
                         stopSignal,
                         sessionId,
-                        turnId,
-                        modelOutputStarted);
+                        turnId);
                 stopSignal.throwIfAborted();
                 AgentMessage assistantMessage = AgentMessage.assistant(
                         sessionId,
@@ -335,10 +336,10 @@ public class AgentRunner implements AgentHarness {
     private ModelResponse callModelWithRetry(ModelProvider provider,
                                              ModelRequest request,
                                              ModelDeltaConsumer deltaConsumer,
+                                             Runnable resetAttempt,
                                              StopSignal stopSignal,
                                              String sessionId,
-                                             String turnId,
-                                             boolean[] modelOutputStarted) {
+                                             String turnId) {
         int maxAttempts = effectiveModelRetryMaxAttempts();
         long delayMillis = effectiveModelRetryInitialDelayMillis();
         int attempt = 1;
@@ -347,9 +348,10 @@ public class AgentRunner implements AgentHarness {
             try {
                 return provider.chat(request, deltaConsumer, stopSignal);
             } catch (ModelProviderException e) {
-                if (!shouldRetryModelCall(e, attempt, maxAttempts, modelOutputStarted)) {
+                if (!shouldRetryModelCall(e, attempt, maxAttempts)) {
                     throw e;
                 }
+                resetAttempt.run();
                 long retryDelayMillis = delayMillis;
                 publishModelRetry(
                         sessionId,
@@ -369,17 +371,11 @@ public class AgentRunner implements AgentHarness {
 
     private boolean shouldRetryModelCall(ModelProviderException exception,
                                          int attempt,
-                                         int maxAttempts,
-                                         boolean[] modelOutputStarted) {
+                                         int maxAttempts) {
         return settings.isModelRetryEnabled()
                 && exception != null
                 && exception.isRetryable()
-                && attempt < maxAttempts
-                && !hasModelOutputStarted(modelOutputStarted);
-    }
-
-    private boolean hasModelOutputStarted(boolean[] modelOutputStarted) {
-        return modelOutputStarted != null && modelOutputStarted.length > 0 && modelOutputStarted[0];
+                && attempt < maxAttempts;
     }
 
     private int effectiveModelRetryMaxAttempts() {
@@ -444,6 +440,7 @@ public class AgentRunner implements AgentHarness {
         payload.put("delayMillis", delayMillis);
         payload.put("provider", provider == null ? "" : provider.getName());
         payload.put("model", settings.getModel());
+        payload.put("resetOutput", true);
         payload.put("message", "Model request failed, retrying attempt " + nextAttempt + " of " + maxAttempts);
         payload.put("error", exception == null ? "" : exception.getMessage());
         publish(sessionId, turnId, AgentEvent.MODEL_RETRY, payload);
