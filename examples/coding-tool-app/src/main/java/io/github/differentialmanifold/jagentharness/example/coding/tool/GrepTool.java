@@ -37,14 +37,14 @@ public class GrepTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Search text file contents. Relative paths resolve from the workspace; absolute paths are allowed.";
+        return "Search text file contents in a file or directory. Relative paths resolve from the workspace; absolute paths are allowed. Use / as the path separator.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
         properties.set("query", ToolSchemas.stringProperty(objectMapper, "Text to search for."));
-        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute directory path. Default ."));
+        properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute file or directory path. Use / as the path separator. Default ."));
         properties.set("glob", ToolSchemas.stringProperty(objectMapper, "Glob applied to paths relative to the searched directory. Default **/*"));
         properties.set("caseSensitive", ToolSchemas.booleanProperty(objectMapper, "Case-sensitive search. Default true."));
         return ToolSchemas.objectSchema(objectMapper, properties, "query");
@@ -54,25 +54,50 @@ public class GrepTool implements ToolDefinition {
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
         context.getStopSignal().throwIfAborted();
         String query = ToolArguments.requiredText(arguments, "query");
-        Path root = pathResolver.resolve(context, arguments.path("path").asText("."));
-        if (!Files.isDirectory(root)) {
-            throw new IllegalArgumentException("Directory not found: " + pathResolver.relative(context, root));
+        Path target = pathResolver.resolve(context, arguments.path("path").asText("."));
+        if (!Files.exists(target)) {
+            throw new IllegalArgumentException("Path not found: " + pathResolver.relative(context, target));
+        }
+        boolean searchDirectory = Files.isDirectory(target);
+        if (!searchDirectory && !Files.isRegularFile(target)) {
+            throw new IllegalArgumentException("Path is not a file or directory: "
+                    + pathResolver.relative(context, target));
         }
 
-        String glob = arguments.path("glob").asText("**/*");
+        String glob = pathResolver.normalizePathSeparators(arguments.path("glob").asText("**/*"));
         boolean caseSensitive = arguments.path("caseSensitive").asBoolean(true);
         String needle = caseSensitive ? query : query.toLowerCase();
         PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + glob);
         ArrayNode matches = objectMapper.createArrayNode();
 
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile)
-                    .forEach(path -> searchFile(context, root, path, matcher, glob, needle, caseSensitive, matches));
+        if (searchDirectory) {
+            try (Stream<Path> stream = Files.walk(target)) {
+                stream.filter(Files::isRegularFile)
+                        .forEach(path -> searchFile(
+                                context,
+                                target,
+                                path,
+                                matcher,
+                                glob,
+                                needle,
+                                caseSensitive,
+                                matches));
+            }
+        } else {
+            searchFile(
+                    context,
+                    target.getParent(),
+                    target,
+                    matcher,
+                    glob,
+                    needle,
+                    caseSensitive,
+                    matches);
         }
 
         ObjectNode result = objectMapper.createObjectNode();
         result.put("query", query);
-        result.put("path", pathResolver.relative(context, root));
+        result.put("path", pathResolver.relative(context, target));
         result.put("glob", glob);
         result.set("matches", matches);
         return ToolExecutionResult.of(result.toString());

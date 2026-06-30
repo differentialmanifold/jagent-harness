@@ -1,10 +1,13 @@
 package io.github.differentialmanifold.jagentharness.example.coding.tool;
 
 import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,6 +19,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolArguments;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.ContentHashing;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
 
 public class ReadTool implements ToolDefinition {
@@ -38,7 +42,7 @@ public class ReadTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Read UTF-8 text lines from a file. Relative paths resolve from the workspace; absolute paths are allowed. Supports offset and limit for reading a specific line range.";
+        return "Read UTF-8 text lines and the complete file's SHA-256 content hash. Relative paths resolve from the workspace; absolute paths are allowed. Supports offset and limit for reading a specific line range.";
     }
 
     @Override
@@ -81,6 +85,7 @@ public class ReadTool implements ToolDefinition {
         result.put("lines", slice.lines.size());
         result.put("totalLines", slice.totalLines);
         result.put("truncated", slice.hasMore);
+        result.put("contentHash", slice.contentHash);
         result.put("content", String.join("\n", slice.lines));
         return ToolExecutionResult.of(result.toString());
     }
@@ -88,7 +93,11 @@ public class ReadTool implements ToolDefinition {
     private ReadSlice readLines(ToolContext context, Path path, int offset, int limit) throws Exception {
         List<String> selected = new ArrayList<String>();
         int totalLines = 0;
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+        MessageDigest digest = ContentHashing.newSha256Digest();
+        try (DigestInputStream input = new DigestInputStream(Files.newInputStream(path), digest);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(
+                     input,
+                     StandardCharsets.UTF_8.newDecoder()))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 context.getStopSignal().throwIfAborted();
@@ -104,7 +113,11 @@ public class ReadTool implements ToolDefinition {
             throw unsupportedTextFile(path);
         }
         int selectedEnd = Math.min(offset - 1, totalLines) + selected.size();
-        return new ReadSlice(selected, totalLines, selectedEnd < totalLines);
+        return new ReadSlice(
+                selected,
+                totalLines,
+                selectedEnd < totalLines,
+                ContentHashing.toHex(digest.digest()));
     }
 
     private IllegalArgumentException unsupportedTextFile(Path path) {
@@ -115,11 +128,13 @@ public class ReadTool implements ToolDefinition {
         private final List<String> lines;
         private final int totalLines;
         private final boolean hasMore;
+        private final String contentHash;
 
-        private ReadSlice(List<String> lines, int totalLines, boolean hasMore) {
+        private ReadSlice(List<String> lines, int totalLines, boolean hasMore, String contentHash) {
             this.lines = lines;
             this.totalLines = totalLines;
             this.hasMore = hasMore;
+            this.contentHash = contentHash;
         }
     }
 }

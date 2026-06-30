@@ -63,6 +63,26 @@ class FindToolTest {
         assertTrue(result.path("truncated").asBoolean());
     }
 
+    @Test
+    void acceptsBackslashPathsGlobsAndExclusions() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        FindTool tool = new FindTool(objectMapper, new WorkspacePathResolver());
+        write("src/main/app/App.java");
+        write("src/main/generated/Generated.java");
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("path", "src\\main");
+        arguments.put("glob", "**\\*.java");
+        arguments.put("type", "file");
+        arguments.put("exclude", "generated\\**");
+
+        JsonNode result = execute(objectMapper, tool, arguments);
+
+        assertEquals("src/main", result.path("path").asText());
+        assertEquals(1, result.path("matches").size());
+        assertEquals("src/main/app/App.java", result.path("matches").get(0).path("path").asText());
+    }
+
     private JsonNode execute(ObjectMapper objectMapper, FindTool tool, ObjectNode arguments) throws Exception {
         ToolExecutionResult result = tool.execute(new ToolContext("session", "turn", workspaceRoot), arguments);
         return objectMapper.readTree(result.getContent());

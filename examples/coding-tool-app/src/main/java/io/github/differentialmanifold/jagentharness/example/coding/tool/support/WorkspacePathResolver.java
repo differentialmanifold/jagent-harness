@@ -9,7 +9,7 @@ public class WorkspacePathResolver {
 
     public Path resolve(ToolContext context, String input) {
         Path root = workspaceRoot(context);
-        Path path = Paths.get(input);
+        Path path = Paths.get(normalizePathSeparators(input));
         return path.isAbsolute()
                 ? path.toAbsolutePath().normalize()
                 : root.resolve(path).toAbsolutePath().normalize();
@@ -26,12 +26,16 @@ public class WorkspacePathResolver {
         Path root = workspaceRoot(context);
         Path normalized = path.toAbsolutePath().normalize();
         if (normalized.startsWith(root)) {
-            return root.relativize(normalized).toString();
+            return normalizePathSeparators(root.relativize(normalized).toString());
         }
-        return normalized.toString();
+        return normalizePathSeparators(normalized.toString());
     }
 
     public boolean isInsideWorkspace(ToolContext context, Path path) {
         return path.toAbsolutePath().normalize().startsWith(workspaceRoot(context));
+    }
+
+    public String normalizePathSeparators(String value) {
+        return value == null ? "" : value.replace('\\', '/');
     }
 }

@@ -27,6 +27,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalRequest;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalMode;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
@@ -137,6 +138,9 @@ public class BashTool implements ToolDefinition {
     private void requireApprovalIfMayMutateOutsideWorkspace(ToolContext context,
                                                             String command,
                                                             Path cwd) throws Exception {
+        if (context.getApprovalMode() == ToolApprovalMode.FULL_ACCESS) {
+            return;
+        }
         BashMutation mutation = findOutsideWorkspaceMutation(context, command, cwd);
         if (mutation == null) {
             return;
@@ -158,10 +162,6 @@ public class BashTool implements ToolDefinition {
 
     private BashMutation findOutsideWorkspaceMutation(ToolContext context, String command, Path cwd) {
         List<String> tokens = shellTokens(command);
-        BashMutation redirection = findOutsideRedirection(context, tokens, cwd);
-        if (redirection != null) {
-            return redirection;
-        }
         BashMutation commandMutation = findOutsideMutatingCommand(context, tokens, cwd);
         if (commandMutation != null) {
             return commandMutation;
@@ -170,24 +170,6 @@ public class BashTool implements ToolDefinition {
             return new BashMutation(
                     cwd.toAbsolutePath().normalize().toString(),
                     "bash cwd is outside workspace");
-        }
-        return null;
-    }
-
-    private BashMutation findOutsideRedirection(ToolContext context, List<String> tokens, Path cwd) {
-        for (int i = 0; i < tokens.size(); i++) {
-            String token = tokens.get(i);
-            String next = i + 1 < tokens.size() ? tokens.get(i + 1) : null;
-            String target = redirectionTarget(token, next);
-            if (target == null || target.trim().isEmpty() || target.startsWith("&")) {
-                continue;
-            }
-            Path path = resolveShellPath(cwd, target);
-            if (!pathResolver.isInsideWorkspace(context, path)) {
-                return new BashMutation(
-                        path.toAbsolutePath().normalize().toString(),
-                        "output redirection targets a path outside workspace");
-            }
         }
         return null;
     }
@@ -240,9 +222,6 @@ public class BashTool implements ToolDefinition {
     }
 
     private boolean commandMayMutate(List<String> tokens) {
-        if (findOutputRedirection(tokens)) {
-            return true;
-        }
         for (int start = 0; start < tokens.size(); ) {
             int end = start;
             while (end < tokens.size() && !isCommandSeparator(tokens.get(end))) {
@@ -254,15 +233,6 @@ public class BashTool implements ToolDefinition {
                 return true;
             }
             start = end + 1;
-        }
-        return false;
-    }
-
-    private boolean findOutputRedirection(List<String> tokens) {
-        for (int i = 0; i < tokens.size(); i++) {
-            if (redirectionTarget(tokens.get(i), i + 1 < tokens.size() ? tokens.get(i + 1) : null) != null) {
-                return true;
-            }
         }
         return false;
     }
@@ -433,27 +403,6 @@ public class BashTool implements ToolDefinition {
         }
         tokens.add(current.toString());
         current.setLength(0);
-    }
-
-    private String redirectionTarget(String token, String next) {
-        if (token == null || token.indexOf('>') < 0) {
-            return null;
-        }
-        if (token.contains("<<")) {
-            return null;
-        }
-        int redirect = token.indexOf('>');
-        int pathStart = redirect + 1;
-        if (pathStart < token.length() && token.charAt(pathStart) == '>') {
-            pathStart++;
-        }
-        if (pathStart < token.length() && token.charAt(pathStart) == '|') {
-            pathStart++;
-        }
-        if (pathStart < token.length()) {
-            return token.substring(pathStart);
-        }
-        return next;
     }
 
     private Path resolveShellPath(Path cwd, String token) {
