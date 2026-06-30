@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
 import io.github.differentialmanifold.jagentharness.core.agent.ActiveRunException;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileConflictException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,11 @@ public class AgentConsoleExceptionHandler {
 
     @ExceptionHandler(ActiveRunException.class)
     public ResponseEntity<ErrorResponse> activeRequest(Exception exception) {
+        return error(HttpStatus.CONFLICT, exception);
+    }
+
+    @ExceptionHandler(KnowledgeFileConflictException.class)
+    public ResponseEntity<ErrorResponse> knowledgeFileConflict(Exception exception) {
         return error(HttpStatus.CONFLICT, exception);
     }
 

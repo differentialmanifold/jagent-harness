@@ -51,7 +51,7 @@ public class PromptPreviewController {
                 workspaceRoot,
                 settings.getConfigRoot(),
                 null);
-        String prompt = promptProvider.buildSystemPrompt(new PromptContext(toolRegistry.all(), context));
+        String prompt = promptProvider.buildSystemPrompt(new PromptContext(toolRegistry.all(context), context));
         return new PromptPreviewResponse(
                 prompt,
                 workspaceRoot == null ? null : workspaceRoot.toString());

@@ -12,6 +12,8 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
+import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
+import io.github.differentialmanifold.jagentharness.mcp.spring.McpRuntime;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -117,6 +119,16 @@ public class AgentConsoleWebConfiguration {
     @ConditionalOnMissingBean
     public VirtualFileController virtualFileController(KnowledgeFileStore knowledgeFileStore) {
         return new VirtualFileController(knowledgeFileStore);
+    }
+
+    @Bean
+    @ConditionalOnBean({McpConfigurationManager.class, McpRuntime.class})
+    @ConditionalOnMissingBean
+    public McpController mcpController(McpConfigurationManager configurationManager,
+                                       McpRuntime runtime,
+                                       SessionManager sessionManager,
+                                       WorkspaceRootResolver workspaceRootResolver) {
+        return new McpController(configurationManager, runtime, sessionManager, workspaceRootResolver);
     }
 
     @Bean

@@ -2,6 +2,8 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 
@@ -9,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileConflictException;
 
 class JdbcKnowledgeFileStoreIsolationTest {
 
@@ -41,6 +45,26 @@ class JdbcKnowledgeFileStoreIsolationTest {
         assertEquals(0, business.listManifests().size());
         assertEquals("Coding instructions", content(coding, "skills/customer-support/SKILL.md"));
         assertEquals(1, coding.listManifests().size());
+    }
+
+    @Test
+    void conditionallyWritesKnowledgeFileByContentHash() {
+        JdbcKnowledgeFileStore store = store(createDatabase(), "mcp-app");
+
+        KnowledgeFile created = store.writeFile("mcp.json", "{\"version\":1}", "application/json", null);
+        assertNotNull(created.getContentHash());
+
+        KnowledgeFile updated = store.writeFile(
+                "mcp.json",
+                "{\"version\":2}",
+                "application/json",
+                created.getContentHash());
+        assertEquals("{\"version\":2}", updated.getContent());
+        assertThrows(KnowledgeFileConflictException.class, () -> store.writeFile(
+                "mcp.json",
+                "{\"version\":3}",
+                "application/json",
+                created.getContentHash()));
     }
 
     private String content(JdbcKnowledgeFileStore store, String path) {

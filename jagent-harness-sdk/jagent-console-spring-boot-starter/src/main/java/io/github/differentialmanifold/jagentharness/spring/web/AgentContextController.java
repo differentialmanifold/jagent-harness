@@ -74,7 +74,7 @@ public class AgentContextController {
                 null);
 
         return new AgentContextResponse(
-                tools(),
+                tools(agentContext),
                 promptFiles(configRoot, workspaceRoot),
                 skills(agentContext, configRoot, workspaceRoot),
                 configRoot == null ? null : configRoot.toString(),
@@ -89,9 +89,9 @@ public class AgentContextController {
         return sessionManager.requireSession(sessionId.trim());
     }
 
-    private List<ToolInfoResponse> tools() {
+    private List<ToolInfoResponse> tools(AgentContext context) {
         List<ToolInfoResponse> tools = new ArrayList<ToolInfoResponse>();
-        for (ToolDefinition tool : toolRegistry.all()) {
+        for (ToolDefinition tool : toolRegistry.all(context)) {
             tools.add(new ToolInfoResponse(tool.getName(), tool.getDescription(), tool.getParametersSchema()));
         }
         return tools;

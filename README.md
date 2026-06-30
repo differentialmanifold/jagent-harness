@@ -17,6 +17,7 @@ This repository also includes coding and business-system examples with Spring Bo
 - Virtual knowledge filesystem for database-backed prompt and skill files.
 - `AGENTS.md` loading from global, workspace, and database sources.
 - Skill loading from global, workspace, and database sources with database-first precedence.
+- Java 8 Streamable HTTP MCP client with file and database configuration.
 - Optional Console Spring Boot starter with `/api/*` endpoints and SSE streaming for realtime UIs.
 - Context compaction when a conversation approaches the model context window.
 
@@ -28,6 +29,9 @@ JAgentHarness/
   jagent-harness-sdk/
     pom.xml                       SDK reactor for publishable Maven modules
     jagent-core/                  Core SDK interfaces and agent runtime
+    jagent-mcp-client/            Framework-neutral Streamable HTTP MCP client
+    jagent-mcp-spring-boot-starter/
+                                  MCP configuration and Spring Boot lifecycle
     jagent-spring-boot-starter/   Spring Boot auto-configuration for embedded agent runtime
     jagent-console-spring-boot-starter/
                                   Optional backend console API for the Vue UI
@@ -147,6 +151,41 @@ Add the console starter only when you want the bundled Vue console or the `/api/
     <version>${jagent-harness.version}</version>
 </dependency>
 ```
+
+Add the MCP starter when the agent needs tools from remote Streamable HTTP MCP servers:
+
+```xml
+<dependency>
+    <groupId>io.github.differentialmanifold</groupId>
+    <artifactId>jagent-mcp-spring-boot-starter</artifactId>
+    <version>${jagent-harness.version}</version>
+</dependency>
+```
+
+Configure servers in `${JAGENT_CONFIG_ROOT}/mcp.json`, a workspace `mcp.json`, or the
+database-backed `mcp.json` managed by the Console. Servers are merged by name with database,
+workspace, then global precedence:
+
+```json
+{
+  "mcpServers": {
+    "catalog": {
+      "transport": "streamable-http",
+      "url": "https://example.com/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer ${CATALOG_MCP_TOKEN}"
+      },
+      "connectTimeoutSeconds": 10,
+      "requestTimeoutSeconds": 60
+    }
+  }
+}
+```
+
+Sensitive headers must reference environment variables. MCP tools are exposed to the model as
+`serverName__toolName`. Global and database configurations load at startup; a workspace
+configuration loads on its first use. Database edits in the Console require an application restart.
 
 Use the harness from application code:
 
