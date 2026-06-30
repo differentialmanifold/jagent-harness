@@ -45,7 +45,9 @@
 
     <modules>
         <module>jagent-core</module>
+        <module>jagent-mcp-client</module>
         <module>jagent-spring-boot-starter</module>
+        <module>jagent-mcp-spring-boot-starter</module>
         <module>jagent-console-spring-boot-starter</module>
         <module>jagent-store-jdbc</module>
     </modules>

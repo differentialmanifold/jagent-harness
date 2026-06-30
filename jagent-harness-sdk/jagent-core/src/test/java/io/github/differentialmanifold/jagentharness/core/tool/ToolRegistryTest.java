@@ -2,11 +2,14 @@ package io.github.differentialmanifold.jagentharness.core.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import org.junit.jupiter.api.Test;
 
 class ToolRegistryTest {
@@ -38,6 +41,32 @@ class ToolRegistryTest {
         List<ToolDefinition> tools = new ArrayList<ToolDefinition>(registry.all());
         assertSame(bash, tools.get(0));
         assertSame(replacement, tools.get(1));
+    }
+
+    @Test
+    void resolvesDynamicToolsForCurrentContext() {
+        ToolDefinition dynamic = new StubTool("remote", "remote");
+        ToolProvider provider = context -> context == null || context.getSessionId() == null
+                ? Collections.<ToolDefinition>emptyList()
+                : Collections.singletonList(dynamic);
+        ToolRegistry registry = new ToolRegistry(
+                Collections.singletonList(new StubTool("local", "local")),
+                Collections.singletonList(provider));
+
+        assertEquals(1, registry.all().size());
+        List<ToolDefinition> tools = new ArrayList<ToolDefinition>(
+                registry.all(new AgentContext("session", "turn")));
+        assertEquals(2, tools.size());
+        assertSame(dynamic, tools.get(1));
+    }
+
+    @Test
+    void rejectsDynamicToolNameCollisions() {
+        ToolRegistry registry = new ToolRegistry(
+                Collections.singletonList(new StubTool("read", "local")),
+                Collections.singletonList(context -> Collections.singletonList(new StubTool("read", "remote"))));
+
+        assertThrows(IllegalStateException.class, () -> registry.all(new AgentContext("session", "turn")));
     }
 
     private static class StubTool implements ToolDefinition {

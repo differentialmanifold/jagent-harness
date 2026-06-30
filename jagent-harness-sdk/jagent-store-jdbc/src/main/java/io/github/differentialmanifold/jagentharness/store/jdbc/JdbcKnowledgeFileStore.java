@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.List;
 
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileConflictException;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
@@ -14,6 +15,7 @@ import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifest;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.dao.DuplicateKeyException;
 
 public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifestStore {
 
@@ -28,6 +30,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
             rs.getString("node_type"),
             rs.getString("content"),
             rs.getString("content_type"),
+            rs.getString("content_hash"),
             JdbcTimeCodec.decode(rs.getString("created_at")),
             JdbcTimeCodec.decode(rs.getString("updated_at")));
 
@@ -85,6 +88,65 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         ensureDirectories(normalizedPath);
         upsertFile(normalizedPath, KnowledgeFile.TYPE_FILE, content == null ? "" : content, effectiveContentType);
         syncIndexes(normalizedPath, content == null ? "" : content);
+        return readFile(normalizedPath);
+    }
+
+    @Override
+    public KnowledgeFile writeFile(String path,
+                                   String content,
+                                   String contentType,
+                                   String expectedContentHash) {
+        String normalizedPath = KnowledgeFilePaths.normalize(path);
+        String effectiveContent = content == null ? "" : content;
+        String effectiveContentType = contentType == null || contentType.trim().isEmpty()
+                ? DEFAULT_CONTENT_TYPE
+                : contentType.trim();
+        ensureDirectories(normalizedPath);
+        byte[] bytes = effectiveContent.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String nextHash = sha256(bytes);
+        Instant now = Instant.now();
+        if (expectedContentHash == null) {
+            try {
+                jdbcTemplate.update(
+                        "insert into knowledge_files "
+                                + "(application_id, path, parent_path, name, node_type, content, content_type, size, content_hash, created_at, updated_at) "
+                                + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        applicationId,
+                        normalizedPath,
+                        KnowledgeFilePaths.parent(normalizedPath),
+                        KnowledgeFilePaths.fileName(normalizedPath),
+                        KnowledgeFile.TYPE_FILE,
+                        effectiveContent,
+                        effectiveContentType,
+                        bytes.length,
+                        nextHash,
+                        JdbcTimeCodec.encode(now),
+                        JdbcTimeCodec.encode(now));
+            } catch (DuplicateKeyException e) {
+                throw new KnowledgeFileConflictException(normalizedPath);
+            }
+        } else {
+            int updated = jdbcTemplate.update(
+                    "update knowledge_files set parent_path = ?, name = ?, node_type = ?, content = ?, "
+                            + "content_type = ?, size = ?, content_hash = ?, updated_at = ? "
+                            + "where application_id = ? and path = ? and node_type = ? and content_hash = ?",
+                    KnowledgeFilePaths.parent(normalizedPath),
+                    KnowledgeFilePaths.fileName(normalizedPath),
+                    KnowledgeFile.TYPE_FILE,
+                    effectiveContent,
+                    effectiveContentType,
+                    bytes.length,
+                    nextHash,
+                    JdbcTimeCodec.encode(now),
+                    applicationId,
+                    normalizedPath,
+                    KnowledgeFile.TYPE_FILE,
+                    expectedContentHash);
+            if (updated == 0) {
+                throw new KnowledgeFileConflictException(normalizedPath);
+            }
+        }
+        syncIndexes(normalizedPath, effectiveContent);
         return readFile(normalizedPath);
     }
 

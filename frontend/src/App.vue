@@ -12,6 +12,7 @@
         <el-radio-button value="chat">Chat</el-radio-button>
         <el-radio-button value="prompts">Prompts</el-radio-button>
         <el-radio-button value="skills">Skills</el-radio-button>
+        <el-radio-button v-if="mcpAvailable" value="mcp">MCP</el-radio-button>
       </el-radio-group>
     </header>
 
@@ -65,8 +66,15 @@
         />
       </main>
 
-      <main v-else class="workspace management-shell">
+      <main v-else-if="activeView === 'skills'" class="workspace management-shell">
         <KnowledgePanel key="skills" mode="skills" @changed="refreshAgentContext" />
+      </main>
+
+      <main v-else class="workspace management-shell">
+        <McpPanel
+          :session-id="currentSession ? currentSession.sessionId : ''"
+          @changed="refreshAgentContext"
+        />
       </main>
     </div>
 
@@ -95,17 +103,29 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElRadioButton, ElRadioGroup } from 'element-plus'
 import ChatPanel from './components/ChatPanel.vue'
 import InspectorPanel from './components/InspectorPanel.vue'
 import KnowledgePanel from './components/KnowledgePanel.vue'
+import McpPanel from './components/McpPanel.vue'
 import ProjectDialog from './components/ProjectDialog.vue'
 import RenameDialog from './components/RenameDialog.vue'
 import Sidebar from './components/Sidebar.vue'
 import { useAgentHarness } from './composables/useAgentHarness'
+import { request } from './api/http'
 
 const activeView = ref('chat')
+const mcpAvailable = ref(false)
+
+onMounted(async () => {
+  try {
+    await request('/api/mcp/config')
+    mcpAvailable.value = true
+  } catch {
+    mcpAvailable.value = false
+  }
+})
 
 const {
   currentSession,

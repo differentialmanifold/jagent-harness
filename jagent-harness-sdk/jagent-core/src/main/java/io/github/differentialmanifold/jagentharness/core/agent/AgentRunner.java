@@ -113,7 +113,7 @@ public class AgentRunner implements AgentHarness {
                 publish(sessionId, turnId, AgentEvent.MESSAGE_START,
                         singleton("iteration", iterations));
 
-                Collection<ToolDefinition> tools = toolRegistry.all();
+                Collection<ToolDefinition> tools = toolRegistry.all(toolContext);
                 ModelProvider provider = requireProvider();
                 String systemPrompt = promptProvider.buildSystemPrompt(new PromptContext(tools, toolContext));
                 List<AgentMessage> storedMessages = sessionStore.findMessages(sessionId);

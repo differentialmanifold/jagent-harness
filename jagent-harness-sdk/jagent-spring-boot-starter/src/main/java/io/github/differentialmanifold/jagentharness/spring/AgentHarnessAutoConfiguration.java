@@ -40,6 +40,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContext
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolProvider;
 import io.github.differentialmanifold.jagentharness.core.tool.builtin.SkillTool;
 import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 import org.springframework.beans.factory.ObjectProvider;
@@ -83,8 +84,10 @@ public class AgentHarnessAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ToolRegistry toolRegistry(List<ToolDefinition> tools) {
-        return new ToolRegistry(tools);
+    public ToolRegistry toolRegistry(List<ToolDefinition> tools, ObjectProvider<ToolProvider> toolProviders) {
+        List<ToolProvider> providers = new ArrayList<ToolProvider>();
+        toolProviders.forEach(providers::add);
+        return new ToolRegistry(tools, providers);
     }
 
     @Bean
