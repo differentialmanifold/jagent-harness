@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.ContentHashing;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,7 +28,8 @@ class ReadToolTest {
     void readsWorkspaceFile() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         ReadTool tool = new ReadTool(objectMapper, new WorkspacePathResolver());
-        write(workspaceRoot.resolve("example.txt"), "first\nsecond\nthird\n");
+        String content = "first\nsecond\nthird\n";
+        write(workspaceRoot.resolve("example.txt"), content);
 
         JsonNode result = execute(objectMapper, tool, arguments(objectMapper, "example.txt", null, null));
 
@@ -35,6 +37,24 @@ class ReadToolTest {
         assertEquals("first\nsecond\nthird", result.path("content").asText());
         assertEquals(3, result.path("totalLines").asInt());
         assertFalse(result.path("truncated").asBoolean());
+        assertEquals(
+                ContentHashing.sha256(content.getBytes(StandardCharsets.UTF_8)),
+                result.path("contentHash").asText());
+    }
+
+    @Test
+    void readsWorkspaceFileUsingBackslashSeparators() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        ReadTool tool = new ReadTool(objectMapper, new WorkspacePathResolver());
+        write(workspaceRoot.resolve("src/test/Example.java"), "class Example {}\n");
+
+        JsonNode result = execute(
+                objectMapper,
+                tool,
+                arguments(objectMapper, "src\\test\\Example.java", null, null));
+
+        assertEquals("src/test/Example.java", result.path("path").asText());
+        assertEquals("class Example {}", result.path("content").asText());
     }
 
     @Test
@@ -50,6 +70,9 @@ class ReadToolTest {
         assertEquals(2, result.path("lines").asInt());
         assertEquals(4, result.path("totalLines").asInt());
         assertTrue(result.path("truncated").asBoolean());
+        assertEquals(
+                ContentHashing.sha256("first\nsecond\nthird\nfourth\n".getBytes(StandardCharsets.UTF_8)),
+                result.path("contentHash").asText());
     }
 
     @Test
@@ -61,7 +84,9 @@ class ReadToolTest {
 
         JsonNode result = execute(objectMapper, tool, arguments(objectMapper, outside.toString(), null, null));
 
-        assertEquals(outside.toAbsolutePath().normalize().toString(), result.path("path").asText());
+        assertEquals(
+                outside.toAbsolutePath().normalize().toString().replace('\\', '/'),
+                result.path("path").asText());
         assertEquals("outside\ncontent", result.path("content").asText());
     }
 

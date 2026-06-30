@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.example.coding.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -125,7 +126,7 @@ class BashToolTest {
     }
 
     @Test
-    void asksBeforeWritingOutsideWorkspaceWithRedirection() throws Exception {
+    void doesNotAnalyzeOutputRedirection() throws Exception {
         Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
         ObjectMapper objectMapper = new ObjectMapper();
         AtomicReference<ToolApprovalRequest> approval = new AtomicReference<ToolApprovalRequest>();
@@ -137,8 +138,41 @@ class BashToolTest {
 
         tool.execute(approvalContext(approval, ToolApprovalDecision.approved()), arguments);
 
-        assertEquals(outside.toAbsolutePath().normalize().toString(), approval.get().getTarget());
+        assertNull(approval.get());
         assertEquals("hello", new String(Files.readAllBytes(outside), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void fullAccessSkipsMutationAnalysis() throws Exception {
+        Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
+        ObjectMapper objectMapper = new ObjectMapper();
+        WorkspacePathResolver pathResolver = new WorkspacePathResolver() {
+            @Override
+            public boolean isInsideWorkspace(ToolContext context, Path path) {
+                throw new AssertionError("Full access must not invoke bash mutation analysis");
+            }
+        };
+        BashTool tool = new BashTool(objectMapper, pathResolver);
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("command", "printf ok");
+
+        tool.execute(new ToolContext("session", "turn", tempDir), arguments);
+    }
+
+    @Test
+    void doesNotTreatQuotedJavaScriptArrowsAsRedirection() throws Exception {
+        Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
+        ObjectMapper objectMapper = new ObjectMapper();
+        AtomicReference<ToolApprovalRequest> approval = new AtomicReference<ToolApprovalRequest>();
+        BashTool tool = new BashTool(objectMapper, new WorkspacePathResolver());
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put(
+                "command",
+                "printf '%s' '() => { const scripts = document.querySelectorAll(\"script\"); }'");
+
+        tool.execute(approvalContext(approval, ToolApprovalDecision.approved()), arguments);
+
+        assertNull(approval.get());
     }
 
     @Test

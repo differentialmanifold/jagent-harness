@@ -70,7 +70,7 @@ public class FindTool implements ToolDefinition {
             throw new IllegalArgumentException("Directory not found: " + pathResolver.relative(context, root));
         }
 
-        String glob = arguments.path("glob").asText("**/*");
+        String glob = pathResolver.normalizePathSeparators(arguments.path("glob").asText("**/*"));
         String name = arguments.path("name").asText("");
         String type = arguments.path("type").asText("all");
         int maxDepth = arguments.path("maxDepth").asInt(Integer.MAX_VALUE);
@@ -175,7 +175,7 @@ public class FindTool implements ToolDefinition {
         List<PathMatcher> matchers = new ArrayList<PathMatcher>();
         String[] parts = effectiveExclude.split(",");
         for (String part : parts) {
-            String pattern = part == null ? "" : part.trim();
+            String pattern = part == null ? "" : pathResolver.normalizePathSeparators(part.trim());
             if (!pattern.isEmpty()) {
                 matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
             }

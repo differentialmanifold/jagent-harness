@@ -5,7 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,11 +20,15 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolArguments;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.ContentHashing;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
 
 public class EditTool implements ToolDefinition {
 
     private static final int DIFF_CONTEXT_LINES = 3;
+    private static final int MAX_SEARCH_CANDIDATES = 3;
+    private static final int SEARCH_CANDIDATE_CONTEXT_LINES = 2;
+    private static final int MAX_SEARCH_CANDIDATE_LENGTH = 1200;
 
     private final ObjectMapper objectMapper;
     private final WorkspacePathResolver pathResolver;
@@ -38,16 +45,18 @@ public class EditTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Modify an existing UTF-8 file. Relative paths resolve from the workspace; absolute paths are allowed. Supports exact replacement, line-range replacement or deletion, and insertion before or after a line. Prefer this over write for localized changes.";
+        return "Modify an existing UTF-8 file. Read the file first and pass its contentHash as expectedHash to prevent stale edits. Relative paths resolve from the workspace; absolute paths are allowed. Supports exact replacement, line-range replacement or deletion, and insertion before or after a line. Prefer this over write for localized changes.";
     }
 
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
         properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute file path."));
+        properties.set("expectedHash", ToolSchemas.stringProperty(objectMapper, "SHA-256 contentHash returned by read. The edit fails safely if the file changed after it was read."));
         properties.set("search", ToolSchemas.stringProperty(objectMapper, "Exact text to replace. Use with replacement for exact replacement mode."));
         properties.set("replacement", ToolSchemas.stringProperty(objectMapper, "Replacement or inserted text. Use an empty string to delete a line range."));
         properties.set("all", ToolSchemas.booleanProperty(objectMapper, "Replace every occurrence. Default false."));
+        properties.set("occurrence", ToolSchemas.integerProperty(objectMapper, "One-based occurrence to replace when search matches more than once. Omit when the match is unique or all is true."));
         properties.set("startLine", ToolSchemas.integerProperty(objectMapper, "One-based first line for line-range replacement or deletion."));
         properties.set("endLine", ToolSchemas.integerProperty(objectMapper, "One-based last line for line-range replacement or deletion."));
         properties.set("insertBeforeLine", ToolSchemas.integerProperty(objectMapper, "Insert replacement before this one-based line number."));
@@ -61,10 +70,41 @@ public class EditTool implements ToolDefinition {
         if (!Files.isRegularFile(path)) {
             throw new IllegalArgumentException("File not found: " + pathResolver.relative(context, path));
         }
+        String expectedHash = normalizedExpectedHash(arguments);
         requireApprovalIfOutsideWorkspace(context, path);
-        String content = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-        String updated = applyEdit(context, path, arguments, content);
-        Files.write(path, updated.getBytes(StandardCharsets.UTF_8), StandardOpenOption.TRUNCATE_EXISTING);
+        byte[] contentBytes = Files.readAllBytes(path);
+        String previousHash = ContentHashing.sha256(contentBytes);
+        if (expectedHash != null && !previousHash.equalsIgnoreCase(expectedHash)) {
+            return editFailure(
+                    context,
+                    path,
+                    "FILE_CHANGED",
+                    "The file changed after it was read.",
+                    previousHash,
+                    expectedHash,
+                    null,
+                    null,
+                    "Read the current file content and retry with its new contentHash.");
+        }
+
+        String content = new String(contentBytes, StandardCharsets.UTF_8);
+        String updated;
+        try {
+            updated = applyEdit(context, path, arguments, content);
+        } catch (EditFailureException e) {
+            return editFailure(
+                    context,
+                    path,
+                    e.code,
+                    e.getMessage(),
+                    previousHash,
+                    expectedHash,
+                    e.matchCount,
+                    e.candidates,
+                    e.retry);
+        }
+        byte[] updatedBytes = updated.getBytes(StandardCharsets.UTF_8);
+        Files.write(path, updatedBytes, StandardOpenOption.TRUNCATE_EXISTING);
 
         boolean changed = !content.equals(updated);
         DiffSummary diff = changed
@@ -73,6 +113,8 @@ public class EditTool implements ToolDefinition {
         ObjectNode result = objectMapper.createObjectNode();
         result.put("path", pathResolver.relative(context, path));
         result.put("fileName", path.getFileName().toString());
+        result.put("previousHash", previousHash);
+        result.put("contentHash", ContentHashing.sha256(updatedBytes));
         result.put("changed", changed);
         result.put("additions", diff.additions);
         result.put("deletions", diff.deletions);
@@ -113,10 +155,39 @@ public class EditTool implements ToolDefinition {
             if (replacement == null) {
                 throw new IllegalArgumentException("Missing required argument: replacement");
             }
-            if (!containsText(content, search)) {
-                throw new IllegalArgumentException("Search text not found in " + pathResolver.relative(context, path));
+            boolean all = arguments.path("all").asBoolean(false);
+            Integer occurrence = optionalOccurrence(arguments);
+            if (all && occurrence != null) {
+                throw new IllegalArgumentException("occurrence cannot be used when all is true");
             }
-            return replaceText(content, search, replacement, arguments.path("all").asBoolean(false));
+            SearchMatch searchMatch = findSearchMatch(content, search);
+            if (searchMatch.matchCount == 0) {
+                throw new EditFailureException(
+                        "SEARCH_NOT_FOUND",
+                        "Exact search text was not found in " + pathResolver.relative(context, path) + ".",
+                        0,
+                        findSearchCandidates(content, search),
+                        "Read the current file content and retry with exact text from the file.");
+            }
+            if (occurrence != null && occurrence > searchMatch.matchCount) {
+                throw new EditFailureException(
+                        "OCCURRENCE_OUT_OF_RANGE",
+                        "Requested occurrence " + occurrence + " but search matched "
+                                + searchMatch.matchCount + " times.",
+                        searchMatch.matchCount,
+                        findSearchCandidates(content, search),
+                        "Use an occurrence between 1 and " + searchMatch.matchCount + ", or provide a more specific search.");
+            }
+            if (!all && occurrence == null && searchMatch.matchCount > 1) {
+                throw new EditFailureException(
+                        "AMBIGUOUS_MATCH",
+                        "Search text matched " + searchMatch.matchCount + " times in "
+                                + pathResolver.relative(context, path) + ".",
+                        searchMatch.matchCount,
+                        findSearchCandidates(content, search),
+                        "Provide more surrounding context, set occurrence, or set all to true.");
+            }
+            return replaceText(searchMatch, replacement, all, occurrence);
         }
 
         if (hasLineRange) {
@@ -137,37 +208,53 @@ public class EditTool implements ToolDefinition {
         return insertAfterLine(content, requiredLine(arguments, "insertAfterLine"), replacement);
     }
 
-    private String replaceText(String content,
-                               String search,
+    private String replaceText(SearchMatch searchMatch,
                                String replacement,
-                               boolean all) {
-        String lineSeparator = detectLineSeparator(content);
-        String effectiveReplacement = normalizeLineEndings(replacement, lineSeparator);
-        if (!content.contains(search)) {
-            String logicalContent = normalizeLineEndings(content, "\n");
-            String logicalSearch = normalizeLineEndings(search, "\n");
-            if (!logicalContent.contains(logicalSearch)) {
-                return content;
-            }
-            String logicalReplacement = normalizeLineEndings(replacement, "\n");
-            return normalizeLineEndings(
-                    replaceTextExact(logicalContent, logicalSearch, logicalReplacement, all),
-                    lineSeparator);
+                               boolean all,
+                               Integer occurrence) {
+        String effectiveReplacement = searchMatch.normalizedLineEndings
+                ? normalizeLineEndings(replacement, "\n")
+                : normalizeLineEndings(replacement, searchMatch.lineSeparator);
+        String updated = replaceTextExact(
+                searchMatch.content,
+                searchMatch.search,
+                effectiveReplacement,
+                all,
+                occurrence == null ? 1 : occurrence);
+        if (searchMatch.normalizedLineEndings) {
+            return normalizeLineEndings(updated, searchMatch.lineSeparator);
         }
-        return replaceTextExact(content, search, effectiveReplacement, all);
+        return updated;
     }
 
-    private boolean containsText(String content, String search) {
-        return content.contains(search)
-                || normalizeLineEndings(content, "\n").contains(normalizeLineEndings(search, "\n"));
+    private SearchMatch findSearchMatch(String content, String search) {
+        String lineSeparator = detectLineSeparator(content);
+        if (content.contains(search)) {
+            return new SearchMatch(
+                    content,
+                    search,
+                    lineSeparator,
+                    false,
+                    countOccurrences(content, search));
+        }
+        String logicalContent = normalizeLineEndings(content, "\n");
+        String logicalSearch = normalizeLineEndings(search, "\n");
+        return new SearchMatch(
+                logicalContent,
+                logicalSearch,
+                lineSeparator,
+                true,
+                countOccurrences(logicalContent, logicalSearch));
     }
 
     private String replaceTextExact(String content,
                                     String search,
                                     String replacement,
-                                    boolean all) {
+                                    boolean all,
+                                    int occurrence) {
         StringBuilder builder = new StringBuilder(content.length() + replacement.length());
         int cursor = 0;
+        int matchNumber = 0;
         while (cursor <= content.length()) {
             int index = content.indexOf(search, cursor);
             if (index < 0) {
@@ -176,15 +263,31 @@ public class EditTool implements ToolDefinition {
             }
 
             builder.append(content, cursor, index);
-            builder.append(replacement);
+            matchNumber++;
+            boolean replace = all || matchNumber == occurrence;
+            builder.append(replace ? replacement : search);
 
             cursor = index + search.length();
-            if (!all) {
+            if (replace && !all) {
                 builder.append(content.substring(cursor));
                 break;
             }
         }
         return builder.toString();
+    }
+
+    private int countOccurrences(String content, String search) {
+        int count = 0;
+        int cursor = 0;
+        while (cursor <= content.length() - search.length()) {
+            int index = content.indexOf(search, cursor);
+            if (index < 0) {
+                break;
+            }
+            count++;
+            cursor = index + search.length();
+        }
+        return count;
     }
 
     private String replaceLineRange(String content, int startLine, int endLine, String replacement) {
@@ -370,6 +473,158 @@ public class EditTool implements ToolDefinition {
         return result.toString();
     }
 
+    private ToolExecutionResult editFailure(ToolContext context,
+                                            Path path,
+                                            String code,
+                                            String message,
+                                            String currentHash,
+                                            String expectedHash,
+                                            Integer matchCount,
+                                            ArrayNode candidates,
+                                            String retry) {
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("error", message);
+        result.put("code", code);
+        result.put("path", pathResolver.relative(context, path));
+        result.put("contentHash", currentHash);
+        if (expectedHash != null) {
+            result.put("expectedHash", expectedHash);
+        }
+        if (matchCount != null) {
+            result.put("matchCount", matchCount);
+        }
+        if (candidates != null && candidates.size() > 0) {
+            result.set("candidates", candidates);
+        }
+        result.put("retry", retry);
+        return ToolExecutionResult.of(result.toString());
+    }
+
+    private String normalizedExpectedHash(JsonNode arguments) {
+        String value = optionalString(arguments, "expectedHash");
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        String hash = value.trim();
+        if (!hash.matches("[0-9a-fA-F]{64}")) {
+            throw new IllegalArgumentException("expectedHash must be a 64-character SHA-256 value");
+        }
+        return hash.toLowerCase(Locale.ROOT);
+    }
+
+    private Integer optionalOccurrence(JsonNode arguments) {
+        JsonNode node = arguments.path("occurrence");
+        if (node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (!node.canConvertToInt() || node.asInt() < 1) {
+            throw new IllegalArgumentException("occurrence must be a positive integer");
+        }
+        return node.asInt();
+    }
+
+    private ArrayNode findSearchCandidates(String content, String search) {
+        ArrayNode candidates = objectMapper.createArrayNode();
+        List<String> contentLines = splitLines(content);
+        List<String> searchLines = splitLines(search);
+        if (contentLines.isEmpty() || searchLines.isEmpty()) {
+            return candidates;
+        }
+
+        List<SearchCandidate> ranked = new ArrayList<SearchCandidate>();
+        for (int index = 0; index < contentLines.size(); index++) {
+            int score = candidateScore(contentLines.get(index), searchLines);
+            if (score > 0) {
+                ranked.add(new SearchCandidate(index, score));
+            }
+        }
+        Collections.sort(ranked, new Comparator<SearchCandidate>() {
+            @Override
+            public int compare(SearchCandidate left, SearchCandidate right) {
+                if (left.score != right.score) {
+                    return right.score - left.score;
+                }
+                return left.lineIndex - right.lineIndex;
+            }
+        });
+
+        List<Integer> selectedLines = new ArrayList<Integer>();
+        for (SearchCandidate candidate : ranked) {
+            if (candidates.size() >= MAX_SEARCH_CANDIDATES) {
+                break;
+            }
+            if (nearSelectedCandidate(candidate.lineIndex, selectedLines, searchLines.size())) {
+                continue;
+            }
+            selectedLines.add(candidate.lineIndex);
+            int start = Math.max(0, candidate.lineIndex - SEARCH_CANDIDATE_CONTEXT_LINES);
+            int end = Math.min(
+                    contentLines.size(),
+                    candidate.lineIndex + Math.max(1, searchLines.size()) + SEARCH_CANDIDATE_CONTEXT_LINES);
+            String snippet = String.join("\n", contentLines.subList(start, end));
+            if (snippet.length() > MAX_SEARCH_CANDIDATE_LENGTH) {
+                snippet = snippet.substring(0, MAX_SEARCH_CANDIDATE_LENGTH) + "...";
+            }
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("startLine", start + 1);
+            node.put("endLine", end);
+            node.put("content", snippet);
+            candidates.add(node);
+        }
+        return candidates;
+    }
+
+    private int candidateScore(String contentLine, List<String> searchLines) {
+        String actual = contentLine == null ? "" : contentLine.trim();
+        if (actual.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        for (String searchLine : searchLines) {
+            String expected = searchLine == null ? "" : searchLine.trim();
+            if (expected.isEmpty()) {
+                continue;
+            }
+            if (actual.equals(expected)) {
+                score = Math.max(score, 1000 + Math.min(actual.length(), 200));
+            } else if (actual.equalsIgnoreCase(expected)) {
+                score = Math.max(score, 900 + Math.min(actual.length(), 200));
+            } else {
+                String actualLower = actual.toLowerCase(Locale.ROOT);
+                String expectedLower = expected.toLowerCase(Locale.ROOT);
+                if (actualLower.contains(expectedLower) || expectedLower.contains(actualLower)) {
+                    score = Math.max(score, 700 + Math.min(actual.length(), expected.length()));
+                } else {
+                    int prefix = commonPrefixLength(actualLower, expectedLower);
+                    int minimumLength = Math.min(actual.length(), expected.length());
+                    if (prefix >= 8 && prefix * 2 >= minimumLength) {
+                        score = Math.max(score, 500 + prefix);
+                    }
+                }
+            }
+        }
+        return score;
+    }
+
+    private int commonPrefixLength(String left, String right) {
+        int limit = Math.min(left.length(), right.length());
+        int index = 0;
+        while (index < limit && left.charAt(index) == right.charAt(index)) {
+            index++;
+        }
+        return index;
+    }
+
+    private boolean nearSelectedCandidate(int lineIndex, List<Integer> selectedLines, int searchLineCount) {
+        int distance = Math.max(1, searchLineCount);
+        for (Integer selectedLine : selectedLines) {
+            if (Math.abs(lineIndex - selectedLine) < distance) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void requireLineRange(List<String> lines, int startLine, int endLine) {
         if (startLine < 1 || endLine > lines.size()) {
             throw new IllegalArgumentException("Line range must be between 1 and " + lines.size());
@@ -426,6 +681,55 @@ public class EditTool implements ToolDefinition {
             this.additions = additions;
             this.deletions = deletions;
             this.hunks = hunks;
+        }
+    }
+
+    private static class SearchMatch {
+        private final String content;
+        private final String search;
+        private final String lineSeparator;
+        private final boolean normalizedLineEndings;
+        private final int matchCount;
+
+        private SearchMatch(String content,
+                            String search,
+                            String lineSeparator,
+                            boolean normalizedLineEndings,
+                            int matchCount) {
+            this.content = content;
+            this.search = search;
+            this.lineSeparator = lineSeparator;
+            this.normalizedLineEndings = normalizedLineEndings;
+            this.matchCount = matchCount;
+        }
+    }
+
+    private static class SearchCandidate {
+        private final int lineIndex;
+        private final int score;
+
+        private SearchCandidate(int lineIndex, int score) {
+            this.lineIndex = lineIndex;
+            this.score = score;
+        }
+    }
+
+    private static class EditFailureException extends RuntimeException {
+        private final String code;
+        private final Integer matchCount;
+        private final ArrayNode candidates;
+        private final String retry;
+
+        private EditFailureException(String code,
+                                     String message,
+                                     Integer matchCount,
+                                     ArrayNode candidates,
+                                     String retry) {
+            super(message);
+            this.code = code;
+            this.matchCount = matchCount;
+            this.candidates = candidates;
+            this.retry = retry;
         }
     }
 }
