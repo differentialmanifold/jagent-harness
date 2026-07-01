@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.charset.StandardCharsets;
@@ -66,6 +67,28 @@ class McpConfigurationManagerTest {
         assertThrows(IllegalArgumentException.class, () -> new McpConfigValidator().validate("secure", config));
     }
 
+    @Test
+    void replacesAndDeletesTheSingleDatabaseConfigFile() throws Exception {
+        MemoryStore store = new MemoryStore();
+        McpConfigurationManager manager = new McpConfigurationManager(
+                tempDir, "mcp.json", store, new ObjectMapper());
+        String first = document(server("first", "http://first/mcp"));
+        String second = document(server("second", "http://second/mcp"));
+
+        manager.saveDatabase(first);
+        assertEquals(first + "\n", store.readFile("mcp.json").getContent());
+
+        manager.saveDatabase(second);
+        assertEquals(second + "\n", store.readFile("mcp.json").getContent());
+        assertEquals(1, manager.currentSnapshot(null).getEffectiveServers().size());
+        assertEquals("http://second/mcp",
+                manager.currentSnapshot(null).getEffectiveServers().get("second").getConfig().getUrl());
+
+        manager.deleteDatabase();
+        assertNull(store.readFile("mcp.json"));
+        assertNull(manager.currentSnapshot(null).getDatabaseConfig());
+    }
+
     @SafeVarargs
     private final String document(Map.Entry<String, McpServerConfig>... entries) throws Exception {
         McpConfigDocument document = new McpConfigDocument();
@@ -99,7 +122,6 @@ class McpConfigurationManagerTest {
         @Override
         public KnowledgeFile writeFile(String path, String content, String contentType) {
             file = new KnowledgeFile(path, KnowledgeFile.TYPE_FILE, content, contentType, Instant.now(), Instant.now());
-            file.setContentHash(Integer.toHexString(content.hashCode()));
             return file;
         }
 

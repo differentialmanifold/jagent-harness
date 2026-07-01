@@ -5,11 +5,31 @@
         <h2>MCP Management</h2>
         <p>{{ servers.length }} servers, {{ availableCount }} available</p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreate">Add server</el-button>
+      <div class="mcp-detail-actions">
+        <el-button
+          :type="hasDatabaseConfig ? 'default' : 'primary'"
+          :icon="hasDatabaseConfig ? EditPen : DocumentAdd"
+          @click="openJsonEditor"
+        >
+          {{ hasDatabaseConfig ? 'Edit mcp.json' : 'Create mcp.json' }}
+        </el-button>
+        <el-popconfirm
+          v-if="hasDatabaseConfig"
+          width="280"
+          title="Delete the database mcp.json?"
+          confirm-button-text="Delete"
+          cancel-button-text="Cancel"
+          @confirm="deleteDatabaseConfig"
+        >
+          <template #reference>
+            <el-button type="danger" plain :icon="Delete" :loading="saving">Delete mcp.json</el-button>
+          </template>
+        </el-popconfirm>
+      </div>
     </header>
 
     <div v-if="restartRequired" class="mcp-notice">
-      Database configuration was saved. Restart this application instance to activate the changes.
+      Database mcp.json changed. Restart this application instance to activate the changes.
     </div>
     <div v-if="error" class="mcp-error">{{ error }}</div>
 
@@ -51,19 +71,6 @@
             </div>
             <div class="mcp-detail-actions">
               <el-button :icon="Connection" :loading="testing" @click="testServer(selectedServer)">Test</el-button>
-              <el-button :icon="EditPen" @click="openEdit(selectedServer)">
-                {{ selectedServer.source === 'database' ? 'Edit' : 'Override' }}
-              </el-button>
-              <el-button
-                v-if="databaseServers[selectedServer.name]"
-                type="danger"
-                plain
-                :icon="Delete"
-                :loading="saving"
-                @click="removeDatabaseServer(selectedServer.name)"
-              >
-                Delete
-              </el-button>
             </div>
           </header>
 
@@ -108,46 +115,26 @@
     </div>
 
     <el-dialog
-      v-model="dialogOpen"
-      :title="editingName ? 'Edit MCP server' : 'Add MCP server'"
-      width="min(620px, calc(100vw - 24px))"
+      v-model="jsonDialogOpen"
+      :title="hasDatabaseConfig ? 'Edit mcp.json' : 'Create mcp.json'"
+      width="min(720px, calc(100vw - 24px))"
     >
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="Server name">
-          <el-input v-model="draft.name" :disabled="Boolean(editingName)" placeholder="catalog" />
-        </el-form-item>
-        <el-form-item label="URL">
-          <el-input v-model="draft.url" placeholder="https://example.com/mcp" />
-        </el-form-item>
-        <div class="mcp-form-grid">
-          <el-form-item label="Connect timeout (seconds)">
-            <el-input v-model="draft.connectTimeoutSeconds" type="number" min="1" max="3600" />
-          </el-form-item>
-          <el-form-item label="Request timeout (seconds)">
-            <el-input v-model="draft.requestTimeoutSeconds" type="number" min="1" max="3600" />
-          </el-form-item>
-        </div>
-        <label class="mcp-checkbox"><input v-model="draft.enabled" type="checkbox" /> Enabled</label>
-
-        <div class="mcp-headers-editor">
-          <div class="mcp-headers-editor-title">
-            <strong>Headers</strong>
-            <el-button text :icon="Plus" @click="addHeader">Add header</el-button>
-          </div>
-          <div v-for="(header, index) in draft.headers" :key="index" class="mcp-header-row">
-            <el-input v-model="header.name" placeholder="Authorization" />
-            <el-input v-model="header.value" placeholder="Bearer ${MCP_TOKEN}" />
-            <el-button text :icon="Delete" title="Remove header" @click="draft.headers.splice(index, 1)" />
-          </div>
-          <p>Secret header values must reference environment variables such as <code>${MCP_TOKEN}</code>.</p>
-        </div>
-        <div v-if="dialogError" class="mcp-error">{{ dialogError }}</div>
-      </el-form>
+      <p class="mcp-json-help">
+        Paste or edit the complete database <code>mcp.json</code>. Saving replaces the whole file.
+      </p>
+      <el-input
+        v-model="jsonDraft"
+        class="mcp-json-editor"
+        type="textarea"
+        :rows="18"
+        :placeholder="jsonPlaceholder"
+        spellcheck="false"
+      />
+      <div v-if="jsonError" class="mcp-error">{{ jsonError }}</div>
       <template #footer>
         <div class="mcp-dialog-footer">
-          <el-button @click="dialogOpen = false">Cancel</el-button>
-          <el-button :loading="testing" @click="testDraft">Test connection</el-button>
-          <el-button type="primary" :loading="saving" @click="saveDraft">Save database config</el-button>
+          <el-button @click="jsonDialogOpen = false">Cancel</el-button>
+          <el-button type="primary" :loading="saving" @click="saveJsonConfig">Save mcp.json</el-button>
         </div>
       </template>
     </el-dialog>
@@ -156,7 +143,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { Connection, Delete, EditPen, Plus, Refresh } from '@element-plus/icons-vue'
+import { Connection, Delete, DocumentAdd, EditPen, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { request } from '../api/http'
 
@@ -169,18 +156,32 @@ const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
 const error = ref('')
-const dialogError = ref('')
+const jsonError = ref('')
 const servers = ref([])
-const databaseServers = ref({})
-const databaseContentHash = ref(null)
+const databaseConfig = ref(null)
 const restartRequired = ref(false)
 const selectedName = ref('')
-const dialogOpen = ref(false)
-const editingName = ref('')
-const draft = ref(emptyDraft())
+const jsonDialogOpen = ref(false)
+const jsonDraft = ref('')
+
+const jsonPlaceholder = JSON.stringify({
+  mcpServers: {
+    catalog: {
+      transport: 'streamable-http',
+      url: 'https://example.com/mcp',
+      enabled: true,
+      headers: {
+        Authorization: 'Bearer ${CATALOG_MCP_TOKEN}'
+      },
+      connectTimeoutSeconds: 10,
+      requestTimeoutSeconds: 60
+    }
+  }
+}, null, 2)
 
 const selectedServer = computed(() => servers.value.find((server) => server.name === selectedName.value) || null)
 const availableCount = computed(() => servers.value.filter((server) => server.status === 'available').length)
+const hasDatabaseConfig = computed(() => databaseConfig.value !== null)
 
 watch(() => props.sessionId, load)
 onMounted(load)
@@ -191,8 +192,7 @@ async function load() {
   try {
     const data = await request(`/api/mcp/config${sessionQuery()}`)
     servers.value = data?.servers || []
-    databaseServers.value = data?.databaseServers || {}
-    databaseContentHash.value = data?.databaseContentHash ?? null
+    databaseConfig.value = data?.databaseConfig ?? null
     restartRequired.value = Boolean(data?.restartRequired) || restartRequired.value
     if (!servers.value.some((server) => server.name === selectedName.value)) {
       selectedName.value = servers.value[0]?.name || ''
@@ -204,65 +204,70 @@ async function load() {
   }
 }
 
-function openCreate() {
-  editingName.value = ''
-  draft.value = emptyDraft()
-  dialogError.value = ''
-  dialogOpen.value = true
+function openJsonEditor() {
+  jsonDraft.value = databaseConfig.value || ''
+  jsonError.value = ''
+  jsonDialogOpen.value = true
 }
 
-function openEdit(server) {
-  editingName.value = server.name
-  draft.value = fromServer(server.name, databaseServers.value[server.name] || server.config)
-  dialogError.value = ''
-  dialogOpen.value = true
-}
-
-function addHeader() {
-  draft.value.headers.push({ name: '', value: '' })
-}
-
-async function saveDraft() {
-  dialogError.value = ''
-  const name = draft.value.name.trim()
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(name) || !draft.value.url.trim()) {
-    dialogError.value = 'A valid server name and URL are required.'
+async function saveJsonConfig() {
+  jsonError.value = ''
+  let document
+  try {
+    document = JSON.parse(jsonDraft.value)
+  } catch (reason) {
+    jsonError.value = `Invalid JSON: ${reason.message}`
     return
   }
-  const nextServers = { ...databaseServers.value, [name]: toConfig(draft.value) }
+
+  const importedServers = document?.mcpServers
+  if (!isPlainObject(importedServers)) {
+    jsonError.value = 'The JSON must contain an mcpServers object.'
+    return
+  }
+  for (const [name, config] of Object.entries(importedServers)) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
+      jsonError.value = `Invalid server name: ${name}`
+      return
+    }
+    if (!isPlainObject(config) || typeof config.url !== 'string' || !config.url.trim()) {
+      jsonError.value = `Server ${name} must define a URL.`
+      return
+    }
+    if (config.transport !== 'streamable-http') {
+      jsonError.value = `Server ${name} must use transport streamable-http.`
+      return
+    }
+  }
+
   saving.value = true
   try {
     const data = await request(`/api/mcp/config${sessionQuery()}`, {
       method: 'PUT',
-      body: JSON.stringify({
-        expectedContentHash: databaseContentHash.value,
-        mcpServers: nextServers
-      })
+      body: JSON.stringify({ content: jsonDraft.value })
     })
     applySaved(data)
-    selectedName.value = name
-    dialogOpen.value = false
-    ElMessage.success('MCP configuration saved. Restart required.')
+    if (!servers.value.some((server) => server.name === selectedName.value)) {
+      selectedName.value = Object.keys(importedServers)[0] || servers.value[0]?.name || ''
+    }
+    jsonDialogOpen.value = false
+    ElMessage.success('mcp.json saved. Restart required.')
   } catch (reason) {
-    dialogError.value = reason.message
+    jsonError.value = reason.message
   } finally {
     saving.value = false
   }
 }
 
-async function removeDatabaseServer(name) {
-  if (!window.confirm(`Delete the database configuration for ${name}?`)) return
-  const nextServers = { ...databaseServers.value }
-  delete nextServers[name]
+async function deleteDatabaseConfig() {
   saving.value = true
   error.value = ''
   try {
     const data = await request(`/api/mcp/config${sessionQuery()}`, {
-      method: 'PUT',
-      body: JSON.stringify({ expectedContentHash: databaseContentHash.value, mcpServers: nextServers })
+      method: 'DELETE'
     })
     applySaved(data)
-    ElMessage.success('Database configuration deleted. Restart required.')
+    ElMessage.success('Database mcp.json deleted. Restart required.')
   } catch (reason) {
     error.value = reason.message
   } finally {
@@ -271,23 +276,12 @@ async function removeDatabaseServer(name) {
 }
 
 async function testServer(server) {
-  await runTest(server.name, databaseServers.value[server.name] || server.config)
+  await runTest(server.name, server.config)
 }
 
-async function testDraft() {
-  dialogError.value = ''
-  const name = draft.value.name.trim()
-  if (!name || !draft.value.url.trim()) {
-    dialogError.value = 'A server name and URL are required before testing.'
-    return
-  }
-  const result = await runTest(name, toConfig(draft.value), true)
-  if (!result?.success) dialogError.value = result?.error || 'Connection failed.'
-}
-
-async function runTest(name, config, fromDialog = false) {
+async function runTest(name, config) {
   testing.value = true
-  if (!fromDialog) error.value = ''
+  error.value = ''
   try {
     const result = await request('/api/mcp/test', {
       method: 'POST',
@@ -295,13 +289,12 @@ async function runTest(name, config, fromDialog = false) {
     })
     if (result.success) {
       ElMessage.success(`Connected. ${result.tools.length} tools discovered.`)
-    } else if (!fromDialog) {
+    } else {
       error.value = result.error || 'Connection failed.'
     }
     return result
   } catch (reason) {
-    if (fromDialog) dialogError.value = reason.message
-    else error.value = reason.message
+    error.value = reason.message
     return null
   } finally {
     testing.value = false
@@ -310,47 +303,13 @@ async function runTest(name, config, fromDialog = false) {
 
 function applySaved(data) {
   servers.value = data?.servers || []
-  databaseServers.value = data?.databaseServers || {}
-  databaseContentHash.value = data?.databaseContentHash ?? null
+  databaseConfig.value = data?.databaseConfig ?? null
   restartRequired.value = true
   emit('changed')
 }
 
-function emptyDraft() {
-  return {
-    name: '',
-    url: '',
-    enabled: true,
-    connectTimeoutSeconds: 10,
-    requestTimeoutSeconds: 60,
-    headers: []
-  }
-}
-
-function fromServer(name, config) {
-  return {
-    name,
-    url: config?.url || '',
-    enabled: config?.enabled !== false,
-    connectTimeoutSeconds: config?.connectTimeoutSeconds || 10,
-    requestTimeoutSeconds: config?.requestTimeoutSeconds || 60,
-    headers: Object.entries(config?.headers || {}).map(([headerName, value]) => ({ name: headerName, value }))
-  }
-}
-
-function toConfig(value) {
-  const headers = {}
-  for (const header of value.headers) {
-    if (header.name.trim()) headers[header.name.trim()] = header.value
-  }
-  return {
-    transport: 'streamable-http',
-    url: value.url.trim(),
-    enabled: Boolean(value.enabled),
-    headers,
-    connectTimeoutSeconds: Number(value.connectTimeoutSeconds) || 10,
-    requestTimeoutSeconds: Number(value.requestTimeoutSeconds) || 60
-  }
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function headerEntries(config) {

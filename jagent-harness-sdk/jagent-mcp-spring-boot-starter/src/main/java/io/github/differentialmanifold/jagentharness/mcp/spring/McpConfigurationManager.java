@@ -30,7 +30,7 @@ public class McpConfigurationManager {
             new LinkedHashMap<String, Map<String, McpServerConfig>>();
     private Map<String, McpServerConfig> startupGlobal = Collections.emptyMap();
     private Map<String, McpServerConfig> startupDatabase = Collections.emptyMap();
-    private String startupDatabaseHash;
+    private String startupDatabaseConfig;
 
     public McpConfigurationManager(Path configRoot,
                                    String configFile,
@@ -45,13 +45,13 @@ public class McpConfigurationManager {
     public synchronized void initialize() {
         startupGlobal = readFile(configRoot == null ? null : configRoot.resolve(configFile));
         KnowledgeFile database = readDatabaseFile();
-        startupDatabase = readContent(database == null ? null : database.getContent(), "database " + configFile);
-        startupDatabaseHash = database == null ? null : database.getContentHash();
+        startupDatabaseConfig = database == null ? null : database.getContent();
+        startupDatabase = readContent(startupDatabaseConfig, "database " + configFile);
     }
 
     public synchronized McpConfigSnapshot runtimeSnapshot(Path workspaceRoot) {
         Map<String, McpServerConfig> project = projectSnapshot(workspaceRoot);
-        return merge(startupGlobal, project, startupDatabase, startupDatabaseHash);
+        return merge(startupGlobal, project, startupDatabase, startupDatabaseConfig);
     }
 
     public McpConfigSnapshot currentSnapshot(Path workspaceRoot) {
@@ -61,23 +61,29 @@ public class McpConfigurationManager {
         Map<String, McpServerConfig> databaseServers = readContent(
                 database == null ? null : database.getContent(),
                 "database " + configFile);
-        return merge(global, project, databaseServers, database == null ? null : database.getContentHash());
+        return merge(global, project, databaseServers, database == null ? null : database.getContent());
     }
 
-    public KnowledgeFile saveDatabase(McpConfigDocument document, String expectedContentHash) {
-        McpConfigDocument effective = document == null ? new McpConfigDocument() : document;
-        for (Map.Entry<String, McpServerConfig> entry : effective.getMcpServers().entrySet()) {
+    public KnowledgeFile saveDatabase(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            throw new IllegalArgumentException("MCP configuration content is required");
+        }
+        Map<String, McpServerConfig> servers = readContent(content, "database " + configFile);
+        for (Map.Entry<String, McpServerConfig> entry : servers.entrySet()) {
             validator.validate(entry.getKey(), entry.getValue());
         }
         if (knowledgeFileStore == null) {
             throw new IllegalStateException("KnowledgeFileStore is required for database MCP configuration");
         }
-        try {
-            String content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(effective) + "\n";
-            return knowledgeFileStore.writeFile(configFile, content, "application/json", expectedContentHash);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to serialize database MCP configuration", e);
+        String storedContent = content.endsWith("\n") ? content : content + "\n";
+        return knowledgeFileStore.writeFile(configFile, storedContent, "application/json");
+    }
+
+    public void deleteDatabase() {
+        if (knowledgeFileStore == null) {
+            throw new IllegalStateException("KnowledgeFileStore is required for database MCP configuration");
         }
+        knowledgeFileStore.deleteFile(configFile);
     }
 
     public McpServerConfig resolve(String name, McpServerConfig config) {
@@ -101,7 +107,7 @@ public class McpConfigurationManager {
     private McpConfigSnapshot merge(Map<String, McpServerConfig> global,
                                     Map<String, McpServerConfig> project,
                                     Map<String, McpServerConfig> database,
-                                    String databaseHash) {
+                                    String databaseConfig) {
         Map<String, McpServerConfig> configs = new LinkedHashMap<String, McpServerConfig>();
         Map<String, String> sources = new LinkedHashMap<String, String>();
         Map<String, List<String>> overridden = new LinkedHashMap<String, List<String>>();
@@ -116,7 +122,7 @@ public class McpConfigurationManager {
                     sources.get(entry.getKey()),
                     overridden.get(entry.getKey())));
         }
-        return new McpConfigSnapshot(effective, copy(database), databaseHash);
+        return new McpConfigSnapshot(effective, databaseConfig);
     }
 
     private void mergeSource(Map<String, McpServerConfig> configs,

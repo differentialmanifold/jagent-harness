@@ -8,7 +8,6 @@ import java.util.Map;
 
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
-import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigDocument;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigEntry;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigSnapshot;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
@@ -19,6 +18,7 @@ import io.github.differentialmanifold.jagentharness.spring.web.dto.McpConfigRequ
 import io.github.differentialmanifold.jagentharness.spring.web.dto.McpConfigResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.McpServerResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.McpTestRequest;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -54,9 +54,16 @@ public class McpController {
     @PutMapping("/config")
     public McpConfigResponse save(@RequestBody McpConfigRequest request,
                                   @RequestParam(required = false) String sessionId) {
-        McpConfigDocument document = new McpConfigDocument();
-        document.setMcpServers(request.getMcpServers());
-        configurationManager.saveDatabase(document, request.getExpectedContentHash());
+        if (request == null || request.getContent() == null) {
+            throw new IllegalArgumentException("MCP configuration content is required");
+        }
+        configurationManager.saveDatabase(request.getContent());
+        return response(workspaceRoot(sessionId), true);
+    }
+
+    @DeleteMapping("/config")
+    public McpConfigResponse delete(@RequestParam(required = false) String sessionId) {
+        configurationManager.deleteDatabase();
         return response(workspaceRoot(sessionId), true);
     }
 
@@ -85,8 +92,7 @@ public class McpController {
                     status == null ? Collections.<String>emptyList() : status.getTools()));
         }
         return new McpConfigResponse(
-                snapshot.getDatabaseContentHash(),
-                snapshot.getDatabaseServers(),
+                snapshot.getDatabaseConfig(),
                 servers,
                 restartRequired);
     }
