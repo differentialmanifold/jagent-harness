@@ -13,7 +13,6 @@ public class KnowledgeFile {
     private String nodeType;
     private String content;
     private String contentType;
-    private String contentHash;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -26,16 +25,6 @@ public class KnowledgeFile {
                          String contentType,
                          Instant createdAt,
                          Instant updatedAt) {
-        this(path, nodeType, content, contentType, null, createdAt, updatedAt);
-    }
-
-    public KnowledgeFile(String path,
-                         String nodeType,
-                         String content,
-                         String contentType,
-                         String contentHash,
-                         Instant createdAt,
-                         Instant updatedAt) {
         this.path = KnowledgeFilePaths.normalize(path);
         this.parentPath = KnowledgeFilePaths.parent(this.path);
         this.name = KnowledgeFilePaths.fileName(this.path);
@@ -44,7 +33,6 @@ public class KnowledgeFile {
         this.contentType = contentType == null || contentType.trim().isEmpty()
                 ? "text/markdown"
                 : contentType.trim();
-        this.contentHash = contentHash;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -99,14 +87,6 @@ public class KnowledgeFile {
 
     public void setContentType(String contentType) {
         this.contentType = contentType;
-    }
-
-    public String getContentHash() {
-        return contentHash;
-    }
-
-    public void setContentHash(String contentHash) {
-        this.contentHash = contentHash;
     }
 
     public Instant getCreatedAt() {
