@@ -294,7 +294,7 @@ public class AgentRunner implements AgentHarness {
         ToolContext callContext = toolContext.forToolCall(call.getToolCallId(), call.getName());
         StopSignal stopSignal = callContext.getStopSignal();
         stopSignal.throwIfAborted();
-        ToolDefinition tool = toolRegistry.get(call.getName());
+        ToolDefinition tool = toolRegistry.get(call.getName(), toolContext);
         if (tool == null) {
             return ToolExecutionResult.error("Tool not found: " + call.getName());
         }
