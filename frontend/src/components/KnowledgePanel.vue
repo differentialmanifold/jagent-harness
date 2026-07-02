@@ -139,16 +139,6 @@
               Edit
             </el-button>
 
-            <el-button
-              v-if="showCreatePromptButton"
-              type="primary"
-              :icon="Plus"
-              :disabled="loading"
-              @click="beginEditFile"
-            >
-              Create AGENTS.md
-            </el-button>
-
             <el-popconfirm
               v-if="canDeleteCurrent"
               width="300"
@@ -489,9 +479,6 @@ const displayPath = computed(() => {
 const breadcrumbs = computed(() => createBreadcrumbs(displayPath.value, selectedKind.value))
 const selectedDirectory = computed(() => selectedKind.value === 'dir' ? selectedPath.value : parentPath(selectedPath.value))
 const showEditButton = computed(() => !isEditing.value && selectedKind.value === 'file' && Boolean(selectedFile.value))
-const showCreatePromptButton = computed(() => {
-  return !isSkillsMode.value && !isEditing.value && !selectedFile.value
-})
 const canDeleteCurrent = computed(() => {
   if (isEditing.value || deleting.value) return false
   if (selectedKind.value === 'file') return Boolean(selectedFile.value)

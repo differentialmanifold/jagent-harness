@@ -7,6 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+
 public class ToolRegistry {
 
     private final Map<String, ToolDefinition> tools = new LinkedHashMap<String, ToolDefinition>();
@@ -44,6 +46,18 @@ public class ToolRegistry {
         return tools.get(name);
     }
 
+    public ToolDefinition get(String name, AgentContext context) {
+        if (name == null) {
+            return null;
+        }
+        for (ToolDefinition tool : all(context)) {
+            if (name.equals(tool.getName())) {
+                return tool;
+            }
+        }
+        return null;
+    }
+
     public synchronized void registerProvider(ToolProvider provider) {
         if (provider == null) {
             throw new IllegalArgumentException("toolProvider must not be null");
@@ -57,7 +71,7 @@ public class ToolRegistry {
         return all(null);
     }
 
-    public Collection<ToolDefinition> all(io.github.differentialmanifold.jagentharness.core.agent.AgentContext context) {
+    public Collection<ToolDefinition> all(AgentContext context) {
         Map<String, ToolDefinition> resolved;
         List<ToolProvider> providerSnapshot;
         synchronized (this) {

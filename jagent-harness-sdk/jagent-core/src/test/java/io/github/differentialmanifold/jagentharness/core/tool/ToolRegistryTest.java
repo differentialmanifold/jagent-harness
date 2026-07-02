@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -58,6 +59,21 @@ class ToolRegistryTest {
                 registry.all(new AgentContext("session", "turn")));
         assertEquals(2, tools.size());
         assertSame(dynamic, tools.get(1));
+    }
+
+    @Test
+    void getsDynamicToolForCurrentContext() {
+        ToolDefinition dynamic = new StubTool("remote", "remote");
+        ToolProvider provider = context -> context != null && "session".equals(context.getSessionId())
+                ? Collections.singletonList(dynamic)
+                : Collections.<ToolDefinition>emptyList();
+        ToolRegistry registry = new ToolRegistry(
+                Collections.<ToolDefinition>emptyList(),
+                Collections.singletonList(provider));
+
+        assertSame(dynamic, registry.get("remote", new AgentContext("session", "turn")));
+        assertNull(registry.get("remote"));
+        assertNull(registry.get("remote", new AgentContext("other", "turn")));
     }
 
     @Test
