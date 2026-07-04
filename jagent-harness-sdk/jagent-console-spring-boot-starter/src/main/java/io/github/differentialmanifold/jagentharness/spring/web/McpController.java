@@ -1,6 +1,5 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -8,6 +7,7 @@ import java.util.Map;
 
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigEntry;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigSnapshot;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
@@ -34,37 +34,39 @@ public class McpController {
     private final McpConfigurationManager configurationManager;
     private final McpRuntime runtime;
     private final SessionManager sessionManager;
-    private final WorkspaceRootResolver workspaceRootResolver;
 
     public McpController(McpConfigurationManager configurationManager,
                          McpRuntime runtime,
-                         SessionManager sessionManager,
-                         WorkspaceRootResolver workspaceRootResolver) {
+                         SessionManager sessionManager) {
         this.configurationManager = configurationManager;
         this.runtime = runtime;
         this.sessionManager = sessionManager;
-        this.workspaceRootResolver = workspaceRootResolver;
     }
 
     @GetMapping("/config")
-    public McpConfigResponse config(@RequestParam(required = false) String sessionId) {
-        return response(workspaceRoot(sessionId), false);
+    public McpConfigResponse config(@RequestParam(required = false) String sessionId,
+                                    @RequestParam(required = false) String scope) {
+        return response(session(sessionId), scope, false);
     }
 
     @PutMapping("/config")
     public McpConfigResponse save(@RequestBody McpConfigRequest request,
-                                  @RequestParam(required = false) String sessionId) {
+                                  @RequestParam(required = false) String sessionId,
+                                  @RequestParam(required = false) String scope) {
         if (request == null || request.getContent() == null) {
             throw new IllegalArgumentException("MCP configuration content is required");
         }
-        configurationManager.saveDatabase(request.getContent());
-        return response(workspaceRoot(sessionId), true);
+        SessionRecord session = session(sessionId);
+        configurationManager.saveDatabase(scope(scope, session), request.getContent());
+        return response(session, scope, true);
     }
 
     @DeleteMapping("/config")
-    public McpConfigResponse delete(@RequestParam(required = false) String sessionId) {
-        configurationManager.deleteDatabase();
-        return response(workspaceRoot(sessionId), true);
+    public McpConfigResponse delete(@RequestParam(required = false) String sessionId,
+                                    @RequestParam(required = false) String scope) {
+        SessionRecord session = session(sessionId);
+        configurationManager.deleteDatabase(scope(scope, session));
+        return response(session, scope, true);
     }
 
     @PostMapping("/test")
@@ -75,9 +77,14 @@ public class McpController {
         return runtime.test(request.getName(), request.getConfig());
     }
 
-    private McpConfigResponse response(Path workspaceRoot, boolean restartRequired) {
-        McpConfigSnapshot snapshot = configurationManager.currentSnapshot(workspaceRoot);
-        Map<String, McpServerRuntimeStatus> statuses = runtime.statuses(workspaceRoot);
+    private McpConfigResponse response(SessionRecord session, String requestedScope, boolean restartRequired) {
+        String projectId = session == null ? null : session.getProjectId();
+        KnowledgeScope selectedScope = scope(requestedScope, session);
+        String effectiveProjectId = selectedScope.isGlobal() ? null : projectId;
+        McpConfigSnapshot snapshot = configurationManager.currentSnapshot(
+                effectiveProjectId,
+                selectedScope);
+        Map<String, McpServerRuntimeStatus> statuses = runtime.statuses(effectiveProjectId);
         List<McpServerResponse> servers = new ArrayList<McpServerResponse>();
         for (Map.Entry<String, McpConfigEntry> entry : snapshot.getEffectiveServers().entrySet()) {
             McpServerRuntimeStatus status = statuses.get(entry.getKey());
@@ -89,7 +96,8 @@ public class McpController {
                     status == null ? "not_loaded" : status.getStatus(),
                     status == null ? null : status.getError(),
                     status == null ? null : status.getProtocolVersion(),
-                    status == null ? Collections.<String>emptyList() : status.getTools()));
+                    status == null ? Collections.<String>emptyList() : status.getTools(),
+                    status == null ? Collections.<String>emptyList() : status.getAvailableTools()));
         }
         return new McpConfigResponse(
                 snapshot.getDatabaseConfig(),
@@ -97,11 +105,23 @@ public class McpController {
                 restartRequired);
     }
 
-    private Path workspaceRoot(String sessionId) {
+    private SessionRecord session(String sessionId) {
         if (sessionId == null || sessionId.trim().isEmpty()) {
             return null;
         }
-        SessionRecord session = sessionManager.requireSession(sessionId.trim());
-        return workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
+        return sessionManager.requireSession(sessionId.trim());
+    }
+
+    private KnowledgeScope scope(String scope, SessionRecord session) {
+        if (scope == null || scope.trim().isEmpty() || "global".equalsIgnoreCase(scope.trim())) {
+            return KnowledgeScope.global();
+        }
+        if (!"project".equalsIgnoreCase(scope.trim())) {
+            throw new IllegalArgumentException("Unsupported MCP scope: " + scope);
+        }
+        if (session == null) {
+            throw new IllegalArgumentException("sessionId is required for project MCP scope");
+        }
+        return KnowledgeScope.project(session.getProjectId());
     }
 }

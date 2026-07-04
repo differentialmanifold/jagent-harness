@@ -5,6 +5,10 @@
         <h2>{{ panelTitle }}</h2>
         <p>{{ panelSubtitle }}</p>
       </div>
+      <el-radio-group v-model="knowledgeScope" size="small" aria-label="Knowledge scope">
+        <el-radio-button value="global">Global</el-radio-button>
+        <el-radio-button value="project" :disabled="!sessionId">Current project</el-radio-button>
+      </el-radio-group>
     </header>
 
     <div :class="['knowledge-workspace', 'github-workspace', { 'prompt-workspace': !isSkillsMode }]">
@@ -329,7 +333,7 @@
         </section>
 
         <section v-else class="github-empty-file-view">
-          <el-empty description="No database AGENTS.md">
+          <el-empty :description="`No ${scopeLabel} AGENTS.md`">
             <el-button type="primary" :icon="Plus" @click="beginEditFile">
               Create AGENTS.md
             </el-button>
@@ -390,6 +394,7 @@ const promptPreviewTab = ref('preview')
 const promptPreview = ref('')
 const promptPreviewWorkspace = ref('')
 const promptPreviewLoading = ref(false)
+const knowledgeScope = ref('global')
 const editTab = ref('edit')
 const editMode = ref('')
 const editOriginalPath = ref('')
@@ -399,12 +404,13 @@ const treeRef = ref(null)
 const editorTextarea = ref(null)
 
 const panelTitle = computed(() => isSkillsMode.value ? 'Skills Management' : 'Prompt Management')
+const scopeLabel = computed(() => knowledgeScope.value === 'project' ? 'project' : 'global')
 const panelSubtitle = computed(() => {
   if (!isSkillsMode.value) {
     if (promptView.value === 'final') {
       return 'Final runtime prompt'
     }
-    return selectedFile.value ? 'Database AGENTS.md' : 'No database AGENTS.md'
+    return selectedFile.value ? `${scopeLabel.value} AGENTS.md` : `No ${scopeLabel.value} AGENTS.md`
   }
   return `${skillKeys.value.length} skills, ${visibleFiles.value.length} files`
 })
@@ -494,7 +500,7 @@ const currentUpdatedAt = computed(() => {
   const rows = directoryRows.value.filter((row) => row.updatedAt)
   return rows.length ? rows[0].updatedAt : ''
 })
-const commitTitle = computed(() => selectedKind.value === 'dir' ? 'Directory snapshot' : 'Database file')
+const commitTitle = computed(() => selectedKind.value === 'dir' ? 'Directory snapshot' : `${scopeLabel.value} file`)
 const commitSubtitle = computed(() => {
   return selectedKind.value === 'dir'
     ? selectedPath.value
@@ -564,11 +570,17 @@ watch(
 watch(
   () => props.sessionId,
   async () => {
-    if (!isSkillsMode.value) {
-      await loadPromptPreview()
-    }
+    if (!props.sessionId && knowledgeScope.value === 'project') knowledgeScope.value = 'global'
+    await loadFiles()
+    if (!isSkillsMode.value) await loadPromptPreview()
   }
 )
+
+watch(knowledgeScope, async () => {
+  cancelEdit()
+  selectedPath.value = rootPath.value
+  await loadFiles()
+})
 
 watch(promptView, async (view) => {
   if (view === 'final') {
@@ -588,7 +600,7 @@ async function loadFiles() {
   loading.value = true
   error.value = ''
   try {
-    files.value = await request(`/api/vfs/files?prefix=${encodeURIComponent(listPrefix())}`)
+    files.value = await request(scopedVfsUrl('/api/vfs/files', { prefix: listPrefix() }))
     await nextTick()
     if (isSkillsMode.value) {
       if (!nodeByPath.value.has(selectedPath.value)) {
@@ -639,7 +651,7 @@ async function selectPath(path) {
 }
 
 async function loadContent(path) {
-  const file = await request(`/api/vfs/files/content?path=${encodeURIComponent(path)}`)
+  const file = await request(scopedVfsUrl('/api/vfs/files/content', { path }))
   selectedPath.value = file.path
   fileContent.value = file.content || ''
 }
@@ -707,7 +719,7 @@ async function saveChanges() {
   notice.value = ''
   try {
     const path = normalizeDraftPath(editDraftPath.value)
-    const saved = await request('/api/vfs/files', {
+    const saved = await request(scopedVfsUrl('/api/vfs/files'), {
       method: 'PUT',
       body: JSON.stringify({
         path,
@@ -719,7 +731,7 @@ async function saveChanges() {
         && editOriginalPath.value
         && editOriginalPath.value !== saved.path
         && fileByPath.value.has(editOriginalPath.value)) {
-      await request(`/api/vfs/files?path=${encodeURIComponent(editOriginalPath.value)}`, {
+      await request(scopedVfsUrl('/api/vfs/files', { path: editOriginalPath.value }), {
         method: 'DELETE'
       })
     }
@@ -747,7 +759,7 @@ async function deleteCurrent() {
       ? filesUnderDirectory(selectedPath.value).map((file) => file.path)
       : [selectedPath.value]
     for (const path of paths) {
-      await request(`/api/vfs/files?path=${encodeURIComponent(path)}`, {
+      await request(scopedVfsUrl('/api/vfs/files', { path }), {
         method: 'DELETE'
       })
     }
@@ -784,7 +796,7 @@ async function importSkills(uploadFile) {
   try {
     const body = new FormData()
     body.append('file', file)
-    const result = await fetchJson('/api/vfs/skills/import', {
+    const result = await fetchJson(scopedVfsUrl('/api/vfs/skills/import'), {
       method: 'POST',
       body
     })
@@ -805,7 +817,7 @@ async function exportSkills() {
   error.value = ''
   notice.value = ''
   try {
-    const response = await fetch('/api/vfs/skills/export')
+    const response = await fetch(scopedVfsUrl('/api/vfs/skills/export'))
     if (!response.ok) {
       throw new Error(await responseError(response))
     }
@@ -864,6 +876,16 @@ async function writeClipboard(value) {
 
 function listPrefix() {
   return isSkillsMode.value ? 'skills' : 'AGENTS.md'
+}
+
+function scopedVfsUrl(path, values = {}) {
+  const query = new URLSearchParams()
+  query.set('scope', knowledgeScope.value)
+  if (knowledgeScope.value === 'project' && props.sessionId) query.set('sessionId', props.sessionId)
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null && value !== '') query.set(key, value)
+  }
+  return `${path}?${query.toString()}`
 }
 
 function isPathInMode(path) {

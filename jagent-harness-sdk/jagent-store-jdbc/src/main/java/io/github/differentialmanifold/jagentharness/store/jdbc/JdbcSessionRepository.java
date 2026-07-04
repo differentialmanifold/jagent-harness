@@ -17,6 +17,7 @@ public class JdbcSessionRepository implements SessionRepository {
         SessionRecord session = new SessionRecord();
         session.setSessionId(rs.getString("session_id"));
         session.setTitle(rs.getString("title"));
+        session.setProjectId(rs.getString("project_id"));
         session.setProjectName(rs.getString("project_name"));
         session.setWorkspacePath(rs.getString("workspace_path"));
         session.setStatus(rs.getString("status"));
@@ -38,22 +39,30 @@ public class JdbcSessionRepository implements SessionRepository {
 
     @Override
     public SessionRecord create(String title, String workspacePath, String projectName) {
+        return create(title, workspacePath, projectName, Ids.newId("project"));
+    }
+
+    @Override
+    public SessionRecord create(String title, String workspacePath, String projectName, String projectId) {
         Instant now = Instant.now();
         SessionRecord session = new SessionRecord();
         session.setSessionId(Ids.newId("ses"));
         session.setTitle(title == null || title.trim().isEmpty() ? "New Session" : title.trim());
+        session.setProjectId(projectId);
         session.setProjectName(projectName == null || projectName.trim().isEmpty() ? null : projectName.trim());
         session.setWorkspacePath(workspacePath);
         session.setStatus(SessionRecord.STATUS_ACTIVE);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
+        upsertProject(session, now);
         jdbcTemplate.update("insert into sessions "
-                        + "(application_id, session_id, title, project_name, workspace_path, status, metadata_json, "
+                        + "(application_id, session_id, title, project_id, project_name, workspace_path, status, metadata_json, "
                         + "created_at, updated_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 session.getSessionId(),
                 session.getTitle(),
+                session.getProjectId(),
                 session.getProjectName(),
                 session.getWorkspacePath(),
                 session.getStatus(),
@@ -61,6 +70,27 @@ public class JdbcSessionRepository implements SessionRepository {
                 JdbcTimeCodec.encode(session.getCreatedAt()),
                 JdbcTimeCodec.encode(session.getUpdatedAt()));
         return session;
+    }
+
+    private void upsertProject(SessionRecord session, Instant now) {
+        Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from projects where application_id = ? and project_id = ?",
+                Integer.class,
+                applicationId,
+                session.getProjectId());
+        if (count != null && count.intValue() > 0) {
+            jdbcTemplate.update(
+                    "update projects set name = ?, workspace_path = ?, updated_at = ? "
+                            + "where application_id = ? and project_id = ?",
+                    session.getProjectName(), session.getWorkspacePath(), JdbcTimeCodec.encode(now),
+                    applicationId, session.getProjectId());
+            return;
+        }
+        jdbcTemplate.update(
+                "insert into projects (application_id, project_id, name, workspace_path, created_at, updated_at) "
+                        + "values (?, ?, ?, ?, ?, ?)",
+                applicationId, session.getProjectId(), session.getProjectName(), session.getWorkspacePath(),
+                JdbcTimeCodec.encode(now), JdbcTimeCodec.encode(now));
     }
 
     @Override

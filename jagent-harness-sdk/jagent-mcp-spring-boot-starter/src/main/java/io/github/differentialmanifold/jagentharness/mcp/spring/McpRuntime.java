@@ -1,6 +1,5 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -49,12 +48,12 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     @Override
     public Collection<ToolDefinition> listTools(AgentContext context) {
         ensureInitialized();
-        Path workspaceRoot = context == null ? null : context.getWorkspaceRoot();
-        return scope(workspaceRoot).tools;
+        String projectId = context == null ? null : context.getProjectId();
+        return scope(projectId).tools;
     }
 
-    public synchronized Map<String, McpServerRuntimeStatus> statuses(Path workspaceRoot) {
-        Scope scope = scopes.get(scopeKey(workspaceRoot));
+    public synchronized Map<String, McpServerRuntimeStatus> statuses(String projectId) {
+        Scope scope = scopes.get(scopeKey(projectId));
         if (scope == null) {
             return Collections.emptyMap();
         }
@@ -87,19 +86,19 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
         }
     }
 
-    private synchronized Scope scope(Path workspaceRoot) {
-        String key = scopeKey(workspaceRoot);
+    private synchronized Scope scope(String projectId) {
+        String key = scopeKey(projectId);
         Scope existing = scopes.get(key);
         if (existing != null) {
             return existing;
         }
-        Scope loaded = loadScope(workspaceRoot);
+        Scope loaded = loadScope(projectId);
         scopes.put(key, loaded);
         return loaded;
     }
 
-    private Scope loadScope(Path workspaceRoot) {
-        McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(workspaceRoot);
+    private Scope loadScope(String projectId) {
+        McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(projectId);
         List<ToolDefinition> tools = new ArrayList<ToolDefinition>();
         Map<String, McpServerRuntimeStatus> statuses = new LinkedHashMap<String, McpServerRuntimeStatus>();
         List<McpClient> clients = new ArrayList<McpClient>();
@@ -119,9 +118,14 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                 client = new McpClient(config, objectMapper);
                 List<McpToolDescriptor> descriptors = client.listTools();
                 List<String> remoteNames = new ArrayList<String>();
+                List<String> availableNames = new ArrayList<String>();
                 List<ToolDefinition> serverTools = new ArrayList<ToolDefinition>();
                 Map<String, String> serverModelNames = new LinkedHashMap<String, String>();
                 for (McpToolDescriptor descriptor : descriptors) {
+                    availableNames.add(descriptor.getName());
+                    if (!isToolEnabled(config, descriptor.getName())) {
+                        continue;
+                    }
                     McpRemoteTool tool = new McpRemoteTool(serverName, descriptor, client, objectMapper);
                     String qualifiedName = serverName + "/" + descriptor.getName();
                     String previous = modelNames.get(tool.getName());
@@ -139,7 +143,7 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                 clients.add(client);
                 tools.addAll(serverTools);
                 statuses.put(serverName, new McpServerRuntimeStatus(
-                        "available", null, client.getNegotiatedProtocolVersion(), remoteNames));
+                        "available", null, client.getNegotiatedProtocolVersion(), remoteNames, availableNames));
             } catch (Exception e) {
                 if (client != null) {
                     client.close();
@@ -151,10 +155,12 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
         return new Scope(tools, statuses, clients);
     }
 
-    private String scopeKey(Path workspaceRoot) {
-        return workspaceRoot == null
-                ? DEFAULT_SCOPE
-                : workspaceRoot.toAbsolutePath().normalize().toString();
+    private boolean isToolEnabled(McpServerConfig config, String toolName) {
+        return config.getEnabledTools() == null || config.getEnabledTools().contains(toolName);
+    }
+
+    private String scopeKey(String projectId) {
+        return projectId == null || projectId.trim().isEmpty() ? DEFAULT_SCOPE : projectId.trim();
     }
 
     private String safeMessage(Exception exception) {

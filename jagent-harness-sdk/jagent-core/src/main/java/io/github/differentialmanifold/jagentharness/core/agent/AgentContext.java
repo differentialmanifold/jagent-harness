@@ -10,6 +10,7 @@ public class AgentContext {
     private final String sessionId;
     private final String turnId;
     private final String traceId;
+    private final String projectId;
     private final Path workspaceRoot;
     private final Path configRoot;
     private final Map<String, Object> attributes;
@@ -24,9 +25,20 @@ public class AgentContext {
                         Path workspaceRoot,
                         Path configRoot,
                         Map<String, Object> attributes) {
+        this(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, null);
+    }
+
+    public AgentContext(String sessionId,
+                        String turnId,
+                        String traceId,
+                        Path workspaceRoot,
+                        Path configRoot,
+                        Map<String, Object> attributes,
+                        String projectId) {
         this.sessionId = sessionId;
         this.turnId = turnId;
         this.traceId = traceId;
+        this.projectId = projectId;
         this.workspaceRoot = normalize(workspaceRoot);
         this.configRoot = normalize(configRoot);
         Map<String, Object> copy = new LinkedHashMap<String, Object>();
@@ -46,6 +58,10 @@ public class AgentContext {
 
     public String getTraceId() {
         return traceId;
+    }
+
+    public String getProjectId() {
+        return projectId;
     }
 
     public Path getWorkspaceRoot() {

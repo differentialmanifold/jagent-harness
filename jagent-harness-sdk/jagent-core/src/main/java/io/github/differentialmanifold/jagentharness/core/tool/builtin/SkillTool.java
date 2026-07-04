@@ -1,21 +1,12 @@
 package io.github.differentialmanifold.jagentharness.core.tool.builtin;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
@@ -59,25 +50,12 @@ public class SkillTool implements ToolDefinition {
     @Override
     public ToolExecutionResult execute(ToolContext context, JsonNode arguments) throws Exception {
         String input = ToolArguments.requiredText(arguments, "path");
-        Path rawPath = Paths.get(input);
-        String logicalPath = rawPath.isAbsolute()
-                ? logicalPath(context, rawPath)
-                : normalizeSkillPath(input);
-
-        ToolExecutionResult databaseResult = readKnowledgeFileIfExists(logicalPath);
+        String logicalPath = normalizeSkillPath(input);
+        ToolExecutionResult databaseResult = readKnowledgeFileIfExists(context, logicalPath);
         if (databaseResult != null) {
             return databaseResult;
         }
-
-        Path path = rawPath.isAbsolute()
-                ? resolveAbsolute(context, rawPath)
-                : resolveRelative(context, logicalPath);
-        if (!Files.isRegularFile(path)) {
-            throw new IllegalArgumentException("Skill resource not found: " + input);
-        }
-
-        String content = readUtf8Text(path, Files.readAllBytes(path));
-        return skillResult(logicalPath, content);
+        throw new IllegalArgumentException("Skill resource not found: " + input);
     }
 
     private String normalizeSkillPath(String input) {
@@ -90,11 +68,17 @@ public class SkillTool implements ToolDefinition {
         return path;
     }
 
-    private ToolExecutionResult readKnowledgeFileIfExists(String input) {
+    private ToolExecutionResult readKnowledgeFileIfExists(ToolContext context, String input) {
         if (knowledgeFileStore == null) {
             return null;
         }
-        KnowledgeFile file = knowledgeFileStore.readFile(input);
+        KnowledgeFile file = null;
+        if (context != null && context.getProjectId() != null && !context.getProjectId().trim().isEmpty()) {
+            file = knowledgeFileStore.readFile(KnowledgeScope.project(context.getProjectId()), input);
+        }
+        if (file == null) {
+            file = knowledgeFileStore.readFile(KnowledgeScope.global(), input);
+        }
         if (file == null) {
             return null;
         }
@@ -113,74 +97,4 @@ public class SkillTool implements ToolDefinition {
         return ToolExecutionResult.of(result.toString());
     }
 
-    private Path resolveRelative(ToolContext context, String logicalPath) {
-        for (Path root : skillRoots(context)) {
-            Path resolved = root.resolve(logicalPath).normalize();
-            if (Files.isRegularFile(resolved)) {
-                return resolved;
-            }
-        }
-        throw new IllegalArgumentException("Skill resource not found: " + logicalPath);
-    }
-
-    private Path resolveAbsolute(ToolContext context, Path input) {
-        Path resolved = input.toAbsolutePath().normalize();
-        for (Path root : skillRoots(context)) {
-            Path skillsRoot = root.resolve("skills").normalize();
-            if (resolved.startsWith(skillsRoot)) {
-                return resolved;
-            }
-        }
-        throw new IllegalArgumentException("Path is outside configured skill roots: " + input);
-    }
-
-    private String logicalPath(ToolContext context, Path input) {
-        Path resolved = input.toAbsolutePath().normalize();
-        for (Path root : skillRoots(context)) {
-            if (resolved.startsWith(root)) {
-                String logicalPath = root.relativize(resolved).toString();
-                return normalizeSkillPath(logicalPath);
-            }
-        }
-        throw new IllegalArgumentException("Path is outside configured skill roots: " + input);
-    }
-
-    private List<Path> skillRoots(ToolContext context) {
-        List<Path> roots = new ArrayList<Path>();
-        if (context != null && context.getWorkspaceRoot() != null) {
-            roots.add(context.getWorkspaceRoot().toAbsolutePath().normalize());
-        }
-        if (context != null && context.getConfigRoot() != null) {
-            roots.add(context.getConfigRoot().toAbsolutePath().normalize());
-        }
-        if (roots.isEmpty()) {
-            throw new IllegalArgumentException("No project or global skill root is configured.");
-        }
-        return roots;
-    }
-
-    private String readUtf8Text(Path path, byte[] bytes) {
-        if (containsNullByte(bytes)) {
-            throw new IllegalArgumentException("Skill tool supports UTF-8 text files only: " + path.getFileName());
-        }
-        try {
-            return StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
-        } catch (CharacterCodingException e) {
-            throw new IllegalArgumentException("Skill tool supports UTF-8 text files only: " + path.getFileName());
-        }
-    }
-
-    private boolean containsNullByte(byte[] bytes) {
-        for (byte value : bytes) {
-            if (value == 0) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

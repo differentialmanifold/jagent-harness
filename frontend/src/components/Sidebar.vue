@@ -22,9 +22,9 @@
         >
           <div class="project-header">
             <button class="project-title" :title="projectTitle(project)" @click="toggleProject(project)">
-              <el-icon class="project-disclosure" aria-hidden="true">
-                <CaretRight v-if="isCollapsed(project.key)" />
-                <CaretBottom v-else />
+              <el-icon class="project-icon" aria-hidden="true">
+                <Folder v-if="isCollapsed(project.key)" />
+                <FolderOpened v-else />
               </el-icon>
               <span class="project-title-text">
                 <span :title="project.name">{{ project.name }}</span>
@@ -73,7 +73,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { CaretBottom, CaretRight, MoreFilled, Plus } from '@element-plus/icons-vue'
+import { Folder, FolderOpened, MoreFilled, Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({
   projectGroups: { type: Array, required: true },

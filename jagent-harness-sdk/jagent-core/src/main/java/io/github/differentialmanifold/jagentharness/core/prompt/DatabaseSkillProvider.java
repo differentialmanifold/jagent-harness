@@ -3,8 +3,11 @@ package io.github.differentialmanifold.jagentharness.core.prompt;
 import java.util.Collections;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 
 public class DatabaseSkillProvider implements SkillProvider {
 
@@ -20,13 +23,21 @@ public class DatabaseSkillProvider implements SkillProvider {
             return Collections.emptyList();
         }
 
-        List<SkillDescriptor> skills = new ArrayList<SkillDescriptor>();
-        for (SkillManifest manifest : manifestStore.listManifests()) {
+        Map<String, SkillDescriptor> skills = new LinkedHashMap<String, SkillDescriptor>();
+        addSkills(skills, manifestStore.listManifests(KnowledgeScope.global()), "global");
+        if (context != null && context.getProjectId() != null && !context.getProjectId().trim().isEmpty()) {
+            addSkills(skills, manifestStore.listManifests(KnowledgeScope.project(context.getProjectId())), "project");
+        }
+        return new ArrayList<SkillDescriptor>(skills.values());
+    }
+
+    private void addSkills(Map<String, SkillDescriptor> skills, List<SkillManifest> manifests, String source) {
+        for (SkillManifest manifest : manifests) {
             String name = firstNonBlank(manifest.getName(), manifest.getSkillKey());
             String description = firstNonBlank(manifest.getDescription());
-            skills.add(new SkillDescriptor(name, description, manifest.getSkillFilePath()));
+            skills.remove(name);
+            skills.put(name, new SkillDescriptor(name, description, manifest.getSkillFilePath(), source));
         }
-        return skills;
     }
 
     private String firstNonBlank(String... values) {

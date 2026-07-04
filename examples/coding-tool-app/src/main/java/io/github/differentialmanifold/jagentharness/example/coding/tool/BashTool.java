@@ -2,7 +2,9 @@ package io.github.differentialmanifold.jagentharness.example.coding.tool;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -91,7 +93,9 @@ public class BashTool implements ToolDefinition {
         }
         requireApprovalIfMayMutateOutsideWorkspace(context, command, cwd);
 
-        List<String> shellCommand = shellCommand(command);
+        String osName = System.getProperty("os.name");
+        List<String> shellCommand = shellCommand(command, osName, System.getenv());
+        String shellInput = shellInput(command, osName);
         ProcessBuilder processBuilder = new ProcessBuilder(shellCommand);
         processBuilder.directory(cwd.toFile());
         Process process = processBuilder.start();
@@ -101,6 +105,7 @@ public class BashTool implements ToolDefinition {
         Future<String> stderr = executor.submit(streamReader(process.getErrorStream()));
 
         try (StopRegistration ignored = stopSignal.onStop(() -> destroyProcess(process))) {
+            writeShellInput(process, shellInput);
             boolean finished;
             try {
                 finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
@@ -499,19 +504,32 @@ public class BashTool implements ToolDefinition {
         };
     }
 
-    private List<String> shellCommand(String command) {
-        return shellCommand(command, System.getProperty("os.name"), System.getenv());
-    }
-
     static List<String> shellCommand(String command, String osName, Map<String, String> environment) {
         if (isWindows(osName)) {
             String gitBash = findGitBash(environment, osName);
             if (gitBash == null) {
                 throw new IllegalStateException(GIT_BASH_REQUIRED_MESSAGE);
             }
-            return Arrays.asList(gitBash, "-lc", command);
+            return Arrays.asList(gitBash, "-l", "-s");
         }
         return Arrays.asList("/bin/sh", "-lc", command);
+    }
+
+    static String shellInput(String command, String osName) {
+        return isWindows(osName) ? command + "\n" : null;
+    }
+
+    private void writeShellInput(Process process, String input) throws IOException {
+        if (input == null) {
+            return;
+        }
+        try (OutputStream output = process.getOutputStream()) {
+            output.write(input.getBytes(StandardCharsets.UTF_8));
+            output.flush();
+        } catch (IOException e) {
+            destroyProcess(process);
+            throw e;
+        }
     }
 
     static String findGitBash(Map<String, String> environment, String osName) {

@@ -15,9 +15,9 @@ This repository also includes coding and business-system examples with Spring Bo
 - OpenAI-compatible chat completions provider.
 - JDBC-backed session, message, timeline event, prompt, and skill storage.
 - Virtual knowledge filesystem for database-backed prompt and skill files.
-- `AGENTS.md` loading from global, workspace, and database sources.
-- Skill loading from global, workspace, and database sources with database-first precedence.
-- Java 8 Streamable HTTP MCP client with file and database configuration.
+- Database-scoped `AGENTS.md` loading for global and project instructions.
+- Database-scoped skills with project-over-global precedence.
+- Java 8 Streamable HTTP MCP client with global and project database configuration.
 - Optional Console Spring Boot starter with `/api/*` endpoints and SSE streaming for realtime UIs.
 - Context compaction when a conversation approaches the model context window.
 
@@ -60,7 +60,7 @@ Short version:
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.4.0.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.5.0.jar
 ```
 
 In another terminal:
@@ -110,7 +110,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.4.0</jagent-harness.version>
+    <jagent-harness.version>0.5.0</jagent-harness.version>
 </properties>
 
 <dependencies>
@@ -162,9 +162,8 @@ Add the MCP starter when the agent needs tools from remote Streamable HTTP MCP s
 </dependency>
 ```
 
-Configure servers in `${JAGENT_CONFIG_ROOT}/mcp.json`, a workspace `mcp.json`, or the
-database-backed `mcp.json` managed by the Console. Servers are merged by name with database,
-workspace, then global precedence:
+Configure servers in the database-backed global or project `mcp.json` managed by the Console.
+Project servers override global servers with the same name:
 
 ```json
 {
@@ -173,6 +172,7 @@ workspace, then global precedence:
       "transport": "streamable-http",
       "url": "https://example.com/mcp",
       "enabled": true,
+      "enabledTools": ["product_search", "inventory_check"],
       "headers": {
         "Authorization": "Bearer ${CATALOG_MCP_TOKEN}"
       },
@@ -184,8 +184,9 @@ workspace, then global precedence:
 ```
 
 Sensitive headers must reference environment variables. MCP tools are exposed to the model as
-`serverName__toolName`. Global and database configurations load at startup; a workspace
-configuration loads on its first use. Database edits in the Console require an application restart.
+`serverName__toolName`. Omitting `enabledTools` loads every discovered tool; an empty array loads
+none. Global configuration loads at startup and project configuration on first use. Configuration
+edits in the Console require an application restart.
 
 Use the harness from application code:
 
@@ -246,11 +247,10 @@ by a skill. The coding-tool example registers workspace-specific tools as Spring
 workspace and supports one-based `offset` and line-count `limit` arguments.
 
 JAgentHarness uses a built-in general system prompt that cannot be replaced by `SYSTEM.md`.
-It appends every available `AGENTS.md` from the global configuration directory, workspace,
-and database. Skills are merged by name with the following precedence:
-database, workspace directory, then global directory. Database skill files use normal paths
-such as `skills/review/SKILL.md`; the built-in `skill` tool resolves those paths from the
-database before checking workspace and global skill directories.
+It appends the global and current project `AGENTS.md` stored in the database. Skills use normal
+paths such as `skills/review/SKILL.md` and are merged by name with project scope taking precedence
+over global scope. The built-in `skill` tool resolves the same logical path from project scope first,
+then global scope. Runtime prompt, skill, and MCP loading does not scan the external filesystem.
 
 ## Configuration
 
@@ -270,7 +270,6 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
 | `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active request to check its own stop row. |
 | `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-request stop listeners. |
-| `JAGENT_CONFIG_ROOT` | `~/.jagent-harness` | Global config root for `AGENTS.md` and global file-based skills. |
 | `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
 | `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |
 | `JAGENT_COMPACTION_ENABLED` | `true` | Enable context compaction. |

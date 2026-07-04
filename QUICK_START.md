@@ -44,7 +44,7 @@ From the repository root:
 
 ```bash
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.4.0.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.5.0.jar
 ```
 
 The backend listens on `http://localhost:18080`.

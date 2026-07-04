@@ -1,8 +1,5 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -13,6 +10,7 @@ import java.util.List;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 
 public class PromptService implements PromptProvider {
@@ -72,12 +70,10 @@ public class PromptService implements PromptProvider {
                 ? new PromptContext(null, new AgentContext(null, null, null, null, configRoot(), null))
                 : context;
         AgentContext agentContext = effectiveContext.getAgentContext();
-        Path root = configRoot(agentContext);
-        Path workspaceRoot = workspaceRoot(agentContext);
         StringBuilder prompt = new StringBuilder();
         appendDefaultSystemPrompt(prompt);
         appendSystemPromptContributors(prompt, effectiveContext);
-        appendAgentRules(prompt, root, workspaceRoot);
+        appendAgentRules(prompt, agentContext == null ? null : agentContext.getProjectId());
 
         prompt.append("Available tools:\n");
         for (ToolDefinition tool : effectiveContext.getTools()) {
@@ -139,8 +135,8 @@ public class PromptService implements PromptProvider {
         prompt.append("\n\n");
     }
 
-    private void appendAgentRules(StringBuilder prompt, Path configRoot, Path workspaceRoot) {
-        List<String> contents = agentRuleFiles(configRoot, workspaceRoot);
+    private void appendAgentRules(StringBuilder prompt, String projectId) {
+        List<String> contents = agentRuleFiles(projectId);
         if (contents.isEmpty()) {
             return;
         }
@@ -155,11 +151,12 @@ public class PromptService implements PromptProvider {
         prompt.append("\n\n");
     }
 
-    private List<String> agentRuleFiles(Path configRoot, Path workspaceRoot) {
+    private List<String> agentRuleFiles(String projectId) {
         List<String> files = new ArrayList<String>();
-        addAgentRuleFile(files, readIfExists(configRoot == null ? null : configRoot.resolve("AGENTS.md")));
-        addAgentRuleFile(files, readIfExists(workspaceRoot == null ? null : workspaceRoot.resolve("AGENTS.md")));
-        addAgentRuleFile(files, readKnowledgeIfExists("AGENTS.md"));
+        addAgentRuleFile(files, readKnowledgeIfExists(KnowledgeScope.global(), "AGENTS.md"));
+        if (!isBlank(projectId)) {
+            addAgentRuleFile(files, readKnowledgeIfExists(KnowledgeScope.project(projectId), "AGENTS.md"));
+        }
         return files;
     }
 
@@ -169,43 +166,19 @@ public class PromptService implements PromptProvider {
         }
     }
 
-    private String readKnowledgeIfExists(String path) {
+    private String readKnowledgeIfExists(KnowledgeScope scope, String path) {
         if (knowledgeFileStore == null) {
             return "";
         }
-        KnowledgeFile file = knowledgeFileStore.readFile(path);
+        KnowledgeFile file = knowledgeFileStore.readFile(scope, path);
         if (file == null) {
             return "";
         }
         return file.getContent() == null ? "" : file.getContent();
     }
 
-    private String readIfExists(Path path) {
-        if (path == null || !Files.isRegularFile(path)) {
-            return "";
-        }
-        try {
-            return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read prompt file " + path, e);
-        }
-    }
-
     private Path configRoot() {
         return defaultConfigRoot;
-    }
-
-    private Path configRoot(AgentContext context) {
-        if (context != null && context.getConfigRoot() != null) {
-            return context.getConfigRoot().toAbsolutePath().normalize();
-        }
-        return configRoot();
-    }
-
-    private Path workspaceRoot(AgentContext context) {
-        return context == null || context.getWorkspaceRoot() == null
-                ? null
-                : context.getWorkspaceRoot().toAbsolutePath().normalize();
     }
 
     private boolean isBlank(String value) {

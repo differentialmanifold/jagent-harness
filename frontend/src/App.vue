@@ -22,7 +22,7 @@
         :project-groups="projectGroups"
         :current-project-key="currentProjectKey"
         :current-session="currentSession"
-        :running="running"
+        :running="anyRunning"
         @open-project-dialog="openProjectDialog"
         @select-project="selectProject"
         @create-session="createSessionFromProject"
@@ -67,7 +67,12 @@
       </main>
 
       <main v-else-if="activeView === 'skills'" class="workspace management-shell">
-        <KnowledgePanel key="skills" mode="skills" @changed="refreshAgentContext" />
+        <KnowledgePanel
+          key="skills"
+          mode="skills"
+          :session-id="currentSession ? currentSession.sessionId : ''"
+          @changed="refreshAgentContext"
+        />
       </main>
 
       <main v-else class="workspace management-shell">
@@ -142,6 +147,7 @@ const {
   running,
   stopping,
   stopReady,
+  anyRunning,
   approvalMode,
   projectDialogOpen,
   projectSubmitting,

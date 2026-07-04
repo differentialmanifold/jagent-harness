@@ -12,6 +12,7 @@ import java.util.Collections;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +47,7 @@ class PromptServiceTest {
         write(workspaceRoot.resolve("SYSTEM.md"), "Project system override.");
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
         store.writeFile("SYSTEM.md", "Database system override.\n", "text/markdown");
+        store.writeFile(KnowledgeScope.project("project-1"), "SYSTEM.md", "Project database override.\n", "text/markdown");
         PromptService promptService = new PromptService(
                 new SkillRegistry(Collections.emptyList()),
                 globalRoot,
@@ -53,7 +55,7 @@ class PromptServiceTest {
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
                 Collections.emptyList(),
-                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null)));
+                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
 
         assertTrue(prompt.contains("You are a server-side agent running inside JAgentHarness."));
         assertTrue(prompt.contains("Use available tools and skills to help the user accomplish the task."));
@@ -63,22 +65,24 @@ class PromptServiceTest {
         assertFalse(prompt.contains("Global system override."));
         assertFalse(prompt.contains("Project system override."));
         assertFalse(prompt.contains("Database system override."));
+        assertFalse(prompt.contains("Project database override."));
     }
 
     @Test
     void appendsSystemPromptContributorsBeforeAgentRules() throws IOException {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
-        write(workspaceRoot.resolve("AGENTS.md"), "Use user project rules.");
+        TestKnowledgeFileStore store = new TestKnowledgeFileStore();
+        store.writeFile(KnowledgeScope.project("project-1"), "AGENTS.md", "Use user project rules.", "text/markdown");
         PromptService promptService = new PromptService(
                 new SkillRegistry(Collections.emptyList()),
                 globalRoot,
-                null,
+                store,
                 Collections.singletonList(context -> "Use application-specific tool rules."));
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
                 Collections.emptyList(),
-                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null)));
+                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
 
         assertInOrder(prompt,
                 "You are a server-side agent running inside JAgentHarness.",
@@ -92,10 +96,9 @@ class PromptServiceTest {
     void appendsAllAgentRuleFilesWithoutOverriding() throws IOException {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
-        write(globalRoot.resolve("AGENTS.md"), "Use global rules.");
-        write(workspaceRoot.resolve("AGENTS.md"), "Use project rules.");
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile("AGENTS.md", "Use database rules.\n", "text/markdown");
+        store.writeFile(KnowledgeScope.global(), "AGENTS.md", "Use global rules.\n", "text/markdown");
+        store.writeFile(KnowledgeScope.project("project-1"), "AGENTS.md", "Use project rules.\n", "text/markdown");
         PromptService promptService = new PromptService(
                 new SkillRegistry(Collections.emptyList()),
                 globalRoot,
@@ -103,16 +106,14 @@ class PromptServiceTest {
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
                 Collections.emptyList(),
-                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null)));
+                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
 
         assertInOrder(prompt,
                 "## Agent Rules",
                 "Use global rules.",
-                "Use project rules.",
-                "Use database rules.");
+                "Use project rules.");
         assertFalse(prompt.contains("## Global Agent Rules"));
         assertFalse(prompt.contains("## Project Agent Rules"));
-        assertFalse(prompt.contains("## Database Agent Rules"));
     }
 
     private void assertInOrder(String text, String... fragments) {

@@ -30,6 +30,7 @@ public class DefaultToolContextFactory implements ToolContextFactory {
                 effectiveOptions.getApprovalMode(),
                 effectiveOptions.getApprovalHandler(),
                 null,
-                null);
+                null,
+                session == null ? null : session.getProjectId());
     }
 }

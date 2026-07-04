@@ -1,8 +1,6 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,58 +11,55 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 
 public class McpConfigurationManager {
 
     public static final String SOURCE_GLOBAL = "global";
     public static final String SOURCE_PROJECT = "project";
-    public static final String SOURCE_DATABASE = "database";
 
-    private final Path configRoot;
     private final String configFile;
     private final KnowledgeFileStore knowledgeFileStore;
     private final ObjectMapper objectMapper;
     private final McpConfigValidator validator = new McpConfigValidator();
-    private final Map<String, Map<String, McpServerConfig>> projectSnapshots =
+    private final Map<String, Map<String, McpServerConfig>> startupProjects =
             new LinkedHashMap<String, Map<String, McpServerConfig>>();
     private Map<String, McpServerConfig> startupGlobal = Collections.emptyMap();
-    private Map<String, McpServerConfig> startupDatabase = Collections.emptyMap();
-    private String startupDatabaseConfig;
 
     public McpConfigurationManager(Path configRoot,
                                    String configFile,
                                    KnowledgeFileStore knowledgeFileStore,
                                    ObjectMapper objectMapper) {
-        this.configRoot = configRoot;
         this.configFile = configFile == null || configFile.trim().isEmpty() ? "mcp.json" : configFile.trim();
         this.knowledgeFileStore = knowledgeFileStore;
         this.objectMapper = objectMapper;
     }
 
     public synchronized void initialize() {
-        startupGlobal = readFile(configRoot == null ? null : configRoot.resolve(configFile));
-        KnowledgeFile database = readDatabaseFile();
-        startupDatabaseConfig = database == null ? null : database.getContent();
-        startupDatabase = readContent(startupDatabaseConfig, "database " + configFile);
+        startupGlobal = readScope(KnowledgeScope.global());
+        startupProjects.clear();
     }
 
-    public synchronized McpConfigSnapshot runtimeSnapshot(Path workspaceRoot) {
-        Map<String, McpServerConfig> project = projectSnapshot(workspaceRoot);
-        return merge(startupGlobal, project, startupDatabase, startupDatabaseConfig);
+    public synchronized McpConfigSnapshot runtimeSnapshot(String projectId) {
+        Map<String, McpServerConfig> project = projectSnapshot(projectId);
+        return merge(startupGlobal, project, configContent(KnowledgeScope.forProject(projectId)));
     }
 
-    public McpConfigSnapshot currentSnapshot(Path workspaceRoot) {
-        Map<String, McpServerConfig> global = readFile(configRoot == null ? null : configRoot.resolve(configFile));
-        Map<String, McpServerConfig> project = readFile(workspaceRoot == null ? null : workspaceRoot.resolve(configFile));
-        KnowledgeFile database = readDatabaseFile();
-        Map<String, McpServerConfig> databaseServers = readContent(
-                database == null ? null : database.getContent(),
-                "database " + configFile);
-        return merge(global, project, databaseServers, database == null ? null : database.getContent());
+    public McpConfigSnapshot currentSnapshot(String projectId, KnowledgeScope selectedScope) {
+        return merge(
+                readScope(KnowledgeScope.global()),
+                projectId == null || projectId.trim().isEmpty()
+                        ? Collections.<String, McpServerConfig>emptyMap()
+                        : readScope(KnowledgeScope.project(projectId)),
+                configContent(selectedScope));
     }
 
     public KnowledgeFile saveDatabase(String content) {
+        return saveDatabase(KnowledgeScope.global(), content);
+    }
+
+    public KnowledgeFile saveDatabase(KnowledgeScope scope, String content) {
         if (content == null || content.trim().isEmpty()) {
             throw new IllegalArgumentException("MCP configuration content is required");
         }
@@ -76,44 +71,46 @@ public class McpConfigurationManager {
             throw new IllegalStateException("KnowledgeFileStore is required for database MCP configuration");
         }
         String storedContent = content.endsWith("\n") ? content : content + "\n";
-        return knowledgeFileStore.writeFile(configFile, storedContent, "application/json");
+        return knowledgeFileStore.writeFile(scope, configFile, storedContent, "application/json");
     }
 
     public void deleteDatabase() {
+        deleteDatabase(KnowledgeScope.global());
+    }
+
+    public void deleteDatabase(KnowledgeScope scope) {
         if (knowledgeFileStore == null) {
             throw new IllegalStateException("KnowledgeFileStore is required for database MCP configuration");
         }
-        knowledgeFileStore.deleteFile(configFile);
+        knowledgeFileStore.deleteFile(scope, configFile);
     }
 
     public McpServerConfig resolve(String name, McpServerConfig config) {
         return validator.validateAndResolve(name, config);
     }
 
-    private synchronized Map<String, McpServerConfig> projectSnapshot(Path workspaceRoot) {
-        if (workspaceRoot == null) {
+    private synchronized Map<String, McpServerConfig> projectSnapshot(String projectId) {
+        if (projectId == null || projectId.trim().isEmpty()) {
             return Collections.emptyMap();
         }
-        String key = workspaceRoot.toAbsolutePath().normalize().toString();
-        Map<String, McpServerConfig> existing = projectSnapshots.get(key);
+        String key = projectId.trim();
+        Map<String, McpServerConfig> existing = startupProjects.get(key);
         if (existing != null) {
             return existing;
         }
-        Map<String, McpServerConfig> loaded = readFile(workspaceRoot.resolve(configFile));
-        projectSnapshots.put(key, loaded);
+        Map<String, McpServerConfig> loaded = readScope(KnowledgeScope.project(key));
+        startupProjects.put(key, loaded);
         return loaded;
     }
 
     private McpConfigSnapshot merge(Map<String, McpServerConfig> global,
                                     Map<String, McpServerConfig> project,
-                                    Map<String, McpServerConfig> database,
-                                    String databaseConfig) {
+                                    String selectedConfig) {
         Map<String, McpServerConfig> configs = new LinkedHashMap<String, McpServerConfig>();
         Map<String, String> sources = new LinkedHashMap<String, String>();
         Map<String, List<String>> overridden = new LinkedHashMap<String, List<String>>();
         mergeSource(configs, sources, overridden, global, SOURCE_GLOBAL);
         mergeSource(configs, sources, overridden, project, SOURCE_PROJECT);
-        mergeSource(configs, sources, overridden, database, SOURCE_DATABASE);
 
         Map<String, McpConfigEntry> effective = new LinkedHashMap<String, McpConfigEntry>();
         for (Map.Entry<String, McpServerConfig> entry : configs.entrySet()) {
@@ -122,7 +119,7 @@ public class McpConfigurationManager {
                     sources.get(entry.getKey()),
                     overridden.get(entry.getKey())));
         }
-        return new McpConfigSnapshot(effective, databaseConfig);
+        return new McpConfigSnapshot(effective, selectedConfig);
     }
 
     private void mergeSource(Map<String, McpServerConfig> configs,
@@ -145,15 +142,8 @@ public class McpConfigurationManager {
         }
     }
 
-    private Map<String, McpServerConfig> readFile(Path path) {
-        if (path == null || !Files.isRegularFile(path)) {
-            return Collections.emptyMap();
-        }
-        try {
-            return readContent(new String(Files.readAllBytes(path), StandardCharsets.UTF_8), path.toString());
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read MCP configuration " + path, e);
-        }
+    private Map<String, McpServerConfig> readScope(KnowledgeScope scope) {
+        return readContent(configContent(scope), scope.getType() + " database " + configFile);
     }
 
     private Map<String, McpServerConfig> readContent(String content, String source) {
@@ -168,8 +158,12 @@ public class McpConfigurationManager {
         }
     }
 
-    private KnowledgeFile readDatabaseFile() {
-        return knowledgeFileStore == null ? null : knowledgeFileStore.readFile(configFile);
+    private String configContent(KnowledgeScope scope) {
+        if (knowledgeFileStore == null) {
+            return null;
+        }
+        KnowledgeFile file = knowledgeFileStore.readFile(scope == null ? KnowledgeScope.global() : scope, configFile);
+        return file == null ? null : file.getContent();
     }
 
     private Map<String, McpServerConfig> copy(Map<String, McpServerConfig> source) {

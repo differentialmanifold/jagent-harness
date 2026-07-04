@@ -5,6 +5,14 @@
         <h2>MCP Management</h2>
         <p>{{ servers.length }} servers, {{ availableCount }} available</p>
       </div>
+      <el-radio-group v-model="configScope" size="small" aria-label="MCP configuration scope">
+        <el-radio-button value="global">Global</el-radio-button>
+        <el-radio-button value="project" :disabled="!sessionId">Current project</el-radio-button>
+      </el-radio-group>
+    </header>
+
+    <div class="mcp-config-toolbar">
+      <strong>mcp.json</strong>
       <div class="mcp-detail-actions">
         <el-button
           :type="hasDatabaseConfig ? 'default' : 'primary'"
@@ -16,7 +24,7 @@
         <el-popconfirm
           v-if="hasDatabaseConfig"
           width="280"
-          title="Delete the database mcp.json?"
+          :title="`Delete the ${scopeLabel} mcp.json?`"
           confirm-button-text="Delete"
           cancel-button-text="Cancel"
           @confirm="deleteDatabaseConfig"
@@ -26,10 +34,10 @@
           </template>
         </el-popconfirm>
       </div>
-    </header>
+    </div>
 
     <div v-if="restartRequired" class="mcp-notice">
-      Database mcp.json changed. Restart this application instance to activate the changes.
+      {{ scopeLabel }} mcp.json changed. Restart this application instance to activate the changes.
     </div>
     <div v-if="error" class="mcp-error">{{ error }}</div>
 
@@ -93,11 +101,36 @@
           </section>
 
           <section class="mcp-detail-section">
-            <h4>Tools</h4>
-            <ul v-if="selectedServer.tools.length" class="mcp-tools-list">
-              <li v-for="tool in selectedServer.tools" :key="tool"><code>{{ tool }}</code></li>
-            </ul>
-            <p v-else>No tools loaded for this application instance.</p>
+            <div class="mcp-section-heading">
+              <div>
+                <h4>Tools</h4>
+                <p>{{ toolSelectionDraft.length }} of {{ availableToolNames.length }} enabled</p>
+              </div>
+              <div class="mcp-detail-actions">
+                <el-button text :disabled="!availableToolNames.length" @click="selectAllTools">Select all</el-button>
+                <el-button text :disabled="!availableToolNames.length" @click="clearAllTools">Clear all</el-button>
+                <el-button
+                  type="primary"
+                  :disabled="!toolSelectionDirty"
+                  :loading="saving"
+                  @click="saveToolSelection"
+                >
+                  Save
+                </el-button>
+              </div>
+            </div>
+            <el-checkbox-group
+              v-if="availableToolNames.length"
+              v-model="toolSelectionDraft"
+              class="mcp-tool-checklist"
+              @change="toolSelectionDirty = true"
+            >
+              <el-checkbox v-for="tool in availableToolNames" :key="tool" :value="tool">
+                <code>{{ tool }}</code>
+                <el-tag v-if="selectedServer.tools.includes(tool)" size="small" type="success">loaded</el-tag>
+              </el-checkbox>
+            </el-checkbox-group>
+            <p v-else>No tools discovered. Test the server to load its tool list.</p>
           </section>
 
           <section class="mcp-detail-section">
@@ -120,7 +153,7 @@
       width="min(720px, calc(100vw - 24px))"
     >
       <p class="mcp-json-help">
-        Paste or edit the complete database <code>mcp.json</code>. Saving replaces the whole file.
+        Paste or edit the complete {{ scopeLabel }} <code>mcp.json</code>. Saving replaces the whole file.
       </p>
       <el-input
         v-model="jsonDraft"
@@ -144,7 +177,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { Connection, Delete, DocumentAdd, EditPen, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElCheckbox, ElCheckboxGroup, ElMessage, ElRadioButton, ElRadioGroup } from 'element-plus'
 import { request } from '../api/http'
 
 const props = defineProps({
@@ -163,6 +196,9 @@ const restartRequired = ref(false)
 const selectedName = ref('')
 const jsonDialogOpen = ref(false)
 const jsonDraft = ref('')
+const configScope = ref('global')
+const toolSelectionDraft = ref([])
+const toolSelectionDirty = ref(false)
 
 const jsonPlaceholder = JSON.stringify({
   mcpServers: {
@@ -182,8 +218,19 @@ const jsonPlaceholder = JSON.stringify({
 const selectedServer = computed(() => servers.value.find((server) => server.name === selectedName.value) || null)
 const availableCount = computed(() => servers.value.filter((server) => server.status === 'available').length)
 const hasDatabaseConfig = computed(() => databaseConfig.value !== null)
+const scopeLabel = computed(() => configScope.value === 'project' ? 'project' : 'global')
+const availableToolNames = computed(() => {
+  const names = new Set(selectedServer.value?.availableTools || [])
+  for (const name of selectedServer.value?.config?.enabledTools || []) names.add(name)
+  return Array.from(names).sort()
+})
 
-watch(() => props.sessionId, load)
+watch(() => props.sessionId, async () => {
+  if (!props.sessionId && configScope.value === 'project') configScope.value = 'global'
+  await load()
+})
+watch(configScope, load)
+watch(selectedName, syncToolSelection)
 onMounted(load)
 
 async function load() {
@@ -197,6 +244,7 @@ async function load() {
     if (!servers.value.some((server) => server.name === selectedName.value)) {
       selectedName.value = servers.value[0]?.name || ''
     }
+    syncToolSelection()
   } catch (reason) {
     error.value = reason.message
   } finally {
@@ -267,7 +315,7 @@ async function deleteDatabaseConfig() {
       method: 'DELETE'
     })
     applySaved(data)
-    ElMessage.success('Database mcp.json deleted. Restart required.')
+    ElMessage.success(`${scopeLabel.value} mcp.json deleted. Restart required.`)
   } catch (reason) {
     error.value = reason.message
   } finally {
@@ -288,6 +336,9 @@ async function runTest(name, config) {
       body: JSON.stringify({ name, config })
     })
     if (result.success) {
+      const server = servers.value.find((item) => item.name === name)
+      if (server) server.availableTools = result.tools || []
+      syncToolSelection()
       ElMessage.success(`Connected. ${result.tools.length} tools discovered.`)
     } else {
       error.value = result.error || 'Connection failed.'
@@ -305,7 +356,67 @@ function applySaved(data) {
   servers.value = data?.servers || []
   databaseConfig.value = data?.databaseConfig ?? null
   restartRequired.value = true
+  syncToolSelection()
   emit('changed')
+}
+
+function syncToolSelection() {
+  const server = selectedServer.value
+  if (!server) {
+    toolSelectionDraft.value = []
+    toolSelectionDirty.value = false
+    return
+  }
+  toolSelectionDraft.value = server.config?.enabledTools == null
+    ? [...availableToolNames.value]
+    : [...server.config.enabledTools]
+  toolSelectionDirty.value = false
+}
+
+function selectAllTools() {
+  toolSelectionDraft.value = [...availableToolNames.value]
+  toolSelectionDirty.value = true
+}
+
+function clearAllTools() {
+  toolSelectionDraft.value = []
+  toolSelectionDirty.value = true
+}
+
+async function saveToolSelection() {
+  const server = selectedServer.value
+  if (!server || !toolSelectionDirty.value) return
+  let document = { mcpServers: {} }
+  if (databaseConfig.value) {
+    try {
+      document = JSON.parse(databaseConfig.value)
+    } catch (reason) {
+      error.value = `Invalid stored mcp.json: ${reason.message}`
+      return
+    }
+  }
+  if (!isPlainObject(document.mcpServers)) document.mcpServers = {}
+  const config = JSON.parse(JSON.stringify(server.config || {}))
+  if (toolSelectionDraft.value.length === availableToolNames.value.length) {
+    delete config.enabledTools
+  } else {
+    config.enabledTools = [...toolSelectionDraft.value]
+  }
+  document.mcpServers[server.name] = config
+  saving.value = true
+  error.value = ''
+  try {
+    const data = await request(`/api/mcp/config${sessionQuery()}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content: `${JSON.stringify(document, null, 2)}\n` })
+    })
+    applySaved(data)
+    ElMessage.success('Tool selection saved. Restart required.')
+  } catch (reason) {
+    error.value = reason.message
+  } finally {
+    saving.value = false
+  }
 }
 
 function isPlainObject(value) {
@@ -317,7 +428,9 @@ function headerEntries(config) {
 }
 
 function sessionQuery() {
-  return props.sessionId ? `?sessionId=${encodeURIComponent(props.sessionId)}` : ''
+  const query = new URLSearchParams({ scope: configScope.value })
+  if (configScope.value === 'project' && props.sessionId) query.set('sessionId', props.sessionId)
+  return `?${query.toString()}`
 }
 
 function statusLabel(status) {
