@@ -20,15 +20,28 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
 
     @Override
     public KnowledgeFile readFile(String path) {
-        KnowledgeFile file = files.get(KnowledgeFilePaths.normalize(path));
+        return readFile(KnowledgeScope.global(), path);
+    }
+
+    @Override
+    public KnowledgeFile readFile(KnowledgeScope scope, String path) {
+        KnowledgeFile file = files.get(key(scope, KnowledgeFilePaths.normalize(path)));
         return file != null && KnowledgeFile.TYPE_FILE.equals(file.getNodeType()) ? file : null;
     }
 
     @Override
     public List<KnowledgeFile> listFiles(String prefix) {
+        return listFiles(KnowledgeScope.global(), prefix);
+    }
+
+    @Override
+    public List<KnowledgeFile> listFiles(KnowledgeScope scope, String prefix) {
         String normalizedPrefix = KnowledgeFilePaths.normalizePrefix(prefix);
         List<KnowledgeFile> values = new ArrayList<KnowledgeFile>();
-        for (KnowledgeFile file : files.values()) {
+        String scopePrefix = scopeKey(scope) + ":";
+        for (Map.Entry<String, KnowledgeFile> entry : files.entrySet()) {
+            if (!entry.getKey().startsWith(scopePrefix)) continue;
+            KnowledgeFile file = entry.getValue();
             if (!KnowledgeFile.TYPE_FILE.equals(file.getNodeType())) {
                 continue;
             }
@@ -44,10 +57,15 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
 
     @Override
     public KnowledgeFile writeFile(String path, String content, String contentType) {
+        return writeFile(KnowledgeScope.global(), path, content, contentType);
+    }
+
+    @Override
+    public KnowledgeFile writeFile(KnowledgeScope scope, String path, String content, String contentType) {
         String normalizedPath = KnowledgeFilePaths.normalize(path);
-        ensureDirectories(normalizedPath);
+        ensureDirectories(scope, normalizedPath);
         Instant now = Instant.now();
-        KnowledgeFile existing = readFile(normalizedPath);
+        KnowledgeFile existing = readFile(scope, normalizedPath);
         KnowledgeFile file = new KnowledgeFile(
                 normalizedPath,
                 KnowledgeFile.TYPE_FILE,
@@ -55,28 +73,42 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
                 contentType,
                 existing == null ? now : existing.getCreatedAt(),
                 now);
-        files.put(file.getPath(), file);
-        syncIndexes(file);
+        files.put(key(scope, file.getPath()), file);
+        syncIndexes(scope, file);
         return file;
     }
 
     @Override
     public void deleteFile(String path) {
+        deleteFile(KnowledgeScope.global(), path);
+    }
+
+    @Override
+    public void deleteFile(KnowledgeScope scope, String path) {
         String normalizedPath = KnowledgeFilePaths.normalize(path);
-        files.remove(normalizedPath);
+        files.remove(key(scope, normalizedPath));
         if (KnowledgeFilePaths.isSkillManifestFile(normalizedPath)) {
-            skillManifests.remove(KnowledgeFilePaths.skillKey(normalizedPath));
+            skillManifests.remove(key(scope, KnowledgeFilePaths.skillKey(normalizedPath)));
         }
     }
 
     @Override
     public List<SkillManifest> listManifests() {
-        List<SkillManifest> manifests = new ArrayList<SkillManifest>(skillManifests.values());
+        return listManifests(KnowledgeScope.global());
+    }
+
+    @Override
+    public List<SkillManifest> listManifests(KnowledgeScope scope) {
+        List<SkillManifest> manifests = new ArrayList<SkillManifest>();
+        String scopePrefix = scopeKey(scope) + ":";
+        for (Map.Entry<String, SkillManifest> entry : skillManifests.entrySet()) {
+            if (entry.getKey().startsWith(scopePrefix)) manifests.add(entry.getValue());
+        }
         Collections.sort(manifests, Comparator.comparing(SkillManifest::getSkillKey));
         return manifests;
     }
 
-    private void ensureDirectories(String path) {
+    private void ensureDirectories(KnowledgeScope scope, String path) {
         String parent = KnowledgeFilePaths.parent(path);
         if (parent.isEmpty()) {
             return;
@@ -89,9 +121,9 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
             }
             current.append(segment);
             String dir = current.toString();
-            if (!files.containsKey(dir)) {
+            if (!files.containsKey(key(scope, dir))) {
                 Instant now = Instant.now();
-                files.put(dir, new KnowledgeFile(
+                files.put(key(scope, dir), new KnowledgeFile(
                         dir,
                         KnowledgeFile.TYPE_DIRECTORY,
                         "",
@@ -102,11 +134,11 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         }
     }
 
-    private void syncIndexes(KnowledgeFile file) {
+    private void syncIndexes(KnowledgeScope scope, KnowledgeFile file) {
         if (KnowledgeFilePaths.isSkillManifestFile(file.getPath())) {
             String skillKey = KnowledgeFilePaths.skillKey(file.getPath());
             SkillDescriptor descriptor = SkillFileParser.readDescriptor(file.getContent(), skillKey, file.getPath());
-            skillManifests.put(skillKey, new SkillManifest(
+            skillManifests.put(key(scope, skillKey), new SkillManifest(
                     skillKey,
                     KnowledgeFilePaths.skillDir(file.getPath()),
                     file.getPath(),
@@ -114,5 +146,14 @@ public class TestKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
                     descriptor.getDescription(),
                     file.getUpdatedAt()));
         }
+    }
+
+    private String key(KnowledgeScope scope, String path) {
+        return scopeKey(scope) + ":" + path;
+    }
+
+    private String scopeKey(KnowledgeScope scope) {
+        KnowledgeScope effective = scope == null ? KnowledgeScope.global() : scope;
+        return effective.getType() + ":" + effective.getId();
     }
 }

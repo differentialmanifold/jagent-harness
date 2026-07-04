@@ -4,8 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -15,6 +13,7 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,38 +24,33 @@ class McpConfigurationManagerTest {
     Path tempDir;
 
     @Test
-    void mergesDatabaseProjectAndGlobalAndKeepsRuntimeSnapshotsStable() throws Exception {
-        Path configRoot = Files.createDirectories(tempDir.resolve("global"));
-        Path workspace = Files.createDirectories(tempDir.resolve("workspace"));
-        Files.write(configRoot.resolve("mcp.json"), document(
-                server("global-only", "http://global/only"),
-                server("shared", "http://global/shared")).getBytes(StandardCharsets.UTF_8));
-        Files.write(workspace.resolve("mcp.json"), document(
-                server("project-only", "http://project/only"),
-                server("shared", "http://project/shared")).getBytes(StandardCharsets.UTF_8));
-
+    void mergesProjectAndGlobalDatabaseScopesAndKeepsRuntimeSnapshotsStable() throws Exception {
         MemoryStore store = new MemoryStore();
-        store.writeFile("mcp.json", document(
-                server("database-only", "http://database/only"),
-                server("shared", "http://database/shared")), "application/json");
+        store.writeFile(KnowledgeScope.global(), "mcp.json", document(
+                server("global-only", "http://global/only"),
+                server("shared", "http://global/shared")), "application/json");
+        store.writeFile(KnowledgeScope.project("project-1"), "mcp.json", document(
+                server("project-only", "http://project/only"),
+                server("shared", "http://project/shared")), "application/json");
         McpConfigurationManager manager = new McpConfigurationManager(
-                configRoot, "mcp.json", store, new ObjectMapper());
+                tempDir, "mcp.json", store, new ObjectMapper());
         manager.initialize();
 
-        McpConfigSnapshot runtime = manager.runtimeSnapshot(workspace);
-        assertEquals(4, runtime.getEffectiveServers().size());
-        assertEquals("database", runtime.getEffectiveServers().get("shared").getSource());
-        assertEquals("http://database/shared", runtime.getEffectiveServers().get("shared").getConfig().getUrl());
-        assertEquals(java.util.Arrays.asList("global", "project"),
+        McpConfigSnapshot runtime = manager.runtimeSnapshot("project-1");
+        assertEquals(3, runtime.getEffectiveServers().size());
+        assertEquals("project", runtime.getEffectiveServers().get("shared").getSource());
+        assertEquals("http://project/shared", runtime.getEffectiveServers().get("shared").getConfig().getUrl());
+        assertEquals(java.util.Collections.singletonList("global"),
                 runtime.getEffectiveServers().get("shared").getOverriddenSources());
 
-        Files.write(workspace.resolve("mcp.json"), document(
-                server("changed", "http://changed/project")).getBytes(StandardCharsets.UTF_8));
-        store.writeFile("mcp.json", document(server("changed", "http://changed/database")), "application/json");
+        store.writeFile(KnowledgeScope.global(), "mcp.json",
+                document(server("changed-global", "http://changed/global")), "application/json");
+        store.writeFile(KnowledgeScope.project("project-1"), "mcp.json",
+                document(server("changed-project", "http://changed/project")), "application/json");
 
-        assertEquals(4, manager.runtimeSnapshot(workspace).getEffectiveServers().size());
-        assertEquals(3, manager.currentSnapshot(workspace).getEffectiveServers().size());
-        assertEquals("database", manager.currentSnapshot(workspace).getEffectiveServers().get("changed").getSource());
+        assertEquals(3, manager.runtimeSnapshot("project-1").getEffectiveServers().size());
+        assertEquals(2, manager.currentSnapshot("project-1", KnowledgeScope.project("project-1"))
+                .getEffectiveServers().size());
     }
 
     @Test
@@ -80,13 +74,13 @@ class McpConfigurationManagerTest {
 
         manager.saveDatabase(second);
         assertEquals(second + "\n", store.readFile("mcp.json").getContent());
-        assertEquals(1, manager.currentSnapshot(null).getEffectiveServers().size());
+        assertEquals(1, manager.currentSnapshot(null, KnowledgeScope.global()).getEffectiveServers().size());
         assertEquals("http://second/mcp",
-                manager.currentSnapshot(null).getEffectiveServers().get("second").getConfig().getUrl());
+                manager.currentSnapshot(null, KnowledgeScope.global()).getEffectiveServers().get("second").getConfig().getUrl());
 
         manager.deleteDatabase();
         assertNull(store.readFile("mcp.json"));
-        assertNull(manager.currentSnapshot(null).getDatabaseConfig());
+        assertNull(manager.currentSnapshot(null, KnowledgeScope.global()).getDatabaseConfig());
     }
 
     @SafeVarargs
@@ -107,27 +101,48 @@ class McpConfigurationManagerTest {
     }
 
     private static class MemoryStore implements KnowledgeFileStore {
-        private KnowledgeFile file;
+        private final Map<String, KnowledgeFile> files = new LinkedHashMap<String, KnowledgeFile>();
 
         @Override
         public KnowledgeFile readFile(String path) {
-            return file;
+            return readFile(KnowledgeScope.global(), path);
+        }
+
+        @Override
+        public KnowledgeFile readFile(KnowledgeScope scope, String path) {
+            return files.get(key(scope, path));
         }
 
         @Override
         public List<KnowledgeFile> listFiles(String prefix) {
+            KnowledgeFile file = readFile(prefix);
             return file == null ? java.util.Collections.<KnowledgeFile>emptyList() : java.util.Collections.singletonList(file);
         }
 
         @Override
         public KnowledgeFile writeFile(String path, String content, String contentType) {
-            file = new KnowledgeFile(path, KnowledgeFile.TYPE_FILE, content, contentType, Instant.now(), Instant.now());
+            return writeFile(KnowledgeScope.global(), path, content, contentType);
+        }
+
+        @Override
+        public KnowledgeFile writeFile(KnowledgeScope scope, String path, String content, String contentType) {
+            KnowledgeFile file = new KnowledgeFile(path, KnowledgeFile.TYPE_FILE, content, contentType, Instant.now(), Instant.now());
+            files.put(key(scope, path), file);
             return file;
         }
 
         @Override
         public void deleteFile(String path) {
-            file = null;
+            deleteFile(KnowledgeScope.global(), path);
+        }
+
+        @Override
+        public void deleteFile(KnowledgeScope scope, String path) {
+            files.remove(key(scope, path));
+        }
+
+        private String key(KnowledgeScope scope, String path) {
+            return scope.getType() + ":" + scope.getId() + ":" + path;
         }
     }
 }

@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.List;
 
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.support.Ids;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
 
 public class DefaultSessionManager implements SessionManager {
@@ -27,7 +28,17 @@ public class DefaultSessionManager implements SessionManager {
 
     @Override
     public SessionRecord createSession(String title, String workspacePath, String projectName) {
-        return sessionRepository.create(title, normalizeWorkspacePath(workspacePath), normalizeProjectName(projectName));
+        return createSession(title, workspacePath, projectName, null);
+    }
+
+    @Override
+    public SessionRecord createSession(String title, String workspacePath, String projectName, String projectId) {
+        String normalizedProjectId = projectId == null ? "" : projectId.trim();
+        return sessionRepository.create(
+                title,
+                normalizeWorkspacePath(workspacePath),
+                normalizeProjectName(projectName),
+                normalizedProjectId.isEmpty() ? Ids.newId("project") : normalizedProjectId);
     }
 
     @Override

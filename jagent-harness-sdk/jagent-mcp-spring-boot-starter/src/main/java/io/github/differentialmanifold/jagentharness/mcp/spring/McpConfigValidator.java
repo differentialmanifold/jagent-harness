@@ -5,6 +5,8 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,6 +47,17 @@ public class McpConfigValidator {
         if (config.getConnectTimeoutSeconds() < 1 || config.getConnectTimeoutSeconds() > 3600
                 || config.getRequestTimeoutSeconds() < 1 || config.getRequestTimeoutSeconds() > 3600) {
             throw new IllegalArgumentException("MCP timeouts must be between 1 and 3600 seconds: " + name);
+        }
+        if (config.getEnabledTools() != null) {
+            Set<String> names = new LinkedHashSet<String>();
+            for (String tool : config.getEnabledTools()) {
+                String toolName = tool == null ? "" : tool.trim();
+                if (toolName.isEmpty()) {
+                    throw new IllegalArgumentException("MCP enabled tool name must not be empty: " + config.getName());
+                }
+                names.add(toolName);
+            }
+            config.setEnabledTools(new ArrayList<String>(names));
         }
         for (Map.Entry<String, String> header : config.getHeaders().entrySet()) {
             String headerName = header.getKey() == null ? "" : header.getKey().trim();

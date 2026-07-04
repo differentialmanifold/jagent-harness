@@ -51,8 +51,16 @@ class BashToolTest {
         Map<String, String> environment = new HashMap<>();
         environment.put("PATH", gitBin.toString());
 
-        assertEquals(Arrays.asList(gitBash.toString(), "-lc", "pwd"),
+        assertEquals(Arrays.asList(gitBash.toString(), "-l", "-s"),
                 BashTool.shellCommand("pwd", "Windows 11", environment));
+    }
+
+    @Test
+    void passesWindowsCommandThroughStandardInput() {
+        String command = "node -e \"console.log(typeof globalThis.fetch)\"";
+
+        assertEquals(command + "\n", BashTool.shellInput(command, "Windows 11"));
+        assertNull(BashTool.shellInput(command, "Mac OS X"));
     }
 
     @Test

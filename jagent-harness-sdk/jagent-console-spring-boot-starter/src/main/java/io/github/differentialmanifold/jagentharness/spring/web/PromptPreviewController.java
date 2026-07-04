@@ -50,7 +50,8 @@ public class PromptPreviewController {
                 null,
                 workspaceRoot,
                 settings.getConfigRoot(),
-                null);
+                null,
+                session == null ? null : session.getProjectId());
         String prompt = promptProvider.buildSystemPrompt(new PromptContext(toolRegistry.all(context), context));
         return new PromptPreviewResponse(
                 prompt,

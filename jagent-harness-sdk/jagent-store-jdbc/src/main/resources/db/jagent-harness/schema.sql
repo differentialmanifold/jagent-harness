@@ -1,8 +1,22 @@
+create table if not exists projects (
+    id integer primary key autoincrement,
+    application_id varchar(128) not null,
+    project_id varchar(64) not null,
+    name varchar(512),
+    workspace_path varchar(1024),
+    created_at varchar(64) not null,
+    updated_at varchar(64) not null
+);
+
+create unique index if not exists ux_projects_application_project
+    on projects (application_id, project_id);
+
 create table if not exists sessions (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
     session_id varchar(64) not null,
     title varchar(512),
+    project_id varchar(64) not null,
     project_name varchar(512),
     workspace_path varchar(1024),
     status varchar(32) not null,
@@ -15,6 +29,8 @@ create unique index if not exists ux_sessions_application_session
     on sessions (application_id, session_id);
 create index if not exists ix_sessions_application_project_name
     on sessions (application_id, project_name);
+create index if not exists ix_sessions_application_project
+    on sessions (application_id, project_id);
 
 create table if not exists compaction_states (
     id integer primary key autoincrement,
@@ -71,6 +87,8 @@ create index if not exists ix_timeline_events_application_session
 create table if not exists knowledge_files (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
+    scope_type varchar(32) not null,
+    scope_id varchar(64) not null,
     path varchar(1024) not null,
     parent_path varchar(1024) not null,
     name varchar(256) not null,
@@ -83,10 +101,10 @@ create table if not exists knowledge_files (
     updated_at varchar(64) not null
 );
 
-create unique index if not exists ux_knowledge_files_application_path
-    on knowledge_files (application_id, path);
+create unique index if not exists ux_knowledge_files_scope_path
+    on knowledge_files (application_id, scope_type, scope_id, path);
 create index if not exists ix_knowledge_files_application_parent
-    on knowledge_files (application_id, parent_path);
+    on knowledge_files (application_id, scope_type, scope_id, parent_path);
 create index if not exists ix_knowledge_files_application_name
     on knowledge_files (application_id, name);
 create index if not exists ix_knowledge_files_application_node_type
@@ -95,6 +113,8 @@ create index if not exists ix_knowledge_files_application_node_type
 create table if not exists skill_manifests (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
+    scope_type varchar(32) not null,
+    scope_id varchar(64) not null,
     skill_key varchar(256) not null,
     skill_dir_path varchar(1024) not null,
     skill_file_path varchar(1024) not null,
@@ -104,10 +124,10 @@ create table if not exists skill_manifests (
     updated_at varchar(64) not null
 );
 
-create unique index if not exists ux_skill_manifests_application_skill_key
-    on skill_manifests (application_id, skill_key);
-create unique index if not exists ux_skill_manifests_application_file_path
-    on skill_manifests (application_id, skill_file_path);
+create unique index if not exists ux_skill_manifests_scope_skill_key
+    on skill_manifests (application_id, scope_type, scope_id, skill_key);
+create unique index if not exists ux_skill_manifests_scope_file_path
+    on skill_manifests (application_id, scope_type, scope_id, skill_file_path);
 create index if not exists ix_skill_manifests_application_dir_path
     on skill_manifests (application_id, skill_dir_path);
 

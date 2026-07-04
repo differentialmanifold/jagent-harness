@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.nio.file.Path;
 
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.sqlite.SQLiteDataSource;
@@ -41,6 +42,24 @@ class JdbcKnowledgeFileStoreIsolationTest {
         assertEquals(0, business.listManifests().size());
         assertEquals("Coding instructions", content(coding, "skills/customer-support/SKILL.md"));
         assertEquals(1, coding.listManifests().size());
+    }
+
+    @Test
+    void isolatesGlobalAndProjectKnowledgeScopes() {
+        JdbcKnowledgeFileStore store = store(createDatabase(), "coding-tool-app");
+        KnowledgeScope project = KnowledgeScope.project("project-1");
+
+        store.writeFile(KnowledgeScope.global(), "AGENTS.md", "Global rules", "text/markdown");
+        store.writeFile(project, "AGENTS.md", "Project rules", "text/markdown");
+        store.writeFile(KnowledgeScope.global(), "skills/review/SKILL.md",
+                "---\nname: Global Review\n---\n", "text/markdown");
+        store.writeFile(project, "skills/review/SKILL.md",
+                "---\nname: Project Review\n---\n", "text/markdown");
+
+        assertEquals("Global rules", store.readFile(KnowledgeScope.global(), "AGENTS.md").getContent());
+        assertEquals("Project rules", store.readFile(project, "AGENTS.md").getContent());
+        assertEquals("Global Review", store.listManifests(KnowledgeScope.global()).get(0).getName());
+        assertEquals("Project Review", store.listManifests(project).get(0).getName());
     }
 
     private String content(JdbcKnowledgeFileStore store, String path) {

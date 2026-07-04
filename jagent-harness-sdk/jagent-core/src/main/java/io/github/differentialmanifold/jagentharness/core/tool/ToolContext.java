@@ -70,7 +70,23 @@ public class ToolContext extends AgentContext {
                        ToolApprovalHandler approvalHandler,
                        String currentToolCallId,
                        String currentToolName) {
-        super(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes);
+        this(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, stopSignal, approvalMode,
+                approvalHandler, currentToolCallId, currentToolName, null);
+    }
+
+    public ToolContext(String sessionId,
+                       String turnId,
+                       String traceId,
+                       Path workspaceRoot,
+                       Path configRoot,
+                       Map<String, Object> attributes,
+                       StopSignal stopSignal,
+                       ToolApprovalMode approvalMode,
+                       ToolApprovalHandler approvalHandler,
+                       String currentToolCallId,
+                       String currentToolName,
+                       String projectId) {
+        super(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, projectId);
         this.stopSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         this.approvalMode = approvalMode == null ? ToolApprovalMode.FULL_ACCESS : approvalMode;
         this.approvalHandler = approvalHandler;
@@ -110,7 +126,8 @@ public class ToolContext extends AgentContext {
                 approvalMode,
                 approvalHandler,
                 toolCallId,
-                toolName);
+                toolName,
+                getProjectId());
     }
 
     public ToolApprovalDecision requestApproval(ToolApprovalRequest request) throws Exception {

@@ -2,6 +2,8 @@ package io.github.differentialmanifold.jagentharness.mcp;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -16,6 +18,7 @@ public class McpServerConfig {
     private Map<String, String> headers = new LinkedHashMap<String, String>();
     private int connectTimeoutSeconds = 10;
     private int requestTimeoutSeconds = 60;
+    private List<String> enabledTools;
 
     public McpServerConfig() {
     }
@@ -29,6 +32,7 @@ public class McpServerConfig {
         copy.headers = new LinkedHashMap<String, String>(headers);
         copy.connectTimeoutSeconds = connectTimeoutSeconds;
         copy.requestTimeoutSeconds = requestTimeoutSeconds;
+        copy.enabledTools = enabledTools == null ? null : new ArrayList<String>(enabledTools);
         return copy;
     }
 
@@ -89,5 +93,13 @@ public class McpServerConfig {
 
     public void setRequestTimeoutSeconds(int requestTimeoutSeconds) {
         this.requestTimeoutSeconds = requestTimeoutSeconds;
+    }
+
+    public List<String> getEnabledTools() {
+        return enabledTools;
+    }
+
+    public void setEnabledTools(List<String> enabledTools) {
+        this.enabledTools = enabledTools == null ? null : new ArrayList<String>(enabledTools);
     }
 }

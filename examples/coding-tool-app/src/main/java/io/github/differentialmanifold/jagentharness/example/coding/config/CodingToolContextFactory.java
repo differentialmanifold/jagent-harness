@@ -35,7 +35,8 @@ public class CodingToolContextFactory implements ToolContextFactory {
                 effectiveOptions.getApprovalMode(),
                 effectiveOptions.getApprovalHandler(),
                 null,
-                null);
+                null,
+                session == null ? null : session.getProjectId());
     }
 
     private Path workspaceRoot(SessionRecord session) {

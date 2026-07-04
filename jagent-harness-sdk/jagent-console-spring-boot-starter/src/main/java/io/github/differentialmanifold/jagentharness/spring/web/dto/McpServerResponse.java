@@ -14,6 +14,7 @@ public class McpServerResponse {
     private final String error;
     private final String protocolVersion;
     private final List<String> tools;
+    private final List<String> availableTools;
 
     public McpServerResponse(String name,
                              McpServerConfig config,
@@ -23,6 +24,18 @@ public class McpServerResponse {
                              String error,
                              String protocolVersion,
                              List<String> tools) {
+        this(name, config, source, overriddenSources, status, error, protocolVersion, tools, tools);
+    }
+
+    public McpServerResponse(String name,
+                             McpServerConfig config,
+                             String source,
+                             List<String> overriddenSources,
+                             String status,
+                             String error,
+                             String protocolVersion,
+                             List<String> tools,
+                             List<String> availableTools) {
         this.name = name;
         this.config = config;
         this.source = source;
@@ -31,6 +44,7 @@ public class McpServerResponse {
         this.error = error;
         this.protocolVersion = protocolVersion;
         this.tools = tools;
+        this.availableTools = availableTools;
     }
 
     public String getName() {
@@ -63,5 +77,9 @@ public class McpServerResponse {
 
     public List<String> getTools() {
         return tools;
+    }
+
+    public List<String> getAvailableTools() {
+        return availableTools;
     }
 }

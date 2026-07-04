@@ -117,8 +117,9 @@ public class AgentConsoleWebConfiguration {
     @Bean
     @ConditionalOnBean(KnowledgeFileStore.class)
     @ConditionalOnMissingBean
-    public VirtualFileController virtualFileController(KnowledgeFileStore knowledgeFileStore) {
-        return new VirtualFileController(knowledgeFileStore);
+    public VirtualFileController virtualFileController(KnowledgeFileStore knowledgeFileStore,
+                                                       SessionManager sessionManager) {
+        return new VirtualFileController(knowledgeFileStore, sessionManager);
     }
 
     @Bean
@@ -126,9 +127,8 @@ public class AgentConsoleWebConfiguration {
     @ConditionalOnMissingBean
     public McpController mcpController(McpConfigurationManager configurationManager,
                                        McpRuntime runtime,
-                                       SessionManager sessionManager,
-                                       WorkspaceRootResolver workspaceRootResolver) {
-        return new McpController(configurationManager, runtime, sessionManager, workspaceRootResolver);
+                                       SessionManager sessionManager) {
+        return new McpController(configurationManager, runtime, sessionManager);
     }
 
     @Bean

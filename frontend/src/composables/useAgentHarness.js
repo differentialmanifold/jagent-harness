@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { request } from '../api/http'
 import { loadJson, saveJson } from '../utils/storage'
 import { projectName, projectPathLabel } from '../utils/workspace'
@@ -16,7 +16,8 @@ export function useAgentHarness() {
   const workspaceProjectsEnabled = consoleTarget === 'coding'
   const sessions = ref([])
   const currentSession = ref(null)
-  const messages = ref([])
+  const sessionRuntimeStates = reactive(new Map())
+  const emptySessionState = reactive(createSessionRuntimeState(''))
   const tools = ref([])
   const agentContext = ref({
     tools: [],
@@ -26,15 +27,11 @@ export function useAgentHarness() {
     workspaceRoot: ''
   })
   const provider = ref(null)
-  const draft = ref('')
   const projectNameDraft = ref('')
   const projectWorkspaceDraft = ref('')
   const projectError = ref('')
   const renameTitleDraft = ref('')
   const renameError = ref('')
-  const running = ref(false)
-  const stopping = ref(false)
-  const stopReady = ref(false)
   const approvalMode = ref(loadJson('jagent.approvalMode', 'ask_approval'))
   const hiddenProjectKeys = ref(loadJson('jagent.hiddenProjects', []))
   const projectAliases = ref(loadJson('jagent.projectAliases', {}))
@@ -45,12 +42,23 @@ export function useAgentHarness() {
   const renameTargetType = ref('chat')
   const renameSessionId = ref('')
   const renameProjectKey = ref('')
-  let activeStreamId = null
-  let activeRequestId = null
-  let streamController = null
-  let stopFallbackTimer = null
-  let stopRequested = false
-  const pendingToolMessages = new Map()
+  let sessionSelectionVersion = 0
+
+  const currentRuntimeState = computed(() => {
+    const sessionId = currentSession.value?.sessionId
+    return sessionId ? runtimeState(sessionId) : emptySessionState
+  })
+  const messages = computed(() => currentRuntimeState.value.messages)
+  const draft = computed({
+    get: () => currentRuntimeState.value.draft,
+    set: (value) => {
+      currentRuntimeState.value.draft = value
+    }
+  })
+  const running = computed(() => currentRuntimeState.value.running)
+  const stopping = computed(() => currentRuntimeState.value.stopping)
+  const stopReady = computed(() => currentRuntimeState.value.stopReady)
+  const anyRunning = computed(() => Array.from(sessionRuntimeStates.values()).some((state) => state.running))
 
   const providerLabel = computed(() => {
     if (!provider.value) return 'Loading runtime'
@@ -59,12 +67,13 @@ export function useAgentHarness() {
 
   const statusText = computed(() => {
     if (!currentSession.value) return 'Create or select a session to begin'
-    const pendingApproval = messages.value.find((message) => message.role === 'tool' && message.approval?.pending)
-    const runningTool = messages.value.find((message) => message.role === 'tool' && message.running)
-    const thinking = messages.value.find((message) => message.role === 'assistant' && message.thinking)
-    const prefix = stopping.value
+    const state = currentRuntimeState.value
+    const pendingApproval = state.messages.find((message) => message.role === 'tool' && message.approval?.pending)
+    const runningTool = state.messages.find((message) => message.role === 'tool' && message.running)
+    const thinking = state.messages.find((message) => message.role === 'assistant' && message.thinking)
+    const prefix = state.stopping
       ? 'Stopping agent run'
-      : running.value && !stopReady.value
+      : state.running && !state.stopReady
         ? 'Starting agent run'
       : pendingApproval
         ? `Waiting for ${pendingApproval.toolName || 'tool'} approval`
@@ -72,13 +81,13 @@ export function useAgentHarness() {
         ? `Running ${runningTool.toolName || 'tool'}`
       : thinking
         ? 'Agent is thinking'
-      : running.value
+      : state.running
         ? 'Agent loop is streaming events'
-        : `${messages.value.length} messages`
+        : `${state.messages.length} messages`
     return `${prefix} | ${currentProjectLabel(currentSession.value.workspacePath)}`
   })
 
-  const currentProjectKey = computed(() => currentSession.value ? projectKey(sessionProjectName(currentSession.value)) : '')
+  const currentProjectKey = computed(() => currentSession.value ? sessionProjectKey(currentSession.value) : '')
   const renameDialogTitle = computed(() => renameTargetType.value === 'project' ? 'Rename project' : 'Rename chat')
   const renameDialogLabel = computed(() => renameTargetType.value === 'project' ? 'Project name' : 'Chat title')
 
@@ -86,11 +95,12 @@ export function useAgentHarness() {
     const groups = new Map()
     for (const session of sessions.value) {
       const sessionProjectNameValue = sessionProjectName(session)
-      const key = projectKey(sessionProjectNameValue)
+      const key = sessionProjectKey(session)
       if (hiddenProjectKeys.value.includes(key)) continue
       if (!groups.has(key)) {
         groups.set(key, {
           key,
+          projectId: session.projectId || '',
           projectName: sessionProjectNameValue,
           workspacePath: session.workspacePath || '',
           name: projectAliases.value[key] || sessionProjectNameValue,
@@ -105,9 +115,11 @@ export function useAgentHarness() {
 
   onMounted(bootstrap)
   onBeforeUnmount(() => {
-    clearStopFallback()
-    if (streamController) {
-      streamController.abort()
+    for (const state of sessionRuntimeStates.values()) {
+      clearStopFallback(state)
+      if (state.streamController) {
+        state.streamController.abort()
+      }
     }
   })
 
@@ -129,6 +141,7 @@ export function useAgentHarness() {
       method: 'POST',
       body: JSON.stringify(body)
     })
+    if (sessionId && currentSession.value?.sessionId !== sessionId) return
     agentContext.value = context || {
       tools: [],
       promptFiles: [],
@@ -165,7 +178,8 @@ export function useAgentHarness() {
       body: JSON.stringify({
         title,
         workspacePath: targetWorkspace,
-        projectName: targetProjectName
+        projectName: targetProjectName,
+        projectId: project ? (project.projectId || '') : (currentSession.value?.projectId || '')
       })
     })
     await loadSessions()
@@ -174,9 +188,11 @@ export function useAgentHarness() {
 
   async function refreshAfterDeletion(deletedSessionIds) {
     sessions.value = sessions.value.filter((session) => !deletedSessionIds.includes(session.sessionId))
+    for (const sessionId of deletedSessionIds) {
+      sessionRuntimeStates.delete(sessionId)
+    }
     if (currentSession.value && deletedSessionIds.includes(currentSession.value.sessionId)) {
       currentSession.value = null
-      messages.value = []
     }
     const first = firstVisibleSession()
     if (!currentSession.value && first) {
@@ -226,12 +242,11 @@ export function useAgentHarness() {
   }
 
   async function removeProject(project) {
-    if (running.value) return
+    if (anyRunning.value) return
     if (!window.confirm(`Remove project "${project.name}" from the sidebar? Chats will not be deleted.`)) return
     hideProject(project.key)
     if (currentProjectKey.value === project.key) {
       currentSession.value = null
-      messages.value = []
       const first = firstVisibleSession()
       if (first) {
         await selectSession(first.sessionId)
@@ -242,7 +257,7 @@ export function useAgentHarness() {
   }
 
   async function removeSession(session) {
-    if (running.value) return
+    if (runtimeState(session.sessionId).running) return
     if (!window.confirm(`Remove chat "${session.title}"? This will delete the chat.`)) return
     try {
       await request('/api/sessions/delete', {
@@ -256,7 +271,7 @@ export function useAgentHarness() {
   }
 
   function openChatRenameDialog(session) {
-    if (running.value) return
+    if (runtimeState(session.sessionId).running) return
     renameTargetType.value = 'chat'
     renameSessionId.value = session.sessionId
     renameProjectKey.value = ''
@@ -319,12 +334,17 @@ export function useAgentHarness() {
   }
 
   async function selectSession(id) {
+    const selectionVersion = ++sessionSelectionVersion
+    const state = runtimeState(id)
     const details = await request('/api/sessions/detail', {
       method: 'POST',
       body: JSON.stringify({ sessionId: id })
     })
+    if (selectionVersion !== sessionSelectionVersion) return
     currentSession.value = details.session
-    replayTimelineEvents(details.events || [])
+    if (!state.running) {
+      replayTimelineEvents(details.events || [], state)
+    }
     await loadAgentContext(id)
   }
 
@@ -332,78 +352,80 @@ export function useAgentHarness() {
     if (!currentSession.value || !draft.value.trim()) return
     const content = draft.value
     const sessionId = currentSession.value.sessionId
-    if (shouldAutoNameChat(currentSession.value, messages.value)) {
+    const state = runtimeState(sessionId)
+    if (state.running) return
+    if (shouldAutoNameChat(currentSession.value, state.messages)) {
       await renameChatFromPrompt(sessionId, content)
     }
     draft.value = ''
-    running.value = true
-    stopping.value = false
-    stopReady.value = false
-    stopRequested = false
-    resetTransientRunState()
-    activeRequestId = null
-    streamController = new AbortController()
+    state.running = true
+    state.stopping = false
+    state.stopReady = false
+    state.stopRequested = false
+    resetTransientRunState(state)
+    state.activeRequestId = null
+    state.streamController = markRaw(new AbortController())
     try {
       await streamRequest(
         '/api/chat/stream',
         { sessionId, content, approvalMode: approvalMode.value },
-        streamController.signal
+        state
       )
-      await selectSession(sessionId)
       await loadSessions()
     } catch (error) {
-      if (!(error.name === 'AbortError' && stopRequested)) {
-        appendLocalErrorMessage(error.message)
+      if (!(error.name === 'AbortError' && state.stopRequested)) {
+        appendLocalErrorMessage(state, error.message)
       }
     } finally {
-      clearStopFallback()
-      activeRequestId = null
-      streamController = null
-      stopRequested = false
-      stopping.value = false
-      stopReady.value = false
-      running.value = false
+      clearStopFallback(state)
+      state.activeRequestId = null
+      state.streamController = null
+      state.stopRequested = false
+      state.stopping = false
+      state.stopReady = false
+      state.running = false
     }
   }
 
   async function stopMessage() {
-    if (!running.value || stopping.value || !stopReady.value || !activeRequestId) return
-    stopping.value = true
-    stopRequested = true
-    stopFallbackTimer = window.setTimeout(() => {
-      if (streamController) {
-        streamController.abort()
+    const state = currentRuntimeState.value
+    if (!state.running || state.stopping || !state.stopReady || !state.activeRequestId) return
+    state.stopping = true
+    state.stopRequested = true
+    state.stopFallbackTimer = window.setTimeout(() => {
+      if (state.streamController) {
+        state.streamController.abort()
       }
     }, 3000)
     try {
       await request('/api/chat/requests/stop', {
         method: 'POST',
-        body: JSON.stringify({ requestId: activeRequestId })
+        body: JSON.stringify({ requestId: state.activeRequestId })
       })
     } catch (error) {
-      clearStopFallback()
-      stopRequested = false
-      stopping.value = false
-      appendLocalErrorMessage(`Failed to stop agent: ${error.message}`)
+      clearStopFallback(state)
+      state.stopRequested = false
+      state.stopping = false
+      appendLocalErrorMessage(state, `Failed to stop agent: ${error.message}`)
     }
   }
 
-  async function streamRequest(url, body, signal) {
+  async function streamRequest(url, body, state) {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal
+      signal: state.streamController.signal
     })
     if (!response.ok || !response.body) {
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || response.statusText)
     }
-    activeRequestId = response.headers.get('X-Request-Id')
-    if (!activeRequestId) {
+    state.activeRequestId = response.headers.get('X-Request-Id')
+    if (!state.activeRequestId) {
       throw new Error('Chat stream response is missing X-Request-Id')
     }
-    stopReady.value = true
+    state.stopReady = true
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -412,23 +434,23 @@ export function useAgentHarness() {
       const { value, done } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      buffer = await consumeSseBuffer(buffer)
+      buffer = await consumeSseBuffer(buffer, state)
     }
     buffer += decoder.decode()
-    await consumeSseBuffer(`${buffer}\n\n`)
+    await consumeSseBuffer(`${buffer}\n\n`, state)
   }
 
-  async function consumeSseBuffer(buffer) {
+  async function consumeSseBuffer(buffer, state) {
     const normalized = buffer.replace(/\r\n/g, '\n')
     const blocks = normalized.split('\n\n')
     const rest = blocks.pop() || ''
     for (const block of blocks) {
-      await consumeSseBlock(block)
+      await consumeSseBlock(block, state)
     }
     return rest
   }
 
-  async function consumeSseBlock(block) {
+  async function consumeSseBlock(block, state) {
     const lines = block.split('\n')
     let eventName = 'message'
     const data = []
@@ -438,101 +460,103 @@ export function useAgentHarness() {
     }
     if (data.length === 0) return
     const event = JSON.parse(data.join('\n'))
+    if (event.sessionId && event.sessionId !== state.sessionId) return
     const payload = parsePayload(event.payloadJson)
     const type = event.type || eventName
-    handleAgentEvent(eventName, event)
-    if (type === 'tool_execution_start'
-        || (type === 'message_end' && payload.message?.role === 'assistant' && payload.message.toolCalls?.length)) {
+    handleAgentEvent(eventName, event, state)
+    if (currentSession.value?.sessionId === state.sessionId
+        && (type === 'tool_execution_start'
+          || (type === 'message_end' && payload.message?.role === 'assistant' && payload.message.toolCalls?.length))) {
       await waitForBrowserPaint()
     }
   }
 
-  function replayTimelineEvents(events) {
-    resetTransientRunState()
-    messages.value = []
+  function replayTimelineEvents(events, state) {
+    resetTransientRunState(state)
+    state.messages.splice(0)
     for (const event of events) {
-      handleAgentEvent(event.type || 'message', event, { replay: true })
+      handleAgentEvent(event.type || 'message', event, state, { replay: true })
     }
-    resetTransientRunState()
   }
 
-  function handleAgentEvent(eventName, event, options = {}) {
+  function handleAgentEvent(eventName, event, state, options = {}) {
     const payload = parsePayload(event.payloadJson)
     const type = event.type || eventName
     if (type === 'message_start') {
       if (!options.replay) {
-        startThinkingMessage(event, payload)
+        startThinkingMessage(event, payload, state)
       }
     } else if (type === 'message_update') {
       if (!options.replay) {
-        appendStreamingText(event, payload)
+        appendStreamingText(event, payload, state)
       }
     } else if (type === 'message_reasoning_update') {
       if (!options.replay) {
-        appendStreamingReasoning(event, payload)
+        appendStreamingReasoning(event, payload, state)
       }
     } else if (type === 'message_end') {
-      mergeMessage(payload.message)
+      mergeMessage(payload.message, state)
     } else if (type === 'tool_execution_start') {
-      if (!options.replay) {
-        startToolExecution(event, payload)
-      }
+      startToolExecution(event, payload, state)
     } else if (type === 'tool_execution_update') {
-      if (!options.replay) {
-        updateToolExecution(payload)
-      }
+      updateToolExecution(payload, state)
     } else if (type === 'tool_approval_requested') {
-      if (!options.replay) {
-        requestToolApproval(event, payload)
-      }
+      requestToolApproval(event, payload, state)
     } else if (type === 'tool_approval_resolved') {
-      if (!options.replay) {
-        resolveToolApprovalEvent(payload)
-      }
+      resolveToolApprovalEvent(payload, state)
     } else if (type === 'tool_execution_end') {
-      if (!options.replay) {
-        completeToolExecution(payload)
-      }
+      completeToolExecution(payload, state)
     } else if (type === 'compaction_start') {
-      upsertCompactionMessage(event, payload, true)
+      upsertCompactionMessage(event, payload, true, state)
     } else if (type === 'compaction_end') {
-      upsertCompactionMessage(event, payload, false)
+      upsertCompactionMessage(event, payload, false, state)
     } else if (type === 'model_retry') {
       if (!options.replay && payload.resetOutput) {
-        discardActiveStreamingMessage()
+        discardActiveStreamingMessage(state)
       }
-      appendModelRetryMessage(event, payload)
+      appendModelRetryMessage(event, payload, state)
     } else if (type === 'agent_end') {
-      clearEmptyThinkingMessage()
-      completePendingTools('completed')
-      running.value = false
+      clearEmptyThinkingMessage(state)
+      completePendingTools('completed', state)
+      if (options.replay) {
+        resetTransientRunState(state)
+      } else {
+        state.running = false
+      }
     } else if (type === 'agent_stopped') {
-      clearStopFallback()
-      clearEmptyThinkingMessage()
-      completePendingTools('stopped')
-      activeStreamId = null
-      stopping.value = false
-      stopReady.value = false
-      running.value = false
+      clearStopFallback(state)
+      clearEmptyThinkingMessage(state)
+      completePendingTools('stopped', state)
+      resetTransientRunState(state)
+      if (!options.replay) {
+        state.stopping = false
+        state.stopReady = false
+        state.running = false
+      }
     } else if (type === 'agent_error') {
-      failActiveStreamingMessage()
-      completePendingTools('failed')
-      throw new Error(payload.message || 'Agent stream failed')
+      failActiveStreamingMessage(state)
+      completePendingTools('failed', state)
+      resetTransientRunState(state)
+      if (options.replay) {
+        appendCustomEventMessage(event, type, payload, state)
+      } else {
+        throw new Error(payload.message || 'Agent stream failed')
+      }
     } else if (!ignoredCoreEvents.has(type)) {
-      appendCustomEventMessage(event, type, payload)
+      appendCustomEventMessage(event, type, payload, state)
     }
   }
 
-  function appendLocalErrorMessage(message) {
-    messages.value.push({
+  function appendLocalErrorMessage(state, message) {
+    state.messages.push({
       messageId: `local-error:${Date.now()}`,
-      sessionId: currentSession.value ? currentSession.value.sessionId : '',
+      sessionId: state.sessionId,
       role: 'assistant',
       content: `Agent error: ${message || 'Unknown error'}`
     })
   }
 
-  function appendModelRetryMessage(event, payload) {
+  function appendModelRetryMessage(event, payload, state) {
     const attempt = payload.nextAttempt || payload.attempt || '?'
     const maxAttempts = payload.maxAttempts || '?'
     const delay = typeof payload.delayMillis === 'number' && payload.delayMillis > 0
@@ -544,7 +568,7 @@ export function useAgentHarness() {
     if (payload.error) {
       lines.push(`Original error: ${payload.error}`)
     }
-    messages.value.push({
+    state.messages.push({
       messageId: `model-retry:${event.eventId || Date.now()}`,
       sessionId: event.sessionId,
       role: 'status',
@@ -559,39 +583,39 @@ export function useAgentHarness() {
     return Number.isInteger(seconds) ? `${seconds}s` : `${seconds.toFixed(1)}s`
   }
 
-  function appendStreamingText(event, payload) {
-    if (!activeStreamId) {
-      activeStreamId = `stream:${event.turnId}:active`
+  function appendStreamingText(event, payload, state) {
+    if (!state.activeStreamId) {
+      state.activeStreamId = `stream:${event.turnId}:active`
     }
-    ensureStreamingMessage(event)
+    ensureStreamingMessage(event, state)
     const delta = payload.delta || ''
     if (!delta) return
-    const message = messages.value.find((item) => item.messageId === activeStreamId)
+    const message = state.messages.find((item) => item.messageId === state.activeStreamId)
     if (message) {
       message.content = `${message.content || ''}${delta}`
       message.thinking = false
     }
   }
 
-  function appendStreamingReasoning(event, payload) {
-    if (!activeStreamId) {
-      activeStreamId = `stream:${event.turnId}:active`
+  function appendStreamingReasoning(event, payload, state) {
+    if (!state.activeStreamId) {
+      state.activeStreamId = `stream:${event.turnId}:active`
     }
-    ensureStreamingMessage(event)
+    ensureStreamingMessage(event, state)
     const delta = payload.delta || ''
     if (!delta) return
-    const message = messages.value.find((item) => item.messageId === activeStreamId)
+    const message = state.messages.find((item) => item.messageId === state.activeStreamId)
     if (message) {
       message.reasoningContent = `${message.reasoningContent || ''}${delta}`
       message.thinking = false
     }
   }
 
-  function startThinkingMessage(event, payload) {
-    clearEmptyThinkingMessage()
-    activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
-    messages.value.push({
-      messageId: activeStreamId,
+  function startThinkingMessage(event, payload, state) {
+    clearEmptyThinkingMessage(state)
+    state.activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
+    state.messages.push({
+      messageId: state.activeStreamId,
       sessionId: event.sessionId,
       role: 'assistant',
       content: '',
@@ -602,11 +626,11 @@ export function useAgentHarness() {
     })
   }
 
-  function ensureStreamingMessage(event) {
-    const existing = messages.value.find((message) => message.messageId === activeStreamId)
+  function ensureStreamingMessage(event, state) {
+    const existing = state.messages.find((message) => message.messageId === state.activeStreamId)
     if (!existing) {
-      messages.value.push({
-        messageId: activeStreamId,
+      state.messages.push({
+        messageId: state.activeStreamId,
         sessionId: event.sessionId,
         role: 'assistant',
         content: '',
@@ -618,77 +642,77 @@ export function useAgentHarness() {
     }
   }
 
-  function mergeMessage(message) {
+  function mergeMessage(message, state) {
     if (!message || !message.messageId) return
-    if (message.role === 'assistant' && activeStreamId) {
-      replaceStreamingMessage(message)
+    if (message.role === 'assistant' && state.activeStreamId) {
+      replaceStreamingMessage(message, state)
       return
     }
-    if (message.role === 'tool' && replacePendingToolMessage(message)) {
+    if (message.role === 'tool' && replacePendingToolMessage(message, state)) {
       return
     }
 
-    const existing = messages.value.findIndex((item) => item.messageId === message.messageId)
+    const existing = state.messages.findIndex((item) => item.messageId === message.messageId)
     if (existing >= 0) {
-      messages.value.splice(existing, 1, message)
+      state.messages.splice(existing, 1, message)
     } else {
-      messages.value.push(message)
+      state.messages.push(message)
     }
   }
 
-  function replaceStreamingMessage(message) {
-    const index = messages.value.findIndex((item) => item.messageId === activeStreamId)
+  function replaceStreamingMessage(message, state) {
+    const index = state.messages.findIndex((item) => item.messageId === state.activeStreamId)
     if (index >= 0) {
-      messages.value.splice(index, 1, message)
+      state.messages.splice(index, 1, message)
     } else {
-      messages.value.push(message)
+      state.messages.push(message)
     }
-    activeStreamId = null
+    state.activeStreamId = null
   }
 
-  function clearEmptyThinkingMessage() {
-    if (!activeStreamId) return
-    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+  function clearEmptyThinkingMessage(state) {
+    if (!state.activeStreamId) return
+    const index = state.messages.findIndex((message) => message.messageId === state.activeStreamId)
     if (index >= 0
-        && !messages.value[index].content
-        && !messages.value[index].reasoningContent) {
-      messages.value.splice(index, 1)
+        && !state.messages[index].content
+        && !state.messages[index].reasoningContent) {
+      state.messages.splice(index, 1)
     }
-    activeStreamId = null
+    state.activeStreamId = null
   }
 
-  function discardActiveStreamingMessage() {
-    if (!activeStreamId) return
-    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+  function discardActiveStreamingMessage(state) {
+    if (!state.activeStreamId) return
+    const index = state.messages.findIndex((message) => message.messageId === state.activeStreamId)
     if (index >= 0) {
-      messages.value.splice(index, 1)
+      state.messages.splice(index, 1)
     }
-    activeStreamId = null
+    state.activeStreamId = null
   }
 
-  function failActiveStreamingMessage() {
-    if (!activeStreamId) return
-    const index = messages.value.findIndex((message) => message.messageId === activeStreamId)
+  function failActiveStreamingMessage(state) {
+    if (!state.activeStreamId) return
+    const index = state.messages.findIndex((message) => message.messageId === state.activeStreamId)
     if (index < 0) {
-      activeStreamId = null
+      state.activeStreamId = null
       return
     }
-    const message = messages.value[index]
+    const message = state.messages[index]
     if (!message.content && !message.reasoningContent) {
-      messages.value.splice(index, 1)
+      state.messages.splice(index, 1)
     } else {
       message.streaming = false
       message.thinking = false
       message.failed = true
     }
-    activeStreamId = null
+    state.activeStreamId = null
   }
 
-  function startToolExecution(event, payload) {
+  function startToolExecution(event, payload, state) {
     const toolCallId = payload.toolCallId || `${event.turnId}:${Date.now()}`
     const messageId = `tool-running:${toolCallId}`
-    pendingToolMessages.set(toolCallId, messageId)
-    messages.value.push({
+    state.pendingToolMessages.set(toolCallId, messageId)
+    state.messages.push({
       messageId,
       sessionId: event.sessionId,
       turnId: event.turnId,
@@ -702,14 +726,14 @@ export function useAgentHarness() {
     })
   }
 
-  function updateToolExecution(payload) {
-    const message = pendingToolMessage(payload.toolCallId)
+  function updateToolExecution(payload, state) {
+    const message = pendingToolMessage(payload.toolCallId, state)
     if (!message) return
     message.progress = payload.message || payload.status || payload.text || ''
   }
 
-  function completeToolExecution(payload) {
-    const message = pendingToolMessage(payload.toolCallId)
+  function completeToolExecution(payload, state) {
+    const message = pendingToolMessage(payload.toolCallId, state)
     if (!message) return
     message.running = false
     message.completedAt = Date.now()
@@ -721,9 +745,9 @@ export function useAgentHarness() {
     }
   }
 
-  function requestToolApproval(event, payload) {
+  function requestToolApproval(event, payload, state) {
     const approval = {
-      requestId: payload.requestId || activeRequestId,
+      requestId: payload.requestId || state.activeRequestId,
       approvalId: payload.approvalId,
       title: payload.title || 'Approval required',
       message: payload.message || '',
@@ -733,13 +757,13 @@ export function useAgentHarness() {
       pending: true,
       responding: false
     }
-    const message = pendingToolMessage(payload.toolCallId)
+    const message = pendingToolMessage(payload.toolCallId, state)
     if (message) {
       message.approval = approval
       message.progress = approval.title
       return
     }
-    messages.value.push({
+    state.messages.push({
       messageId: `approval:${approval.approvalId || Date.now()}`,
       sessionId: event.sessionId,
       role: 'status',
@@ -747,8 +771,8 @@ export function useAgentHarness() {
     })
   }
 
-  function resolveToolApprovalEvent(payload) {
-    const message = pendingToolMessage(payload.toolCallId)
+  function resolveToolApprovalEvent(payload, state) {
+    const message = pendingToolMessage(payload.toolCallId, state)
     if (!message || !message.approval) return
     message.approval.pending = false
     message.approval.responding = false
@@ -759,7 +783,8 @@ export function useAgentHarness() {
 
   async function resolveToolApproval({ approvalId, requestId, approved }) {
     if (!approvalId) return
-    const message = messages.value.find((item) => item.approval?.approvalId === approvalId)
+    const state = currentRuntimeState.value
+    const message = state.messages.find((item) => item.approval?.approvalId === approvalId)
     const approval = message ? message.approval : null
     if (approval) {
       approval.responding = true
@@ -768,7 +793,7 @@ export function useAgentHarness() {
       await request('/api/chat/approvals/resolve', {
         method: 'POST',
         body: JSON.stringify({
-          requestId: requestId || approval?.requestId || activeRequestId,
+          requestId: requestId || approval?.requestId || state.activeRequestId,
           approvalId,
           approved,
           reason: approved ? 'Approved by user' : 'Denied by user'
@@ -787,27 +812,27 @@ export function useAgentHarness() {
       if (approval) {
         approval.responding = false
       }
-      appendLocalErrorMessage(`Failed to resolve approval: ${error.message}`)
+      appendLocalErrorMessage(state, `Failed to resolve approval: ${error.message}`)
     }
   }
 
-  function replacePendingToolMessage(message) {
-    const pendingMessageId = pendingToolMessages.get(message.toolCallId)
+  function replacePendingToolMessage(message, state) {
+    const pendingMessageId = state.pendingToolMessages.get(message.toolCallId)
     if (!pendingMessageId) return false
-    const index = messages.value.findIndex((item) => item.messageId === pendingMessageId)
+    const index = state.messages.findIndex((item) => item.messageId === pendingMessageId)
     if (index >= 0) {
-      messages.value.splice(index, 1, message)
+      state.messages.splice(index, 1, message)
     } else {
-      messages.value.push(message)
+      state.messages.push(message)
     }
-    pendingToolMessages.delete(message.toolCallId)
+    state.pendingToolMessages.delete(message.toolCallId)
     return true
   }
 
-  function pendingToolMessage(toolCallId) {
-    const messageId = pendingToolMessages.get(toolCallId)
+  function pendingToolMessage(toolCallId, state) {
+    const messageId = state.pendingToolMessages.get(toolCallId)
     if (!messageId) return null
-    return messages.value.find((message) => message.messageId === messageId) || null
+    return state.messages.find((message) => message.messageId === messageId) || null
   }
 
   function waitForBrowserPaint() {
@@ -817,9 +842,9 @@ export function useAgentHarness() {
     return new Promise((resolve) => window.requestAnimationFrame(() => resolve()))
   }
 
-  function completePendingTools(status) {
-    for (const messageId of pendingToolMessages.values()) {
-      const message = messages.value.find((item) => item.messageId === messageId)
+  function completePendingTools(status, state) {
+    for (const messageId of state.pendingToolMessages.values()) {
+      const message = state.messages.find((item) => item.messageId === messageId)
       if (!message || !message.running) continue
       message.running = false
       message.completedAt = Date.now()
@@ -828,14 +853,14 @@ export function useAgentHarness() {
     }
   }
 
-  function resetTransientRunState() {
-    activeStreamId = null
-    pendingToolMessages.clear()
+  function resetTransientRunState(state) {
+    state.activeStreamId = null
+    state.pendingToolMessages.clear()
   }
 
-  function upsertCompactionMessage(event, payload, active) {
+  function upsertCompactionMessage(event, payload, active, state) {
     const messageId = `compaction:${event.turnId || Date.now()}`
-    const existing = messages.value.findIndex((message) => message.messageId === messageId)
+    const existing = state.messages.findIndex((message) => message.messageId === messageId)
     const message = {
       messageId,
       sessionId: event.sessionId,
@@ -844,9 +869,9 @@ export function useAgentHarness() {
       streaming: active
     }
     if (existing >= 0) {
-      messages.value.splice(existing, 1, message)
+      state.messages.splice(existing, 1, message)
     } else {
-      messages.value.push(message)
+      state.messages.push(message)
     }
   }
 
@@ -859,8 +884,8 @@ export function useAgentHarness() {
     return `Context compacted (${before} -> ${after} estimated tokens)`
   }
 
-  function appendCustomEventMessage(event, type, payload) {
-    messages.value.push({
+  function appendCustomEventMessage(event, type, payload, state) {
+    state.messages.push({
       messageId: `event:${event.eventId || `${type}:${Date.now()}`}`,
       sessionId: event.sessionId,
       role: 'status',
@@ -887,7 +912,7 @@ export function useAgentHarness() {
 
   function firstVisibleSession() {
     for (const session of sessions.value) {
-      if (!hiddenProjectKeys.value.includes(projectKey(sessionProjectName(session)))) {
+      if (!hiddenProjectKeys.value.includes(sessionProjectKey(session))) {
         return session
       }
     }
@@ -917,6 +942,10 @@ export function useAgentHarness() {
 
   function projectKey(name) {
     return normalizeProjectName(name).toLowerCase() || '__default__'
+  }
+
+  function sessionProjectKey(session) {
+    return session?.projectId || projectKey(sessionProjectName(session))
   }
 
   function hideProject(key) {
@@ -970,10 +999,34 @@ export function useAgentHarness() {
     return title.length > 36 ? `${title.slice(0, 36)}...` : title
   }
 
-  function clearStopFallback() {
-    if (stopFallbackTimer) {
-      window.clearTimeout(stopFallbackTimer)
-      stopFallbackTimer = null
+  function createSessionRuntimeState(sessionId) {
+    return {
+      sessionId,
+      messages: [],
+      draft: '',
+      running: false,
+      stopping: false,
+      stopReady: false,
+      stopRequested: false,
+      activeStreamId: null,
+      activeRequestId: null,
+      streamController: null,
+      stopFallbackTimer: null,
+      pendingToolMessages: new Map()
+    }
+  }
+
+  function runtimeState(sessionId) {
+    if (!sessionRuntimeStates.has(sessionId)) {
+      sessionRuntimeStates.set(sessionId, createSessionRuntimeState(sessionId))
+    }
+    return sessionRuntimeStates.get(sessionId)
+  }
+
+  function clearStopFallback(state) {
+    if (state.stopFallbackTimer) {
+      window.clearTimeout(state.stopFallbackTimer)
+      state.stopFallbackTimer = null
     }
   }
 
@@ -993,6 +1046,7 @@ export function useAgentHarness() {
     running,
     stopping,
     stopReady,
+    anyRunning,
     approvalMode,
     projectDialogOpen,
     projectSubmitting,

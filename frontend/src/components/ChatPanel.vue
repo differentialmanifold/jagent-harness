@@ -68,15 +68,15 @@
           <el-button
             v-if="running"
             class="composer-stop"
-            type="danger"
-            :icon="VideoPause"
             :disabled="stopping || !stopReady"
             native-type="button"
             :aria-label="stopping ? 'Stopping agent' : 'Stop agent'"
             :title="stopping ? 'Stopping agent' : 'Stop agent'"
             circle
             @click="$emit('stop')"
-          />
+          >
+            <span class="stop-glyph" aria-hidden="true"></span>
+          </el-button>
           <el-button
             v-else
             class="composer-submit"
@@ -96,7 +96,7 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { CaretBottom, Lock, Top, Unlock, VideoPause } from '@element-plus/icons-vue'
+import { CaretBottom, Lock, Top, Unlock } from '@element-plus/icons-vue'
 import MessageItem from './MessageItem.vue'
 
 const props = defineProps({

@@ -22,8 +22,8 @@ body,
 }
 
 .mcp-panel {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 0;
   background: #fff;
@@ -58,6 +58,22 @@ body,
   color: #667085;
 }
 
+.mcp-config-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  border-bottom: 1px solid #d7dde6;
+  background: #f8fafc;
+  padding: 8px 28px;
+}
+
+.mcp-config-toolbar > strong {
+  color: #344054;
+  font-size: 14px;
+}
+
 .mcp-notice,
 .mcp-error {
   margin: 14px 28px 0;
@@ -78,6 +94,7 @@ body,
 
 .mcp-layout {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
   min-height: 0;
   margin-top: 18px;
@@ -243,6 +260,53 @@ body,
   border-radius: 6px;
 }
 
+.mcp-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-section-heading h4,
+.mcp-section-heading p {
+  margin: 0;
+}
+
+.mcp-section-heading p {
+  margin-top: 4px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.mcp-tool-checklist {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.mcp-tool-checklist .el-checkbox {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.mcp-tool-checklist .el-checkbox__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.mcp-tool-checklist code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mcp-tools-list li,
 .mcp-headers-list li {
   padding: 10px 12px;
@@ -331,6 +395,16 @@ body,
   }
 
   .mcp-page-header > .mcp-detail-actions {
+    justify-content: flex-start;
+  }
+
+  .mcp-config-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 18px;
+  }
+
+  .mcp-config-toolbar .mcp-detail-actions {
     justify-content: flex-start;
   }
 
@@ -548,34 +622,23 @@ textarea {
 .projects {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   padding-right: 4px;
 }
 
 .project-group {
   display: grid;
-  gap: 4px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 4px;
-  transition: border-color 0.16s ease, background-color 0.16s ease;
-}
-
-.project-group:hover {
-  border-color: #d7e3f4;
-  background: #f5f8fc;
-}
-
-.project-group.active {
-  border-color: #b7c9e8;
-  background: #eef5ff;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 0 4px;
 }
 
 .project-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 2px;
   align-items: center;
+  min-width: 0;
 }
 
 .project-header .el-button,
@@ -587,14 +650,14 @@ textarea {
 .session-item .el-button:hover,
 .project-header .el-button:focus,
 .session-item .el-button:focus {
-  background: #e7f0ff;
-  color: #1f6feb;
+  background: #e9edf2;
+  color: #344054;
 }
 
 .project-title {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 6px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
   min-width: 0;
   border: 0;
@@ -602,24 +665,25 @@ textarea {
   background: transparent;
   color: #18212f;
   cursor: pointer;
-  padding: 8px;
+  padding: 7px 6px;
   text-align: left;
   transition: background-color 0.16s ease, color 0.16s ease;
 }
 
 .project-title:hover,
 .project-title:focus-visible {
-  background: #e7f0ff;
+  background: #eef1f4;
+  outline: none;
 }
 
-.project-disclosure {
+.project-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  color: #667085;
-  font-size: 11px;
-  line-height: 18px;
+  width: 20px;
+  color: #57606a;
+  font-size: 18px;
+  line-height: 20px;
 }
 
 .project-title-text {
@@ -632,8 +696,8 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .project-title-text small {
@@ -645,15 +709,11 @@ textarea {
   white-space: nowrap;
 }
 
-.project-group.active .project-title-text span {
-  color: #1f6feb;
-}
-
 .sessions {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding-left: 24px;
+  gap: 1px;
+  padding-left: 28px;
 }
 
 .session-item {
@@ -662,25 +722,23 @@ textarea {
   gap: 4px;
   align-items: center;
   width: 100%;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: #18212f;
   cursor: pointer;
   min-height: 34px;
-  padding: 5px 8px;
-  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+  padding: 4px 4px 4px 8px;
+  transition: background-color 0.16s ease, color 0.16s ease;
 }
 
 .session-item:hover {
-  border-color: #d7e3f4;
-  background: #f7faff;
+  background: #eef1f4;
 }
 
 .session-item.active {
-  border-color: #9bb8df;
-  background: #e8f1ff;
-  box-shadow: inset 3px 0 0 #1f6feb;
+  background: #e3e8ee;
+  color: #101828;
 }
 
 .session-main {
@@ -1427,27 +1485,35 @@ textarea {
   cursor: not-allowed;
 }
 
-.composer .composer-stop.el-button--danger {
-  border-color: #d92d20;
-  background: #d92d20;
-  color: #fff;
+.composer .composer-stop.el-button {
+  border-color: #d0d5dd;
+  background: #f2f4f7;
+  color: #344054;
 }
 
-.composer .composer-stop.el-button--danger:hover,
-.composer .composer-stop.el-button--danger:focus {
-  border-color: #b42318;
-  background: #b42318;
-  color: #fff;
+.composer .composer-stop.el-button:hover,
+.composer .composer-stop.el-button:focus {
+  border-color: #98a2b3;
+  background: #e4e7ec;
+  color: #18212f;
 }
 
 .composer .composer-stop.el-button.is-disabled,
 .composer .composer-stop.el-button.is-disabled:hover,
 .composer .composer-stop.el-button.is-disabled:focus {
-  border-color: #f2d4d1;
-  background: #fff1f0;
-  color: #d0a19d;
+  border-color: #e4e7ec;
+  background: #f2f4f7;
+  color: #98a2b3;
   opacity: 1;
   cursor: not-allowed;
+}
+
+.composer-stop .stop-glyph {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
 }
 
 .primary-button:disabled,

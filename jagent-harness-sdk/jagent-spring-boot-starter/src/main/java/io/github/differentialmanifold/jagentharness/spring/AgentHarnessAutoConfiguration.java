@@ -21,7 +21,6 @@ import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventR
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventListener;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
-import io.github.differentialmanifold.jagentharness.core.prompt.FileSkillProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptService;
 import io.github.differentialmanifold.jagentharness.core.prompt.DatabaseSkillProvider;
@@ -111,14 +110,6 @@ public class AgentHarnessAutoConfiguration {
     @ConditionalOnMissingBean
     public ModelProviderRegistry modelProviderRegistry(List<ModelProvider> providers) {
         return new ModelProviderRegistry(providers);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(FileSkillProvider.class)
-    public FileSkillProvider fileSkillProvider(HarnessProperties properties) {
-        return new FileSkillProvider(
-                PathsSupport.expandUserHome(properties.getPrompt().getConfigRoot()),
-                properties.getPrompt().getSkillsDir());
     }
 
     @Bean

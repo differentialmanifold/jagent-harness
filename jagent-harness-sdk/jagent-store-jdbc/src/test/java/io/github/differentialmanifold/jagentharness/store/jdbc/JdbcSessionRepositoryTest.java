@@ -25,12 +25,19 @@ class JdbcSessionRepositoryTest {
         SessionRecord created = repository.create(
                 "New Chat - Demo",
                 "/tmp/demo",
-                "Demo");
+                "Demo",
+                "project-demo");
 
         SessionRecord loaded = repository.findBySessionId(created.getSessionId());
         assertEquals("New Chat - Demo", loaded.getTitle());
         assertEquals("Demo", loaded.getProjectName());
+        assertEquals("project-demo", loaded.getProjectId());
         assertEquals("/tmp/demo", loaded.getWorkspacePath());
+        assertEquals("Demo", jdbcTemplate.queryForObject(
+                "select name from projects where application_id = ? and project_id = ?",
+                String.class,
+                "default",
+                "project-demo"));
     }
 
     private JdbcTemplate createDatabase() {
