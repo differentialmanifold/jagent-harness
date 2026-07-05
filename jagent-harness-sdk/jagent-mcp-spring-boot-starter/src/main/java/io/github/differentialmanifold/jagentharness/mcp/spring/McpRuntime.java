@@ -8,7 +8,9 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolProvider;
 import io.github.differentialmanifold.jagentharness.mcp.McpClient;
@@ -24,6 +26,7 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     private final McpConfigurationManager configurationManager;
     private final ObjectMapper objectMapper;
     private final Map<String, Scope> scopes = new LinkedHashMap<String, Scope>();
+    private final List<Scope> retiredScopes = new ArrayList<Scope>();
     private volatile boolean initialized;
 
     public McpRuntime(McpConfigurationManager configurationManager, ObjectMapper objectMapper) {
@@ -53,10 +56,8 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     }
 
     public synchronized Map<String, McpServerRuntimeStatus> statuses(String projectId) {
-        Scope scope = scopes.get(scopeKey(projectId));
-        if (scope == null) {
-            return Collections.emptyMap();
-        }
+        ensureInitialized();
+        Scope scope = scope(projectId);
         return Collections.unmodifiableMap(new LinkedHashMap<String, McpServerRuntimeStatus>(scope.statuses));
     }
 
@@ -70,9 +71,34 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
             for (McpToolDescriptor descriptor : descriptors) {
                 names.add(descriptor.getName());
             }
-            return new McpTestResult(true, null, client.getNegotiatedProtocolVersion(), names);
+            return new McpTestResult(true, null, client.getNegotiatedProtocolVersion(), names, descriptors);
         } catch (Exception e) {
-            return new McpTestResult(false, safeMessage(e), null, Collections.<String>emptyList());
+            return new McpTestResult(
+                    false,
+                    safeMessage(e),
+                    null,
+                    Collections.<String>emptyList(),
+                    Collections.<McpToolDescriptor>emptyList());
+        } finally {
+            if (client != null) {
+                client.close();
+            }
+        }
+    }
+
+    public McpToolCallResult call(String name,
+                                  McpServerConfig input,
+                                  String toolName,
+                                  JsonNode arguments) {
+        McpClient client = null;
+        try {
+            McpServerConfig config = configurationManager.resolve(name, input);
+            client = new McpClient(config, objectMapper);
+            JsonNode result = client.callTool(toolName, arguments, StopSignal.none());
+            boolean success = !result.path("isError").asBoolean(false);
+            return new McpToolCallResult(success, success ? null : toolError(result), result);
+        } catch (Exception e) {
+            return new McpToolCallResult(false, safeMessage(e), null);
         } finally {
             if (client != null) {
                 client.close();
@@ -88,17 +114,20 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
 
     private synchronized Scope scope(String projectId) {
         String key = scopeKey(projectId);
+        McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(projectId);
         Scope existing = scopes.get(key);
-        if (existing != null) {
+        if (existing != null && existing.fingerprint.equals(snapshot.getFingerprint())) {
             return existing;
         }
-        Scope loaded = loadScope(projectId);
+        Scope loaded = loadScope(snapshot);
         scopes.put(key, loaded);
+        if (existing != null) {
+            retiredScopes.add(existing);
+        }
         return loaded;
     }
 
-    private Scope loadScope(String projectId) {
-        McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(projectId);
+    private Scope loadScope(McpConfigSnapshot snapshot) {
         List<ToolDefinition> tools = new ArrayList<ToolDefinition>();
         Map<String, McpServerRuntimeStatus> statuses = new LinkedHashMap<String, McpServerRuntimeStatus>();
         List<McpClient> clients = new ArrayList<McpClient>();
@@ -143,7 +172,12 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                 clients.add(client);
                 tools.addAll(serverTools);
                 statuses.put(serverName, new McpServerRuntimeStatus(
-                        "available", null, client.getNegotiatedProtocolVersion(), remoteNames, availableNames));
+                        "available",
+                        null,
+                        client.getNegotiatedProtocolVersion(),
+                        remoteNames,
+                        availableNames,
+                        descriptors));
             } catch (Exception e) {
                 if (client != null) {
                     client.close();
@@ -152,7 +186,7 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                         "unavailable", safeMessage(e), null, Collections.<String>emptyList()));
             }
         }
-        return new Scope(tools, statuses, clients);
+        return new Scope(snapshot.getFingerprint(), tools, statuses, clients);
     }
 
     private boolean isToolEnabled(McpServerConfig config, String toolName) {
@@ -170,25 +204,49 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                 : message;
     }
 
+    private String toolError(JsonNode result) {
+        JsonNode content = result.path("content");
+        if (content.isArray()) {
+            for (JsonNode item : content) {
+                String text = item.path("text").asText("").trim();
+                if (!text.isEmpty()) {
+                    return text;
+                }
+            }
+        }
+        return "MCP tool returned an error";
+    }
+
     @Override
     public synchronized void close() {
         for (Scope scope : scopes.values()) {
-            for (McpClient client : scope.clients) {
-                client.close();
-            }
+            close(scope);
+        }
+        for (Scope scope : retiredScopes) {
+            close(scope);
         }
         scopes.clear();
+        retiredScopes.clear();
         initialized = false;
     }
 
+    private void close(Scope scope) {
+        for (McpClient client : scope.clients) {
+            client.close();
+        }
+    }
+
     private static class Scope {
+        private final String fingerprint;
         private final Collection<ToolDefinition> tools;
         private final Map<String, McpServerRuntimeStatus> statuses;
         private final List<McpClient> clients;
 
-        private Scope(List<ToolDefinition> tools,
+        private Scope(String fingerprint,
+                      List<ToolDefinition> tools,
                       Map<String, McpServerRuntimeStatus> statuses,
                       List<McpClient> clients) {
+            this.fingerprint = fingerprint;
             this.tools = Collections.unmodifiableList(new ArrayList<ToolDefinition>(tools));
             this.statuses = Collections.unmodifiableMap(new LinkedHashMap<String, McpServerRuntimeStatus>(statuses));
             this.clients = new ArrayList<McpClient>(clients);

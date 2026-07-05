@@ -6,14 +6,11 @@ public class McpConfigResponse {
 
     private final String databaseConfig;
     private final List<McpServerResponse> servers;
-    private final boolean restartRequired;
 
     public McpConfigResponse(String databaseConfig,
-                             List<McpServerResponse> servers,
-                             boolean restartRequired) {
+                             List<McpServerResponse> servers) {
         this.databaseConfig = databaseConfig;
         this.servers = servers;
-        this.restartRequired = restartRequired;
     }
 
     public String getDatabaseConfig() {
@@ -22,9 +19,5 @@ public class McpConfigResponse {
 
     public List<McpServerResponse> getServers() {
         return servers;
-    }
-
-    public boolean isRestartRequired() {
-        return restartRequired;
     }
 }

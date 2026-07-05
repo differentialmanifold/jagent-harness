@@ -2,6 +2,9 @@ package io.github.differentialmanifold.jagentharness.mcp.spring;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -23,9 +26,6 @@ public class McpConfigurationManager {
     private final KnowledgeFileStore knowledgeFileStore;
     private final ObjectMapper objectMapper;
     private final McpConfigValidator validator = new McpConfigValidator();
-    private final Map<String, Map<String, McpServerConfig>> startupProjects =
-            new LinkedHashMap<String, Map<String, McpServerConfig>>();
-    private Map<String, McpServerConfig> startupGlobal = Collections.emptyMap();
 
     public McpConfigurationManager(Path configRoot,
                                    String configFile,
@@ -37,22 +37,15 @@ public class McpConfigurationManager {
     }
 
     public synchronized void initialize() {
-        startupGlobal = readScope(KnowledgeScope.global());
-        startupProjects.clear();
+        // Configuration is read from the shared store when each tool scope is resolved.
     }
 
     public synchronized McpConfigSnapshot runtimeSnapshot(String projectId) {
-        Map<String, McpServerConfig> project = projectSnapshot(projectId);
-        return merge(startupGlobal, project, configContent(KnowledgeScope.forProject(projectId)));
+        return snapshot(projectId, null);
     }
 
     public McpConfigSnapshot currentSnapshot(String projectId, KnowledgeScope selectedScope) {
-        return merge(
-                readScope(KnowledgeScope.global()),
-                projectId == null || projectId.trim().isEmpty()
-                        ? Collections.<String, McpServerConfig>emptyMap()
-                        : readScope(KnowledgeScope.project(projectId)),
-                configContent(selectedScope));
+        return snapshot(projectId, selectedScope);
     }
 
     public KnowledgeFile saveDatabase(String content) {
@@ -89,23 +82,26 @@ public class McpConfigurationManager {
         return validator.validateAndResolve(name, config);
     }
 
-    private synchronized Map<String, McpServerConfig> projectSnapshot(String projectId) {
-        if (projectId == null || projectId.trim().isEmpty()) {
-            return Collections.emptyMap();
-        }
-        String key = projectId.trim();
-        Map<String, McpServerConfig> existing = startupProjects.get(key);
-        if (existing != null) {
-            return existing;
-        }
-        Map<String, McpServerConfig> loaded = readScope(KnowledgeScope.project(key));
-        startupProjects.put(key, loaded);
-        return loaded;
+    private McpConfigSnapshot snapshot(String projectId, KnowledgeScope selectedScope) {
+        String normalizedProjectId = projectId == null ? "" : projectId.trim();
+        String globalContent = configContent(KnowledgeScope.global());
+        String projectContent = normalizedProjectId.isEmpty()
+                ? null
+                : configContent(KnowledgeScope.project(normalizedProjectId));
+        String selectedContent = selectedScope == null
+                ? null
+                : selectedScope.isGlobal() ? globalContent : projectContent;
+        return merge(
+                readContent(globalContent, "global database " + configFile),
+                readContent(projectContent, "project database " + configFile),
+                selectedContent,
+                fingerprint(normalizedProjectId, globalContent, projectContent));
     }
 
     private McpConfigSnapshot merge(Map<String, McpServerConfig> global,
                                     Map<String, McpServerConfig> project,
-                                    String selectedConfig) {
+                                    String selectedConfig,
+                                    String fingerprint) {
         Map<String, McpServerConfig> configs = new LinkedHashMap<String, McpServerConfig>();
         Map<String, String> sources = new LinkedHashMap<String, String>();
         Map<String, List<String>> overridden = new LinkedHashMap<String, List<String>>();
@@ -119,7 +115,7 @@ public class McpConfigurationManager {
                     sources.get(entry.getKey()),
                     overridden.get(entry.getKey())));
         }
-        return new McpConfigSnapshot(effective, selectedConfig);
+        return new McpConfigSnapshot(effective, selectedConfig, fingerprint);
     }
 
     private void mergeSource(Map<String, McpServerConfig> configs,
@@ -142,10 +138,6 @@ public class McpConfigurationManager {
         }
     }
 
-    private Map<String, McpServerConfig> readScope(KnowledgeScope scope) {
-        return readContent(configContent(scope), scope.getType() + " database " + configFile);
-    }
-
     private Map<String, McpServerConfig> readContent(String content, String source) {
         if (content == null || content.trim().isEmpty()) {
             return Collections.emptyMap();
@@ -164,6 +156,24 @@ public class McpConfigurationManager {
         }
         KnowledgeFile file = knowledgeFileStore.readFile(scope == null ? KnowledgeScope.global() : scope, configFile);
         return file == null ? null : file.getContent();
+    }
+
+    private String fingerprint(String projectId, String globalContent, String projectContent) {
+        String value = "mcp-runtime-v1\u0000"
+                + projectId + "\u0000"
+                + (globalContent == null ? "<absent>" : globalContent) + "\u0000"
+                + (projectContent == null ? "<absent>" : projectContent);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(digest.length * 2);
+            for (byte item : digest) {
+                result.append(String.format("%02x", item & 0xff));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is not available", e);
+        }
     }
 
     private Map<String, McpServerConfig> copy(Map<String, McpServerConfig> source) {

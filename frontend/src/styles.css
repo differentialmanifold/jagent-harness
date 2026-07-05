@@ -74,18 +74,16 @@ body,
   font-size: 14px;
 }
 
-.mcp-notice,
 .mcp-error {
   margin: 14px 28px 0;
-  border: 1px solid #e6c76c;
+  border: 1px solid #f1b8b8;
   border-radius: 6px;
-  background: #fff8db;
-  color: #6b5200;
+  background: #fff3f3;
+  color: #9f1c1c;
   padding: 10px 12px;
   font-size: 13px;
 }
 
-.mcp-error,
 .mcp-server-error {
   border-color: #f1b8b8;
   background: #fff3f3;
@@ -208,6 +206,15 @@ body,
   justify-content: flex-end;
 }
 
+.mcp-server-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .mcp-properties {
   display: grid;
   grid-template-columns: repeat(5, minmax(110px, 1fr));
@@ -280,31 +287,53 @@ body,
 
 .mcp-tool-checklist {
   display: grid;
-  gap: 6px;
   margin-top: 12px;
+  border: 1px solid #d7dde6;
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .mcp-tool-checklist .el-checkbox {
-  display: flex;
-  align-items: center;
-  width: 100%;
   min-width: 0;
   margin: 0;
 }
 
 .mcp-tool-checklist .el-checkbox__label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   min-width: 0;
-  width: 100%;
 }
 
 .mcp-tool-checklist code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mcp-tool-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border-bottom: 1px solid #e4e8ef;
+  padding: 10px 12px;
+}
+
+.mcp-tool-item:last-child {
+  border-bottom: 0;
+}
+
+.mcp-tool-item-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mcp-tool-item p {
+  margin: 0 0 0 24px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .mcp-tools-list li,
@@ -358,6 +387,73 @@ body,
   margin: 12px 0 0;
 }
 
+.mcp-debug-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.mcp-debug-dialog .el-dialog__header,
+.mcp-debug-dialog .el-dialog__footer {
+  flex: 0 0 auto;
+}
+
+.mcp-debug-dialog .el-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mcp-debugger {
+  display: grid;
+  gap: 16px;
+  padding-right: 4px;
+}
+
+.mcp-debugger > p {
+  margin: 0;
+  color: #667085;
+  line-height: 1.5;
+}
+
+.mcp-debug-field {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-debug-field > strong {
+  color: #344054;
+  font-size: 13px;
+}
+
+.mcp-debug-field pre {
+  max-height: 280px;
+  margin: 0;
+  border: 1px solid #d7dde6;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #24292f;
+  padding: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mcp-debug-field textarea {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mcp-debugger .mcp-error {
+  margin: 0;
+}
+
 .mcp-dialog-footer {
   display: flex;
   flex-wrap: wrap;
@@ -408,7 +504,6 @@ body,
     justify-content: flex-start;
   }
 
-  .mcp-notice,
   .mcp-error {
     margin-right: 18px;
     margin-left: 18px;
@@ -439,6 +534,16 @@ body,
     overflow: visible;
     overflow-wrap: anywhere;
     white-space: normal;
+  }
+
+  .mcp-tool-item-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .mcp-tool-item-main .el-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-left: 24px;
   }
 
   .mcp-json-editor textarea {

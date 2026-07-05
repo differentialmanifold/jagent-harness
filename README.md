@@ -185,8 +185,8 @@ Project servers override global servers with the same name:
 
 Sensitive headers must reference environment variables. MCP tools are exposed to the model as
 `serverName__toolName`. Omitting `enabledTools` loads every discovered tool; an empty array loads
-none. Global configuration loads at startup and project configuration on first use. Configuration
-edits in the Console require an application restart.
+none. Global and project configuration changes are detected from the database and applied on the
+next agent run.
 
 Use the harness from application code:
 
