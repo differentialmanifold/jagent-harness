@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -24,7 +25,7 @@ class McpConfigurationManagerTest {
     Path tempDir;
 
     @Test
-    void mergesProjectAndGlobalDatabaseScopesAndKeepsRuntimeSnapshotsStable() throws Exception {
+    void mergesProjectAndGlobalDatabaseScopesAndRefreshesRuntimeSnapshots() throws Exception {
         MemoryStore store = new MemoryStore();
         store.writeFile(KnowledgeScope.global(), "mcp.json", document(
                 server("global-only", "http://global/only"),
@@ -42,15 +43,45 @@ class McpConfigurationManagerTest {
         assertEquals("http://project/shared", runtime.getEffectiveServers().get("shared").getConfig().getUrl());
         assertEquals(java.util.Collections.singletonList("global"),
                 runtime.getEffectiveServers().get("shared").getOverriddenSources());
+        String initialFingerprint = runtime.getFingerprint();
 
         store.writeFile(KnowledgeScope.global(), "mcp.json",
                 document(server("changed-global", "http://changed/global")), "application/json");
         store.writeFile(KnowledgeScope.project("project-1"), "mcp.json",
                 document(server("changed-project", "http://changed/project")), "application/json");
 
-        assertEquals(3, manager.runtimeSnapshot("project-1").getEffectiveServers().size());
+        McpConfigSnapshot refreshed = manager.runtimeSnapshot("project-1");
+        assertEquals(2, refreshed.getEffectiveServers().size());
+        assertEquals("http://changed/global",
+                refreshed.getEffectiveServers().get("changed-global").getConfig().getUrl());
+        assertEquals("http://changed/project",
+                refreshed.getEffectiveServers().get("changed-project").getConfig().getUrl());
+        assertNotEquals(initialFingerprint, refreshed.getFingerprint());
         assertEquals(2, manager.currentSnapshot("project-1", KnowledgeScope.project("project-1"))
                 .getEffectiveServers().size());
+    }
+
+    @Test
+    void runtimeReplacesCachedScopeWhenDatabaseConfigurationChanges() throws Exception {
+        MemoryStore store = new MemoryStore();
+        store.writeFile(KnowledgeScope.global(), "mcp.json",
+                document(disabledServer("first", "http://first/mcp")), "application/json");
+        McpConfigurationManager manager = new McpConfigurationManager(
+                tempDir, "mcp.json", store, new ObjectMapper());
+        McpRuntime runtime = new McpRuntime(manager, new ObjectMapper());
+        try {
+            runtime.initialize();
+            assertEquals("disabled", runtime.statuses(null).get("first").getStatus());
+
+            store.writeFile(KnowledgeScope.global(), "mcp.json",
+                    document(disabledServer("second", "http://second/mcp")), "application/json");
+            runtime.listTools(null);
+
+            assertNull(runtime.statuses(null).get("first"));
+            assertEquals("disabled", runtime.statuses(null).get("second").getStatus());
+        } finally {
+            runtime.close();
+        }
     }
 
     @Test
@@ -98,6 +129,12 @@ class McpConfigurationManagerTest {
         McpServerConfig config = new McpServerConfig();
         config.setUrl(url);
         return new java.util.AbstractMap.SimpleEntry<String, McpServerConfig>(name, config);
+    }
+
+    private Map.Entry<String, McpServerConfig> disabledServer(String name, String url) {
+        Map.Entry<String, McpServerConfig> entry = server(name, url);
+        entry.getValue().setEnabled(false);
+        return entry;
     }
 
     private static class MemoryStore implements KnowledgeFileStore {

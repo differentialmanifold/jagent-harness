@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.spring.web.dto;
 import java.util.List;
 
 import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
+import io.github.differentialmanifold.jagentharness.mcp.McpToolDescriptor;
 
 public class McpServerResponse {
 
@@ -15,6 +16,7 @@ public class McpServerResponse {
     private final String protocolVersion;
     private final List<String> tools;
     private final List<String> availableTools;
+    private final List<McpToolDescriptor> toolDetails;
 
     public McpServerResponse(String name,
                              McpServerConfig config,
@@ -36,6 +38,20 @@ public class McpServerResponse {
                              String protocolVersion,
                              List<String> tools,
                              List<String> availableTools) {
+        this(name, config, source, overriddenSources, status, error, protocolVersion,
+                tools, availableTools, java.util.Collections.<McpToolDescriptor>emptyList());
+    }
+
+    public McpServerResponse(String name,
+                             McpServerConfig config,
+                             String source,
+                             List<String> overriddenSources,
+                             String status,
+                             String error,
+                             String protocolVersion,
+                             List<String> tools,
+                             List<String> availableTools,
+                             List<McpToolDescriptor> toolDetails) {
         this.name = name;
         this.config = config;
         this.source = source;
@@ -45,6 +61,7 @@ public class McpServerResponse {
         this.protocolVersion = protocolVersion;
         this.tools = tools;
         this.availableTools = availableTools;
+        this.toolDetails = toolDetails;
     }
 
     public String getName() {
@@ -81,5 +98,9 @@ public class McpServerResponse {
 
     public List<String> getAvailableTools() {
         return availableTools;
+    }
+
+    public List<McpToolDescriptor> getToolDetails() {
+        return toolDetails;
     }
 }

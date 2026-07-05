@@ -8,11 +8,14 @@ public class McpConfigSnapshot {
 
     private final Map<String, McpConfigEntry> effectiveServers;
     private final String databaseConfig;
+    private final String fingerprint;
 
     McpConfigSnapshot(Map<String, McpConfigEntry> effectiveServers,
-                      String databaseConfig) {
+                      String databaseConfig,
+                      String fingerprint) {
         this.effectiveServers = Collections.unmodifiableMap(new LinkedHashMap<String, McpConfigEntry>(effectiveServers));
         this.databaseConfig = databaseConfig;
+        this.fingerprint = fingerprint;
     }
 
     public Map<String, McpConfigEntry> getEffectiveServers() {
@@ -21,5 +24,9 @@ public class McpConfigSnapshot {
 
     public String getDatabaseConfig() {
         return databaseConfig;
+    }
+
+    public String getFingerprint() {
+        return fingerprint;
     }
 }

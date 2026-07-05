@@ -36,9 +36,6 @@
       </div>
     </div>
 
-    <div v-if="restartRequired" class="mcp-notice">
-      {{ scopeLabel }} mcp.json changed. Restart this application instance to activate the changes.
-    </div>
     <div v-if="error" class="mcp-error">{{ error }}</div>
 
     <div class="mcp-layout">
@@ -78,7 +75,19 @@
               <p>{{ selectedServer.config.url }}</p>
             </div>
             <div class="mcp-detail-actions">
+              <label class="mcp-server-toggle">
+                <span>Enabled</span>
+                <el-switch v-model="serverEnabledDraft" />
+              </label>
               <el-button :icon="Connection" :loading="testing" @click="testServer(selectedServer)">Test</el-button>
+              <el-button
+                type="primary"
+                :disabled="!serverConfigDirty"
+                :loading="saving"
+                @click="saveServerSettings"
+              >
+                Save changes
+              </el-button>
             </div>
           </header>
 
@@ -87,7 +96,7 @@
             <div><dt>Protocol</dt><dd>{{ selectedServer.protocolVersion || '-' }}</dd></div>
             <div><dt>Connect timeout</dt><dd>{{ selectedServer.config.connectTimeoutSeconds }}s</dd></div>
             <div><dt>Request timeout</dt><dd>{{ selectedServer.config.requestTimeoutSeconds }}s</dd></div>
-            <div><dt>Enabled</dt><dd>{{ selectedServer.config.enabled ? 'Yes' : 'No' }}</dd></div>
+            <div><dt>Enabled</dt><dd>{{ serverEnabledDraft ? 'Yes' : 'No' }}</dd></div>
           </dl>
 
           <section v-if="selectedServer.overriddenSources.length" class="mcp-detail-section">
@@ -109,26 +118,30 @@
               <div class="mcp-detail-actions">
                 <el-button text :disabled="!availableToolNames.length" @click="selectAllTools">Select all</el-button>
                 <el-button text :disabled="!availableToolNames.length" @click="clearAllTools">Clear all</el-button>
-                <el-button
-                  type="primary"
-                  :disabled="!toolSelectionDirty"
-                  :loading="saving"
-                  @click="saveToolSelection"
-                >
-                  Save
-                </el-button>
               </div>
             </div>
             <el-checkbox-group
               v-if="availableToolNames.length"
               v-model="toolSelectionDraft"
               class="mcp-tool-checklist"
-              @change="toolSelectionDirty = true"
             >
-              <el-checkbox v-for="tool in availableToolNames" :key="tool" :value="tool">
-                <code>{{ tool }}</code>
-                <el-tag v-if="selectedServer.tools.includes(tool)" size="small" type="success">loaded</el-tag>
-              </el-checkbox>
+              <div v-for="tool in availableToolDetails" :key="tool.name" class="mcp-tool-item">
+                <div class="mcp-tool-item-main">
+                  <el-checkbox :value="tool.name">
+                    <code>{{ tool.name }}</code>
+                  </el-checkbox>
+                  <el-tag v-if="selectedServer.tools.includes(tool.name)" size="small" type="success">loaded</el-tag>
+                  <el-button
+                    size="small"
+                    :icon="VideoPlay"
+                    :disabled="!tool.discovered"
+                    @click="openToolDebugger(tool)"
+                  >
+                    Test
+                  </el-button>
+                </div>
+                <p>{{ tool.description || 'No description provided.' }}</p>
+              </div>
             </el-checkbox-group>
             <p v-else>No tools discovered. Test the server to load its tool list.</p>
           </section>
@@ -171,13 +184,52 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="debugDialogOpen"
+      class="mcp-debug-dialog"
+      :title="debugTool ? `Test ${debugTool.name}` : 'Test MCP tool'"
+      top="20px"
+      width="min(760px, calc(100vw - 24px))"
+    >
+      <div v-if="debugTool" class="mcp-debugger">
+        <p>{{ debugTool.description || 'No description provided.' }}</p>
+        <div class="mcp-debug-field">
+          <strong>Input schema</strong>
+          <pre>{{ formatJson(debugTool.inputSchema || {}) }}</pre>
+        </div>
+        <div class="mcp-debug-field">
+          <strong>Arguments</strong>
+          <el-input
+            v-model="debugArguments"
+            type="textarea"
+            :rows="8"
+            spellcheck="false"
+            placeholder="{}"
+          />
+        </div>
+        <div v-if="debugError" class="mcp-error">{{ debugError }}</div>
+        <div v-if="debugResult" class="mcp-debug-field">
+          <strong>Result</strong>
+          <pre>{{ debugResult }}</pre>
+        </div>
+      </div>
+      <template #footer>
+        <div class="mcp-dialog-footer">
+          <el-button @click="debugDialogOpen = false">Close</el-button>
+          <el-button type="primary" :icon="VideoPlay" :loading="debugging" @click="runToolDebug">
+            Run tool
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { Connection, Delete, DocumentAdd, EditPen, Refresh } from '@element-plus/icons-vue'
-import { ElCheckbox, ElCheckboxGroup, ElMessage, ElRadioButton, ElRadioGroup } from 'element-plus'
+import { Connection, Delete, DocumentAdd, EditPen, Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { ElCheckbox, ElCheckboxGroup, ElMessage, ElRadioButton, ElRadioGroup, ElSwitch } from 'element-plus'
 import { request } from '../api/http'
 
 const props = defineProps({
@@ -188,17 +240,24 @@ const emit = defineEmits(['changed'])
 const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
+const debugging = ref(false)
 const error = ref('')
 const jsonError = ref('')
 const servers = ref([])
 const databaseConfig = ref(null)
-const restartRequired = ref(false)
 const selectedName = ref('')
 const jsonDialogOpen = ref(false)
 const jsonDraft = ref('')
 const configScope = ref('global')
+const serverEnabledDraft = ref(true)
+const originalServerEnabled = ref(true)
 const toolSelectionDraft = ref([])
-const toolSelectionDirty = ref(false)
+const originalToolSelection = ref([])
+const debugDialogOpen = ref(false)
+const debugTool = ref(null)
+const debugArguments = ref('{}')
+const debugResult = ref('')
+const debugError = ref('')
 
 const jsonPlaceholder = JSON.stringify({
   mcpServers: {
@@ -219,18 +278,31 @@ const selectedServer = computed(() => servers.value.find((server) => server.name
 const availableCount = computed(() => servers.value.filter((server) => server.status === 'available').length)
 const hasDatabaseConfig = computed(() => databaseConfig.value !== null)
 const scopeLabel = computed(() => configScope.value === 'project' ? 'project' : 'global')
-const availableToolNames = computed(() => {
-  const names = new Set(selectedServer.value?.availableTools || [])
-  for (const name of selectedServer.value?.config?.enabledTools || []) names.add(name)
-  return Array.from(names).sort()
+const availableToolDetails = computed(() => {
+  const details = new Map()
+  for (const tool of selectedServer.value?.toolDetails || []) {
+    details.set(tool.name, { ...tool, discovered: true })
+  }
+  for (const name of selectedServer.value?.availableTools || []) {
+    if (!details.has(name)) details.set(name, { name, description: '', inputSchema: {}, discovered: true })
+  }
+  for (const name of selectedServer.value?.config?.enabledTools || []) {
+    if (!details.has(name)) details.set(name, { name, description: '', inputSchema: {}, discovered: false })
+  }
+  return Array.from(details.values()).sort((left, right) => left.name.localeCompare(right.name))
 })
+const availableToolNames = computed(() => availableToolDetails.value.map((tool) => tool.name))
+const serverConfigDirty = computed(() => (
+  serverEnabledDraft.value !== originalServerEnabled.value
+  || !sameToolSelection(toolSelectionDraft.value, originalToolSelection.value)
+))
 
 watch(() => props.sessionId, async () => {
   if (!props.sessionId && configScope.value === 'project') configScope.value = 'global'
   await load()
 })
 watch(configScope, load)
-watch(selectedName, syncToolSelection)
+watch(selectedName, syncServerDraft)
 onMounted(load)
 
 async function load() {
@@ -240,11 +312,10 @@ async function load() {
     const data = await request(`/api/mcp/config${sessionQuery()}`)
     servers.value = data?.servers || []
     databaseConfig.value = data?.databaseConfig ?? null
-    restartRequired.value = Boolean(data?.restartRequired) || restartRequired.value
     if (!servers.value.some((server) => server.name === selectedName.value)) {
       selectedName.value = servers.value[0]?.name || ''
     }
-    syncToolSelection()
+    syncServerDraft()
   } catch (reason) {
     error.value = reason.message
   } finally {
@@ -299,7 +370,7 @@ async function saveJsonConfig() {
       selectedName.value = Object.keys(importedServers)[0] || servers.value[0]?.name || ''
     }
     jsonDialogOpen.value = false
-    ElMessage.success('mcp.json saved. Restart required.')
+    ElMessage.success('mcp.json saved. Changes apply on the next agent run.')
   } catch (reason) {
     jsonError.value = reason.message
   } finally {
@@ -315,7 +386,7 @@ async function deleteDatabaseConfig() {
       method: 'DELETE'
     })
     applySaved(data)
-    ElMessage.success(`${scopeLabel.value} mcp.json deleted. Restart required.`)
+    ElMessage.success(`${scopeLabel.value} mcp.json deleted. Changes apply on the next agent run.`)
   } catch (reason) {
     error.value = reason.message
   } finally {
@@ -337,8 +408,11 @@ async function runTest(name, config) {
     })
     if (result.success) {
       const server = servers.value.find((item) => item.name === name)
-      if (server) server.availableTools = result.tools || []
-      syncToolSelection()
+      if (server) {
+        server.availableTools = result.tools || []
+        server.toolDetails = result.toolDetails || []
+      }
+      syncServerDraft()
       ElMessage.success(`Connected. ${result.tools.length} tools discovered.`)
     } else {
       error.value = result.error || 'Connection failed.'
@@ -353,39 +427,56 @@ async function runTest(name, config) {
 }
 
 function applySaved(data) {
-  servers.value = data?.servers || []
+  servers.value = preserveToolCatalogs(servers.value, data?.servers || [])
   databaseConfig.value = data?.databaseConfig ?? null
-  restartRequired.value = true
-  syncToolSelection()
+  syncServerDraft()
   emit('changed')
 }
 
-function syncToolSelection() {
+function preserveToolCatalogs(previousServers, nextServers) {
+  const previousByName = new Map(previousServers.map((server) => [server.name, server]))
+  return nextServers.map((server) => {
+    const previous = previousByName.get(server.name)
+    if (!previous || (server.availableTools || []).length || (server.toolDetails || []).length) {
+      return server
+    }
+    return {
+      ...server,
+      availableTools: [...(previous.availableTools || [])],
+      toolDetails: [...(previous.toolDetails || [])]
+    }
+  })
+}
+
+function syncServerDraft() {
   const server = selectedServer.value
   if (!server) {
+    serverEnabledDraft.value = true
+    originalServerEnabled.value = true
     toolSelectionDraft.value = []
-    toolSelectionDirty.value = false
+    originalToolSelection.value = []
     return
   }
-  toolSelectionDraft.value = server.config?.enabledTools == null
+  serverEnabledDraft.value = server.config?.enabled !== false
+  originalServerEnabled.value = serverEnabledDraft.value
+  const selection = server.config?.enabledTools == null
     ? [...availableToolNames.value]
     : [...server.config.enabledTools]
-  toolSelectionDirty.value = false
+  toolSelectionDraft.value = normalizeToolSelection(selection)
+  originalToolSelection.value = normalizeToolSelection(selection)
 }
 
 function selectAllTools() {
   toolSelectionDraft.value = [...availableToolNames.value]
-  toolSelectionDirty.value = true
 }
 
 function clearAllTools() {
   toolSelectionDraft.value = []
-  toolSelectionDirty.value = true
 }
 
-async function saveToolSelection() {
+async function saveServerSettings() {
   const server = selectedServer.value
-  if (!server || !toolSelectionDirty.value) return
+  if (!server || !serverConfigDirty.value) return
   let document = { mcpServers: {} }
   if (databaseConfig.value) {
     try {
@@ -397,10 +488,12 @@ async function saveToolSelection() {
   }
   if (!isPlainObject(document.mcpServers)) document.mcpServers = {}
   const config = JSON.parse(JSON.stringify(server.config || {}))
-  if (toolSelectionDraft.value.length === availableToolNames.value.length) {
+  config.enabled = serverEnabledDraft.value
+  const toolSelectionChanged = !sameToolSelection(toolSelectionDraft.value, originalToolSelection.value)
+  if (server.config?.enabledTools == null && !toolSelectionChanged) {
     delete config.enabledTools
   } else {
-    config.enabledTools = [...toolSelectionDraft.value]
+    config.enabledTools = normalizeToolSelection(toolSelectionDraft.value)
   }
   document.mcpServers[server.name] = config
   saving.value = true
@@ -411,12 +504,72 @@ async function saveToolSelection() {
       body: JSON.stringify({ content: `${JSON.stringify(document, null, 2)}\n` })
     })
     applySaved(data)
-    ElMessage.success('Tool selection saved. Restart required.')
+    ElMessage.success('MCP server settings saved. Changes apply on the next agent run.')
   } catch (reason) {
     error.value = reason.message
   } finally {
     saving.value = false
   }
+}
+
+function openToolDebugger(tool) {
+  debugTool.value = tool
+  debugArguments.value = '{}'
+  debugResult.value = ''
+  debugError.value = ''
+  debugDialogOpen.value = true
+}
+
+async function runToolDebug() {
+  if (!selectedServer.value || !debugTool.value || debugging.value) return
+  debugError.value = ''
+  debugResult.value = ''
+  let args
+  try {
+    args = JSON.parse(debugArguments.value || '{}')
+  } catch (reason) {
+    debugError.value = `Invalid arguments JSON: ${reason.message}`
+    return
+  }
+  if (!isPlainObject(args)) {
+    debugError.value = 'Arguments must be a JSON object.'
+    return
+  }
+  debugging.value = true
+  try {
+    const response = await request('/api/mcp/call', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: selectedServer.value.name,
+        config: selectedServer.value.config,
+        toolName: debugTool.value.name,
+        arguments: args
+      })
+    })
+    debugResult.value = response?.result == null ? '' : formatJson(response.result)
+    if (!response?.success) {
+      debugError.value = response?.error || 'MCP tool call failed.'
+    }
+  } catch (reason) {
+    debugError.value = reason.message
+  } finally {
+    debugging.value = false
+  }
+}
+
+function normalizeToolSelection(values) {
+  return Array.from(new Set(values || [])).sort()
+}
+
+function sameToolSelection(left, right) {
+  const normalizedLeft = normalizeToolSelection(left)
+  const normalizedRight = normalizeToolSelection(right)
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((value, index) => value === normalizedRight[index])
+}
+
+function formatJson(value) {
+  return JSON.stringify(value, null, 2)
 }
 
 function isPlainObject(value) {
