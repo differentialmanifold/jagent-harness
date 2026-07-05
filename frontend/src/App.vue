@@ -8,11 +8,9 @@
         </div>
       </div>
 
-      <el-radio-group v-model="activeView" class="app-tabs" aria-label="Primary">
+      <el-radio-group :model-value="activeView" class="app-tabs" aria-label="Primary" @change="changeActiveView">
         <el-radio-button value="chat">Chat</el-radio-button>
-        <el-radio-button value="prompts">Prompts</el-radio-button>
-        <el-radio-button value="skills">Skills</el-radio-button>
-        <el-radio-button v-if="mcpAvailable" value="mcp">MCP</el-radio-button>
+        <el-radio-button value="configuration">Configuration</el-radio-button>
       </el-radio-group>
     </header>
 
@@ -57,30 +55,16 @@
         />
       </main>
 
-      <main v-else-if="activeView === 'prompts'" class="workspace management-shell">
-        <KnowledgePanel
-          key="prompts"
-          mode="prompts"
-          :session-id="currentSession ? currentSession.sessionId : ''"
+      <KeepAlive>
+        <ConfigurationPanel
+          v-if="activeView === 'configuration'"
+          ref="configurationPanelRef"
+          :project-groups="projectGroups"
+          :current-project-key="currentProjectKey"
+          :mcp-available="mcpAvailable"
           @changed="refreshAgentContext"
         />
-      </main>
-
-      <main v-else-if="activeView === 'skills'" class="workspace management-shell">
-        <KnowledgePanel
-          key="skills"
-          mode="skills"
-          :session-id="currentSession ? currentSession.sessionId : ''"
-          @changed="refreshAgentContext"
-        />
-      </main>
-
-      <main v-else class="workspace management-shell">
-        <McpPanel
-          :session-id="currentSession ? currentSession.sessionId : ''"
-          @changed="refreshAgentContext"
-        />
-      </main>
+      </KeepAlive>
     </div>
 
     <ProjectDialog
@@ -111,9 +95,8 @@
 import { onMounted, ref } from 'vue'
 import { ElRadioButton, ElRadioGroup } from 'element-plus'
 import ChatPanel from './components/ChatPanel.vue'
+import ConfigurationPanel from './components/ConfigurationPanel.vue'
 import InspectorPanel from './components/InspectorPanel.vue'
-import KnowledgePanel from './components/KnowledgePanel.vue'
-import McpPanel from './components/McpPanel.vue'
 import ProjectDialog from './components/ProjectDialog.vue'
 import RenameDialog from './components/RenameDialog.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -122,6 +105,7 @@ import { request } from './api/http'
 
 const activeView = ref('chat')
 const mcpAvailable = ref(false)
+const configurationPanelRef = ref(null)
 
 onMounted(async () => {
   try {
@@ -182,6 +166,15 @@ const {
 async function selectSessionAndShowChat(sessionId) {
   activeView.value = 'chat'
   await selectSession(sessionId)
+}
+
+async function changeActiveView(view) {
+  if (view === activeView.value) return
+  if (activeView.value === 'configuration') {
+    const canLeave = await configurationPanelRef.value?.beforeLeave?.()
+    if (canLeave === false) return
+  }
+  activeView.value = view
 }
 
 async function refreshAgentContext() {

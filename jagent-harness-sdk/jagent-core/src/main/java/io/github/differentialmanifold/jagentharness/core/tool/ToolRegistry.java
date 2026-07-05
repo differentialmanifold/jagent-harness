@@ -13,6 +13,7 @@ public class ToolRegistry {
 
     private final Map<String, ToolDefinition> tools = new LinkedHashMap<String, ToolDefinition>();
     private final List<ToolProvider> providers = new ArrayList<ToolProvider>();
+    private final List<ToolAvailabilityPolicy> availabilityPolicies = new ArrayList<ToolAvailabilityPolicy>();
 
     public ToolRegistry() {
     }
@@ -22,6 +23,12 @@ public class ToolRegistry {
     }
 
     public ToolRegistry(List<ToolDefinition> toolDefinitions, List<ToolProvider> toolProviders) {
+        this(toolDefinitions, toolProviders, null);
+    }
+
+    public ToolRegistry(List<ToolDefinition> toolDefinitions,
+                        List<ToolProvider> toolProviders,
+                        List<ToolAvailabilityPolicy> toolAvailabilityPolicies) {
         if (toolDefinitions != null) {
             for (ToolDefinition toolDefinition : toolDefinitions) {
                 register(toolDefinition);
@@ -30,6 +37,11 @@ public class ToolRegistry {
         if (toolProviders != null) {
             for (ToolProvider toolProvider : toolProviders) {
                 registerProvider(toolProvider);
+            }
+        }
+        if (toolAvailabilityPolicies != null) {
+            for (ToolAvailabilityPolicy policy : toolAvailabilityPolicies) {
+                registerAvailabilityPolicy(policy);
             }
         }
     }
@@ -67,6 +79,19 @@ public class ToolRegistry {
         }
     }
 
+    public synchronized void registerAvailabilityPolicy(ToolAvailabilityPolicy policy) {
+        if (policy == null) {
+            throw new IllegalArgumentException("toolAvailabilityPolicy must not be null");
+        }
+        if (!availabilityPolicies.contains(policy)) {
+            availabilityPolicies.add(policy);
+        }
+    }
+
+    public synchronized Collection<ToolDefinition> registeredTools() {
+        return Collections.unmodifiableList(new ArrayList<ToolDefinition>(tools.values()));
+    }
+
     public Collection<ToolDefinition> all() {
         return all(null);
     }
@@ -74,9 +99,26 @@ public class ToolRegistry {
     public Collection<ToolDefinition> all(AgentContext context) {
         Map<String, ToolDefinition> resolved;
         List<ToolProvider> providerSnapshot;
+        List<ToolAvailabilityPolicy> policySnapshot;
         synchronized (this) {
             resolved = new LinkedHashMap<String, ToolDefinition>(tools);
             providerSnapshot = new ArrayList<ToolProvider>(providers);
+            policySnapshot = new ArrayList<ToolAvailabilityPolicy>(availabilityPolicies);
+        }
+        if (!policySnapshot.isEmpty()) {
+            Collection<ToolDefinition> available = new ArrayList<ToolDefinition>(resolved.values());
+            for (ToolAvailabilityPolicy policy : policySnapshot) {
+                Collection<ToolDefinition> filtered = policy.filter(available, context);
+                available = filtered == null
+                        ? Collections.<ToolDefinition>emptyList()
+                        : filtered;
+            }
+            resolved.clear();
+            for (ToolDefinition tool : available) {
+                if (tool != null) {
+                    resolved.put(tool.getName(), tool);
+                }
+            }
         }
         for (ToolProvider provider : providerSnapshot) {
             Collection<ToolDefinition> provided = provider.listTools(context);

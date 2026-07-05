@@ -1,16 +1,5 @@
 <template>
   <section class="knowledge-panel github-panel">
-    <header class="panel-header github-page-header">
-      <div>
-        <h2>{{ panelTitle }}</h2>
-        <p>{{ panelSubtitle }}</p>
-      </div>
-      <el-radio-group v-model="knowledgeScope" size="small" aria-label="Knowledge scope">
-        <el-radio-button value="global">Global</el-radio-button>
-        <el-radio-button value="project" :disabled="!sessionId">Current project</el-radio-button>
-      </el-radio-group>
-    </header>
-
     <div :class="['knowledge-workspace', 'github-workspace', { 'prompt-workspace': !isSkillsMode }]">
       <aside v-if="isSkillsMode" class="vfs-explorer github-file-tree">
         <div class="vfs-sidebar-header github-tree-header">
@@ -56,15 +45,13 @@
 
       <main class="github-content-pane">
         <header class="github-pathbar">
-          <el-radio-group
+          <nav
             v-if="!isSkillsMode"
-            v-model="promptView"
-            class="prompt-view-tabs"
-            aria-label="Prompt view"
+            class="github-breadcrumbs"
+            aria-label="Path"
           >
-            <el-radio-button value="agents">AGENTS.md</el-radio-button>
-            <el-radio-button value="final">Final Prompt</el-radio-button>
-          </el-radio-group>
+            <span class="github-breadcrumb current">AGENTS.md</span>
+          </nav>
 
           <nav
             v-else
@@ -159,7 +146,7 @@
         </header>
 
         <section
-          v-if="promptView !== 'final' && !isEditing && (selectedKind === 'dir' || selectedFile)"
+          v-if="!isEditing && (selectedKind === 'dir' || selectedFile)"
           class="github-commit-row"
         >
           <div class="github-commit-avatar">DB</div>
@@ -168,52 +155,7 @@
           <span v-if="currentUpdatedAt" class="github-commit-date">updated {{ formatDate(currentUpdatedAt) }}</span>
         </section>
 
-        <section v-if="promptView === 'final'" class="prompt-preview-view">
-          <div class="github-file-toolbar">
-            <el-radio-group v-model="promptPreviewTab" size="small">
-              <el-radio-button value="preview">Preview</el-radio-button>
-              <el-radio-button value="code">Code</el-radio-button>
-            </el-radio-group>
-            <span>{{ promptPreviewLineCount }} lines</span>
-            <span>{{ promptPreviewBytes }} bytes</span>
-            <code v-if="promptPreviewWorkspace" class="prompt-preview-workspace">
-              {{ promptPreviewWorkspace }}
-            </code>
-            <div class="github-file-toolbar-actions">
-              <el-button
-                size="small"
-                :icon="CopyDocument"
-                title="Copy final prompt"
-                @click="copyPromptPreview"
-              />
-            </div>
-          </div>
-
-          <div
-            v-if="promptPreviewTab === 'preview'"
-            v-loading="promptPreviewLoading"
-            class="github-markdown-body prompt-preview-content"
-          >
-            <template v-if="promptPreviewBlocks.length">
-              <component
-                :is="block.tag"
-                v-for="(block, index) in promptPreviewBlocks"
-                :key="index"
-                :class="block.className"
-              >
-                {{ block.text }}
-              </component>
-            </template>
-            <p v-else class="empty-note">No prompt available</p>
-          </div>
-          <pre
-            v-else
-            v-loading="promptPreviewLoading"
-            class="github-code-view prompt-preview-content"
-          ><code>{{ promptPreview }}</code></pre>
-        </section>
-
-        <section v-else-if="isEditing" class="github-editor-view">
+        <section v-if="isEditing" class="github-editor-view">
           <div class="github-file-toolbar">
             <el-radio-group v-model="editTab" size="small">
               <el-radio-button value="edit">Edit</el-radio-button>
@@ -361,6 +303,7 @@ import {
 } from '@element-plus/icons-vue'
 import { request } from '../api/http'
 import { formatDate } from '../utils/format'
+import { countLines, markdownBlocks } from '../utils/markdown'
 
 const props = defineProps({
   mode: {
@@ -368,7 +311,12 @@ const props = defineProps({
     required: true,
     validator: (value) => ['prompts', 'skills'].includes(value)
   },
-  sessionId: { type: String, default: '' }
+  sessionId: { type: String, default: '' },
+  scope: {
+    type: String,
+    default: 'global',
+    validator: (value) => ['global', 'project'].includes(value)
+  }
 })
 
 const emit = defineEmits(['changed'])
@@ -389,12 +337,6 @@ const error = ref('')
 const notice = ref('')
 const skillSearch = ref('')
 const fileViewTab = ref('preview')
-const promptView = ref('agents')
-const promptPreviewTab = ref('preview')
-const promptPreview = ref('')
-const promptPreviewWorkspace = ref('')
-const promptPreviewLoading = ref(false)
-const knowledgeScope = ref('global')
 const editTab = ref('edit')
 const editMode = ref('')
 const editOriginalPath = ref('')
@@ -403,17 +345,7 @@ const editDraftContent = ref('')
 const treeRef = ref(null)
 const editorTextarea = ref(null)
 
-const panelTitle = computed(() => isSkillsMode.value ? 'Skills Management' : 'Prompt Management')
-const scopeLabel = computed(() => knowledgeScope.value === 'project' ? 'project' : 'global')
-const panelSubtitle = computed(() => {
-  if (!isSkillsMode.value) {
-    if (promptView.value === 'final') {
-      return 'Final runtime prompt'
-    }
-    return selectedFile.value ? `${scopeLabel.value} AGENTS.md` : `No ${scopeLabel.value} AGENTS.md`
-  }
-  return `${skillKeys.value.length} skills, ${visibleFiles.value.length} files`
-})
+const scopeLabel = computed(() => props.scope === 'project' ? 'project' : 'global')
 
 const visibleFiles = computed(() => {
   return files.value
@@ -477,7 +409,7 @@ const selectedKind = computed(() => {
   return selectedNode.value ? selectedNode.value.type : 'dir'
 })
 const isEditing = computed(() => Boolean(editMode.value))
-const showFileActions = computed(() => isSkillsMode.value || promptView.value === 'agents')
+const showFileActions = computed(() => true)
 const displayPath = computed(() => {
   if (isEditing.value) return normalizeDraftPath(editDraftPath.value) || editDraftPath.value || rootPath.value
   return selectedPath.value
@@ -511,9 +443,6 @@ const fileLineCount = computed(() => countLines(fileContent.value))
 const editLineCount = computed(() => countLines(editDraftContent.value))
 const filePreviewBlocks = computed(() => markdownBlocks(fileContent.value))
 const editPreviewBlocks = computed(() => markdownBlocks(editDraftContent.value))
-const promptPreviewBlocks = computed(() => markdownBlocks(promptPreview.value))
-const promptPreviewLineCount = computed(() => countLines(promptPreview.value))
-const promptPreviewBytes = computed(() => new TextEncoder().encode(promptPreview.value).length)
 const editPathValidationMessage = computed(() => validationMessage(normalizeDraftPath(editDraftPath.value)))
 const canSave = computed(() => {
   return Boolean(normalizeDraftPath(editDraftPath.value))
@@ -561,40 +490,21 @@ watch(
   () => props.mode,
   async () => {
     selectedPath.value = rootPath.value
-    promptView.value = 'agents'
     cancelEdit()
     await loadFiles()
   }
 )
 
 watch(
-  () => props.sessionId,
+  () => [props.sessionId, props.scope],
   async () => {
-    if (!props.sessionId && knowledgeScope.value === 'project') knowledgeScope.value = 'global'
+    cancelEdit()
+    selectedPath.value = rootPath.value
     await loadFiles()
-    if (!isSkillsMode.value) await loadPromptPreview()
   }
 )
 
-watch(knowledgeScope, async () => {
-  cancelEdit()
-  selectedPath.value = rootPath.value
-  await loadFiles()
-})
-
-watch(promptView, async (view) => {
-  if (view === 'final') {
-    cancelEdit()
-    await loadPromptPreview()
-  }
-})
-
-onMounted(async () => {
-  await loadFiles()
-  if (!isSkillsMode.value) {
-    await loadPromptPreview()
-  }
-})
+onMounted(loadFiles)
 
 async function loadFiles() {
   loading.value = true
@@ -656,24 +566,6 @@ async function loadContent(path) {
   fileContent.value = file.content || ''
 }
 
-async function loadPromptPreview() {
-  if (isSkillsMode.value || promptPreviewLoading.value) return
-  promptPreviewLoading.value = true
-  error.value = ''
-  try {
-    const preview = await request('/api/agent/prompt-preview', {
-      method: 'POST',
-      body: JSON.stringify(props.sessionId ? { sessionId: props.sessionId } : {})
-    })
-    promptPreview.value = preview?.systemPrompt || ''
-    promptPreviewWorkspace.value = preview?.workspaceRoot || ''
-  } catch (err) {
-    showError(err)
-  } finally {
-    promptPreviewLoading.value = false
-  }
-}
-
 function beginEditFile() {
   editMode.value = selectedFile.value ? 'edit' : 'create'
   editOriginalPath.value = selectedPath.value
@@ -712,6 +604,13 @@ function cancelEdit() {
   editTab.value = 'edit'
 }
 
+function hasUnsavedChanges() {
+  if (!isEditing.value) return false
+  if (editMode.value === 'create') return true
+  return normalizeDraftPath(editDraftPath.value) !== normalizeDraftPath(editOriginalPath.value)
+    || editDraftContent.value !== fileContent.value
+}
+
 async function saveChanges() {
   if (!canSave.value) return
   saving.value = true
@@ -738,7 +637,6 @@ async function saveChanges() {
     cancelEdit()
     await loadFiles()
     await selectPath(saved.path)
-    await loadPromptPreview()
     notice.value = `Saved ${saved.path}.`
     ElMessage.success(notice.value)
     emit('changed')
@@ -766,7 +664,6 @@ async function deleteCurrent() {
     const nextPath = selectedKind.value === 'dir' ? parentPath(selectedPath.value) || 'skills' : selectedDirectory.value || rootPath.value
     await loadFiles()
     await selectPath(nextPath)
-    await loadPromptPreview()
     notice.value = `Deleted ${paths.length} file${paths.length === 1 ? '' : 's'}.`
     ElMessage.success(notice.value)
     emit('changed')
@@ -863,11 +760,6 @@ async function copyContent() {
   ElMessage.success('Copied content.')
 }
 
-async function copyPromptPreview() {
-  await writeClipboard(promptPreview.value)
-  ElMessage.success('Copied final prompt.')
-}
-
 async function writeClipboard(value) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     await navigator.clipboard.writeText(value)
@@ -880,8 +772,8 @@ function listPrefix() {
 
 function scopedVfsUrl(path, values = {}) {
   const query = new URLSearchParams()
-  query.set('scope', knowledgeScope.value)
-  if (knowledgeScope.value === 'project' && props.sessionId) query.set('sessionId', props.sessionId)
+  query.set('scope', props.scope)
+  if (props.scope === 'project' && props.sessionId) query.set('sessionId', props.sessionId)
   for (const [key, value] of Object.entries(values)) {
     if (value !== undefined && value !== null && value !== '') query.set(key, value)
   }
@@ -1036,54 +928,10 @@ function defaultSkillContent(path) {
   return `---\nname: ${name}\ndescription: Use when this workflow is relevant.\n---\n\n# ${name}\n\nDescribe the workflow here.\n`
 }
 
-function markdownBlocks(content) {
-  const blocks = []
-  const lines = String(content || '').split(/\r?\n/)
-  let inFence = false
-  let fence = []
-  for (const line of lines) {
-    if (line.trim().startsWith('```')) {
-      if (inFence) {
-        blocks.push({ tag: 'pre', text: fence.join('\n'), className: 'markdown-code-block' })
-        fence = []
-        inFence = false
-      } else {
-        inFence = true
-      }
-      continue
-    }
-    if (inFence) {
-      fence.push(line)
-      continue
-    }
-    if (!line.trim()) continue
-    const heading = line.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      blocks.push({ tag: `h${Math.min(heading[1].length, 6)}`, text: heading[2], className: '' })
-      continue
-    }
-    const listItem = line.match(/^\s*[-*]\s+(.+)$/)
-    if (listItem) {
-      blocks.push({ tag: 'p', text: `• ${listItem[1]}`, className: 'markdown-list-item' })
-      continue
-    }
-    blocks.push({ tag: 'p', text: line, className: '' })
-  }
-  if (fence.length) {
-    blocks.push({ tag: 'pre', text: fence.join('\n'), className: 'markdown-code-block' })
-  }
-  return blocks
-}
-
 function setCurrentTreeKey() {
   if (treeRef.value && selectedPath.value) {
     treeRef.value.setCurrentKey(selectedPath.value)
   }
-}
-
-function countLines(content) {
-  if (!content) return 0
-  return String(content).split(/\r\n|\r|\n/).length
 }
 
 function parentPath(path) {
@@ -1144,4 +992,9 @@ async function responseError(response, text = null) {
     return body
   }
 }
+
+defineExpose({
+  hasUnsavedChanges,
+  discardChanges: cancelEdit
+})
 </script>
