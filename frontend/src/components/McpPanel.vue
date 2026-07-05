@@ -1,18 +1,10 @@
 <template>
   <section class="mcp-panel">
-    <header class="mcp-page-header">
-      <div>
-        <h2>MCP Management</h2>
-        <p>{{ servers.length }} servers, {{ availableCount }} available</p>
-      </div>
-      <el-radio-group v-model="configScope" size="small" aria-label="MCP configuration scope">
-        <el-radio-button value="global">Global</el-radio-button>
-        <el-radio-button value="project" :disabled="!sessionId">Current project</el-radio-button>
-      </el-radio-group>
-    </header>
-
     <div class="mcp-config-toolbar">
-      <strong>mcp.json</strong>
+      <div>
+        <strong>mcp.json</strong>
+        <span>{{ servers.length }} servers, {{ availableCount }} available</span>
+      </div>
       <div class="mcp-detail-actions">
         <el-button
           :type="hasDatabaseConfig ? 'default' : 'primary'"
@@ -229,11 +221,16 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { Connection, Delete, DocumentAdd, EditPen, Refresh, VideoPlay } from '@element-plus/icons-vue'
-import { ElCheckbox, ElCheckboxGroup, ElMessage, ElRadioButton, ElRadioGroup, ElSwitch } from 'element-plus'
+import { ElCheckbox, ElCheckboxGroup, ElMessage, ElSwitch } from 'element-plus'
 import { request } from '../api/http'
 
 const props = defineProps({
-  sessionId: { type: String, default: '' }
+  sessionId: { type: String, default: '' },
+  scope: {
+    type: String,
+    default: 'global',
+    validator: (value) => ['global', 'project'].includes(value)
+  }
 })
 
 const emit = defineEmits(['changed'])
@@ -248,7 +245,6 @@ const databaseConfig = ref(null)
 const selectedName = ref('')
 const jsonDialogOpen = ref(false)
 const jsonDraft = ref('')
-const configScope = ref('global')
 const serverEnabledDraft = ref(true)
 const originalServerEnabled = ref(true)
 const toolSelectionDraft = ref([])
@@ -277,7 +273,7 @@ const jsonPlaceholder = JSON.stringify({
 const selectedServer = computed(() => servers.value.find((server) => server.name === selectedName.value) || null)
 const availableCount = computed(() => servers.value.filter((server) => server.status === 'available').length)
 const hasDatabaseConfig = computed(() => databaseConfig.value !== null)
-const scopeLabel = computed(() => configScope.value === 'project' ? 'project' : 'global')
+const scopeLabel = computed(() => props.scope === 'project' ? 'project' : 'global')
 const availableToolDetails = computed(() => {
   const details = new Map()
   for (const tool of selectedServer.value?.toolDetails || []) {
@@ -297,11 +293,7 @@ const serverConfigDirty = computed(() => (
   || !sameToolSelection(toolSelectionDraft.value, originalToolSelection.value)
 ))
 
-watch(() => props.sessionId, async () => {
-  if (!props.sessionId && configScope.value === 'project') configScope.value = 'global'
-  await load()
-})
-watch(configScope, load)
+watch(() => [props.sessionId, props.scope], load)
 watch(selectedName, syncServerDraft)
 onMounted(load)
 
@@ -581,8 +573,8 @@ function headerEntries(config) {
 }
 
 function sessionQuery() {
-  const query = new URLSearchParams({ scope: configScope.value })
-  if (configScope.value === 'project' && props.sessionId) query.set('sessionId', props.sessionId)
+  const query = new URLSearchParams({ scope: props.scope })
+  if (props.scope === 'project' && props.sessionId) query.set('sessionId', props.sessionId)
   return `?${query.toString()}`
 }
 
@@ -593,4 +585,18 @@ function statusLabel(status) {
 function statusType(status) {
   return ({ available: 'success', unavailable: 'danger', disabled: 'info', not_loaded: 'warning' })[status] || 'info'
 }
+
+function hasUnsavedChanges() {
+  const storedJson = databaseConfig.value || ''
+  return serverConfigDirty.value || (jsonDialogOpen.value && jsonDraft.value !== storedJson)
+}
+
+function discardChanges() {
+  syncServerDraft()
+  jsonDraft.value = databaseConfig.value || ''
+  jsonError.value = ''
+  jsonDialogOpen.value = false
+}
+
+defineExpose({ hasUnsavedChanges, discardChanges })
 </script>

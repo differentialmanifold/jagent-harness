@@ -10,6 +10,8 @@ import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
+import io.github.differentialmanifold.jagentharness.core.tool.KnowledgeFileToolConfiguration;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
@@ -110,8 +112,17 @@ public class AgentConsoleWebConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ToolController toolController(ToolRegistry toolRegistry) {
-        return new ToolController(toolRegistry);
+    public ToolController toolController(ToolRegistry toolRegistry,
+                                         ObjectProvider<KnowledgeFileToolConfiguration> toolConfiguration,
+                                         SessionManager sessionManager,
+                                         ToolContextFactory toolContextFactory,
+                                         ObjectMapper objectMapper) {
+        return new ToolController(
+                toolRegistry,
+                toolConfiguration.getIfAvailable(),
+                sessionManager,
+                toolContextFactory,
+                objectMapper);
     }
 
     @Bean

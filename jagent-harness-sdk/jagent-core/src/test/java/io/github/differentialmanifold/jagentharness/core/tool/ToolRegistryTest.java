@@ -85,6 +85,34 @@ class ToolRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.all(new AgentContext("session", "turn")));
     }
 
+    @Test
+    void availabilityPoliciesFilterStaticToolsWithoutFilteringDynamicTools() {
+        ToolDefinition dynamic = new StubTool("remote", "remote");
+        ToolAvailabilityPolicy readOnly = (tools, context) -> {
+            List<ToolDefinition> filtered = new ArrayList<ToolDefinition>();
+            for (ToolDefinition tool : tools) {
+                if ("read".equals(tool.getName())) {
+                    filtered.add(tool);
+                }
+            }
+            return filtered;
+        };
+        ToolRegistry registry = new ToolRegistry(
+                java.util.Arrays.<ToolDefinition>asList(
+                        new StubTool("read", "read"),
+                        new StubTool("bash", "bash")),
+                Collections.singletonList(context -> Collections.singletonList(dynamic)),
+                Collections.singletonList(readOnly));
+
+        List<ToolDefinition> resolved = new ArrayList<ToolDefinition>(
+                registry.all(new AgentContext("session", "turn")));
+
+        assertEquals(2, resolved.size());
+        assertEquals("read", resolved.get(0).getName());
+        assertSame(dynamic, resolved.get(1));
+        assertEquals(2, registry.registeredTools().size());
+    }
+
     private static class StubTool implements ToolDefinition {
 
         private final String name;

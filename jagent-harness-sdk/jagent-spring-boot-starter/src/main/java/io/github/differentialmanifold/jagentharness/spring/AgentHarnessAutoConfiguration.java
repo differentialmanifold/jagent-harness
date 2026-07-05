@@ -36,6 +36,8 @@ import io.github.differentialmanifold.jagentharness.core.provider.openai.OpenAiC
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContextFactory;
+import io.github.differentialmanifold.jagentharness.core.tool.KnowledgeFileToolConfiguration;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolAvailabilityPolicy;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
@@ -83,10 +85,22 @@ public class AgentHarnessAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ToolRegistry toolRegistry(List<ToolDefinition> tools, ObjectProvider<ToolProvider> toolProviders) {
+    public ToolRegistry toolRegistry(List<ToolDefinition> tools,
+                                     ObjectProvider<ToolProvider> toolProviders,
+                                     ObjectProvider<ToolAvailabilityPolicy> toolAvailabilityPolicies) {
         List<ToolProvider> providers = new ArrayList<ToolProvider>();
         toolProviders.forEach(providers::add);
-        return new ToolRegistry(tools, providers);
+        List<ToolAvailabilityPolicy> policies = new ArrayList<ToolAvailabilityPolicy>();
+        toolAvailabilityPolicies.forEach(policies::add);
+        return new ToolRegistry(tools, providers, policies);
+    }
+
+    @Bean
+    @ConditionalOnBean(KnowledgeFileStore.class)
+    @ConditionalOnMissingBean
+    public KnowledgeFileToolConfiguration knowledgeFileToolConfiguration(KnowledgeFileStore knowledgeFileStore,
+                                                                         ObjectMapper objectMapper) {
+        return new KnowledgeFileToolConfiguration(knowledgeFileStore, objectMapper);
     }
 
     @Bean
