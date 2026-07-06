@@ -241,6 +241,20 @@ Reusable extension modules should expose those beans through Spring Boot auto-co
 The default OpenAI-compatible provider uses an OkHttp-backed `ModelHttpClient`; applications can
 override it by registering their own `ModelHttpClient` bean.
 
+By default, the provider reads its Bearer token from `harness.model.api-key`, which the examples
+bind to `JAGENT_OPENAI_API_KEY`. Applications that obtain tokens dynamically can replace that
+behavior with a thread-safe `ModelAccessTokenProvider` bean:
+
+```java
+@Bean
+public ModelAccessTokenProvider modelAccessTokenProvider(MyTokenService tokenService) {
+    return tokenService::getValidAccessToken;
+}
+```
+
+The provider calls this bean before every model request. OAuth login, refresh, caching, and token
+storage remain application responsibilities.
+
 The SDK provides the built-in `skill` tool for loading `SKILL.md` instructions and files referenced
 by a skill. The coding-tool example registers workspace-specific tools as Spring beans:
 `bash`, `read`, `edit`, `write`, `grep`, `find`, and `ls`. Its `read` tool only accesses the

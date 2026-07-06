@@ -107,7 +107,8 @@ public class AgentHarnessAutoConfiguration {
     @ConditionalOnMissingBean(name = "openAiCompatibleProvider")
     public ModelProvider openAiCompatibleProvider(HarnessProperties properties,
                                                   ObjectMapper objectMapper,
-                                                  ObjectProvider<ModelHttpClient> httpClient) {
+                                                  ObjectProvider<ModelHttpClient> httpClient,
+                                                  ModelAccessTokenProvider accessTokenProvider) {
         OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
         config.setBaseUrl(properties.getModel().getBaseUrl());
         config.setApiKey(properties.getModel().getApiKey());
@@ -115,9 +116,19 @@ public class AgentHarnessAutoConfiguration {
         config.setStreamEnabled(properties.getModel().isStreamEnabled());
         ModelHttpClient effectiveHttpClient = httpClient.getIfAvailable();
         if (effectiveHttpClient != null) {
-            return new OpenAiCompatibleProvider(config, objectMapper, effectiveHttpClient);
+            return new OpenAiCompatibleProvider(
+                    config,
+                    objectMapper,
+                    effectiveHttpClient,
+                    accessTokenProvider::getAccessToken);
         }
-        return new OpenAiCompatibleProvider(config, objectMapper);
+        return new OpenAiCompatibleProvider(config, objectMapper, accessTokenProvider::getAccessToken);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ModelAccessTokenProvider modelAccessTokenProvider(HarnessProperties properties) {
+        return () -> properties.getModel().getApiKey();
     }
 
     @Bean

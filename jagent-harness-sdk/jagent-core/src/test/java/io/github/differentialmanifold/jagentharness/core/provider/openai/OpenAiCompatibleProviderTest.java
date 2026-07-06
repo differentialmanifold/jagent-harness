@@ -28,9 +28,47 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaCons
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpClient;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpRequest;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpResponse;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpStreamHandler;
 import org.junit.jupiter.api.Test;
 
 class OpenAiCompatibleProviderTest {
+
+    @Test
+    void existingConstructorUsesConfiguredApiKey() {
+        OpenAiCompatibleProviderConfig config = config(false);
+        config.setApiKey("configured-token");
+        RecordingHttpClient httpClient = new RecordingHttpClient();
+        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper(), httpClient);
+
+        provider.chat(request());
+
+        assertEquals(Collections.singletonList("Bearer configured-token"), httpClient.authorizationHeaders);
+    }
+
+    @Test
+    void resolvesAccessTokenForEveryRequestAndOmitsBlankToken() {
+        AtomicReference<String> token = new AtomicReference<String>("first-token");
+        RecordingHttpClient httpClient = new RecordingHttpClient();
+        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
+                config(false),
+                new ObjectMapper(),
+                httpClient,
+                token::get);
+
+        provider.chat(request());
+        token.set("second-token");
+        provider.chat(request());
+        token.set(" ");
+        provider.chat(request());
+
+        assertEquals(3, httpClient.authorizationHeaders.size());
+        assertEquals("Bearer first-token", httpClient.authorizationHeaders.get(0));
+        assertEquals("Bearer second-token", httpClient.authorizationHeaders.get(1));
+        assertEquals(null, httpClient.authorizationHeaders.get(2));
+    }
 
     @Test
     void streamDisabledUsesNonStreamingRequestAndEmitsSingleDelta() throws Exception {
@@ -220,6 +258,20 @@ class OpenAiCompatibleProviderTest {
         }
     }
 
+    private OpenAiCompatibleProviderConfig config(boolean streamEnabled) {
+        OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
+        config.setBaseUrl("http://model.example/v1");
+        config.setStreamEnabled(streamEnabled);
+        return config;
+    }
+
+    private ModelRequest request() {
+        ModelRequest request = new ModelRequest();
+        request.setModel("test-model");
+        request.setMessages(Collections.emptyList());
+        return request;
+    }
+
     private static byte[] readAll(java.io.InputStream inputStream) throws IOException {
         byte[] buffer = new byte[4096];
         int read;
@@ -228,6 +280,24 @@ class OpenAiCompatibleProviderTest {
             outputStream.write(buffer, 0, read);
         }
         return outputStream.toByteArray();
+    }
+
+    private static class RecordingHttpClient implements ModelHttpClient {
+
+        private final List<String> authorizationHeaders = new ArrayList<String>();
+
+        @Override
+        public ModelHttpResponse postJson(ModelHttpRequest request) {
+            authorizationHeaders.add(request.getHeaders().get("Authorization"));
+            return new ModelHttpResponse(
+                    200,
+                    "{\"choices\":[{\"message\":{\"content\":\"ok\",\"tool_calls\":[]}}]}");
+        }
+
+        @Override
+        public <T> T postStream(ModelHttpRequest request, ModelHttpStreamHandler<T> handler) {
+            throw new UnsupportedOperationException();
+        }
     }
 
 }
