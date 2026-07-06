@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,17 +37,40 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     private final OpenAiCompatibleProviderConfig config;
     private final ObjectMapper objectMapper;
     private final ModelHttpClient httpClient;
+    private final Supplier<String> accessTokenSupplier;
 
     public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config, ObjectMapper objectMapper) {
-        this(config, objectMapper, new OkHttpModelHttpClient(config.getTimeoutSeconds()));
+        this(
+                config,
+                objectMapper,
+                new OkHttpModelHttpClient(config.getTimeoutSeconds()),
+                config::getApiKey);
     }
 
     public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config,
                                     ObjectMapper objectMapper,
                                     ModelHttpClient httpClient) {
+        this(config, objectMapper, httpClient, config::getApiKey);
+    }
+
+    public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config,
+                                    ObjectMapper objectMapper,
+                                    Supplier<String> accessTokenSupplier) {
+        this(
+                config,
+                objectMapper,
+                new OkHttpModelHttpClient(config.getTimeoutSeconds()),
+                accessTokenSupplier);
+    }
+
+    public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config,
+                                    ObjectMapper objectMapper,
+                                    ModelHttpClient httpClient,
+                                    Supplier<String> accessTokenSupplier) {
         this.config = config;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
+        this.accessTokenSupplier = accessTokenSupplier == null ? config::getApiKey : accessTokenSupplier;
     }
 
     @Override
@@ -350,11 +374,19 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     private Map<String, String> headers() {
         Map<String, String> headers = new LinkedHashMap<String, String>();
         headers.put("Content-Type", "application/json");
-        String apiKey = trimToEmpty(config.getApiKey());
-        if (!apiKey.isEmpty()) {
-            headers.put("Authorization", "Bearer " + apiKey);
+        String accessToken = accessToken();
+        if (!accessToken.isEmpty()) {
+            headers.put("Authorization", "Bearer " + accessToken);
         }
         return headers;
+    }
+
+    private String accessToken() {
+        try {
+            return trimToEmpty(accessTokenSupplier.get());
+        } catch (RuntimeException e) {
+            throw new ModelProviderException("Failed to obtain model access token", e);
+        }
     }
 
     private String valueOrEmpty(String value) {
