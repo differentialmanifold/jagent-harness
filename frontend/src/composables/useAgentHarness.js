@@ -58,6 +58,7 @@ export function useAgentHarness() {
   const running = computed(() => currentRuntimeState.value.running)
   const stopping = computed(() => currentRuntimeState.value.stopping)
   const stopReady = computed(() => currentRuntimeState.value.stopReady)
+  const contextUsage = computed(() => currentRuntimeState.value.contextUsage)
   const anyRunning = computed(() => Array.from(sessionRuntimeStates.values()).some((state) => state.running))
 
   const providerLabel = computed(() => {
@@ -342,6 +343,7 @@ export function useAgentHarness() {
     })
     if (selectionVersion !== sessionSelectionVersion) return
     currentSession.value = details.session
+    state.contextUsage = normalizeUsage(details.latestUsage)
     if (!state.running) {
       replayTimelineEvents(details.events || [], state)
     }
@@ -515,6 +517,8 @@ export function useAgentHarness() {
         discardActiveStreamingMessage(state)
       }
       appendModelRetryMessage(event, payload, state)
+    } else if (type === 'context_usage') {
+      updateContextUsage(payload, state)
     } else if (type === 'agent_end') {
       clearEmptyThinkingMessage(state)
       completePendingTools('completed', state)
@@ -910,6 +914,40 @@ export function useAgentHarness() {
     }
   }
 
+  function updateContextUsage(payload, state) {
+    state.contextUsage = normalizeUsage(payload)
+  }
+
+  function normalizeUsage(usage) {
+    if (!usage) return null
+    const contextWindowTokens = numberOrNull(usage.contextWindowTokens)
+    const usedTokens = numberOrNull(usage.actualContextTokens) || numberOrNull(usage.estimatedTokens)
+    if (!contextWindowTokens || !usedTokens) return null
+    return {
+      usageId: usage.usageId || '',
+      messageId: usage.messageId || '',
+      provider: usage.provider || '',
+      model: usage.model || '',
+      contextWindowTokens,
+      thresholdTokens: numberOrNull(usage.thresholdTokens),
+      estimateSource: usage.estimateSource || '',
+      estimatedTokens: numberOrNull(usage.estimatedTokens),
+      rawEstimatedTokens: numberOrNull(usage.rawEstimatedTokens),
+      actualContextTokens: numberOrNull(usage.actualContextTokens),
+      promptTokens: numberOrNull(usage.promptTokens),
+      completionTokens: numberOrNull(usage.completionTokens),
+      reasoningTokens: numberOrNull(usage.reasoningTokens),
+      cachedTokens: numberOrNull(usage.cachedTokens),
+      totalTokens: numberOrNull(usage.totalTokens),
+      createdAt: usage.createdAt || ''
+    }
+  }
+
+  function numberOrNull(value) {
+    const number = Number(value)
+    return Number.isFinite(number) && number > 0 ? number : null
+  }
+
   function firstVisibleSession() {
     for (const session of sessions.value) {
       if (!hiddenProjectKeys.value.includes(sessionProjectKey(session))) {
@@ -1012,6 +1050,7 @@ export function useAgentHarness() {
       activeRequestId: null,
       streamController: null,
       stopFallbackTimer: null,
+      contextUsage: null,
       pendingToolMessages: new Map()
     }
   }
@@ -1046,6 +1085,7 @@ export function useAgentHarness() {
     running,
     stopping,
     stopReady,
+    contextUsage,
     anyRunning,
     approvalMode,
     projectDialogOpen,

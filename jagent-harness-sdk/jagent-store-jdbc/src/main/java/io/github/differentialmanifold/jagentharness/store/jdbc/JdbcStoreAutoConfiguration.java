@@ -11,6 +11,7 @@ import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestSto
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -56,6 +57,13 @@ public class JdbcStoreAutoConfiguration {
     public JdbcCompactionStore jdbcCompactionStore(JdbcTemplate jdbcTemplate,
                                                    JdbcStoreProperties properties) {
         return new JdbcCompactionStore(jdbcTemplate, properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ModelCallUsageStore.class)
+    public JdbcModelCallUsageStore jdbcModelCallUsageStore(JdbcTemplate jdbcTemplate,
+                                                           JdbcStoreProperties properties) {
+        return new JdbcModelCallUsageStore(jdbcTemplate, properties);
     }
 
     @Bean

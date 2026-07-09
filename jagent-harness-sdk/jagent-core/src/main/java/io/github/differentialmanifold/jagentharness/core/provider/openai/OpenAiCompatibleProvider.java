@@ -25,6 +25,7 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaCons
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelUsage;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpClient;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpException;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpRequest;
@@ -175,6 +176,11 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("model", model);
         payload.put("stream", stream);
+        if (stream && config.isIncludeUsage()) {
+            ObjectNode streamOptions = objectMapper.createObjectNode();
+            streamOptions.put("include_usage", true);
+            payload.set("stream_options", streamOptions);
+        }
         if (request.getTemperature() != null) {
             payload.put("temperature", request.getTemperature());
         }
@@ -278,6 +284,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             }
         }
         response.setToolCalls(toolCalls);
+        response.setUsage(parseUsage(root.path("usage")));
         response.setRawJson(body);
         return response;
     }
@@ -315,6 +322,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         }
         accumulator.rawChunks.add(value);
         JsonNode root = objectMapper.readTree(value);
+        ModelUsage usage = parseUsage(root.path("usage"));
+        if (usage != null) {
+            accumulator.usage = usage;
+        }
         JsonNode choice = root.path("choices").path(0);
         JsonNode delta = choice.path("delta");
         JsonNode reasoningNode = delta.path("reasoning_content");
@@ -355,6 +366,53 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 }
             }
         }
+    }
+
+    private ModelUsage parseUsage(JsonNode usageNode) {
+        if (usageNode == null || usageNode.isMissingNode() || usageNode.isNull() || !usageNode.isObject()) {
+            return null;
+        }
+        ModelUsage usage = new ModelUsage();
+        usage.setPromptTokens(integerValue(usageNode.path("prompt_tokens")));
+        usage.setCompletionTokens(integerValue(usageNode.path("completion_tokens")));
+        usage.setTotalTokens(integerValue(usageNode.path("total_tokens")));
+
+        Integer reasoningTokens = integerValue(
+                usageNode.path("completion_tokens_details").path("reasoning_tokens"));
+        if (reasoningTokens == null) {
+            reasoningTokens = integerValue(usageNode.path("reasoning_tokens"));
+        }
+        usage.setReasoningTokens(reasoningTokens);
+
+        Integer cachedTokens = integerValue(
+                usageNode.path("prompt_tokens_details").path("cached_tokens"));
+        if (cachedTokens == null) {
+            cachedTokens = integerValue(usageNode.path("cached_tokens"));
+        }
+        usage.setCachedTokens(cachedTokens);
+
+        return usage.hasTokenCounts() ? usage : null;
+    }
+
+    private Integer integerValue(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.asInt();
+        }
+        if (node.isTextual()) {
+            String value = node.asText();
+            if (value == null || value.trim().isEmpty()) {
+                return null;
+            }
+            try {
+                return Integer.valueOf(value.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private String resolveChatCompletionsUrl() {
@@ -414,6 +472,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         private final StringBuilder reasoningContent = new StringBuilder();
         private final Map<Integer, ToolCallAccumulator> toolCalls = new TreeMap<Integer, ToolCallAccumulator>();
         private final List<String> rawChunks = new ArrayList<String>();
+        private ModelUsage usage;
 
         private ModelResponse toResponse(ObjectMapper objectMapper) {
             ModelResponse response = new ModelResponse();
@@ -428,6 +487,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 calls.add(new ToolCall(id, toolCall.name.toString(), toolCall.arguments.toString()));
             }
             response.setToolCalls(calls);
+            response.setUsage(usage);
 
             ObjectNode raw = objectMapper.createObjectNode();
             raw.put("stream", true);

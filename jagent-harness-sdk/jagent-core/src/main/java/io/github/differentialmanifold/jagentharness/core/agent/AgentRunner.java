@@ -32,6 +32,9 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 
 public class AgentRunner implements AgentHarness {
 
@@ -43,6 +46,7 @@ public class AgentRunner implements AgentHarness {
     private final ModelProviderRegistry providerRegistry;
     private final ToolContextFactory toolContextFactory;
     private final ConversationContextManager conversationContextManager;
+    private final ModelCallUsageStore modelCallUsageStore;
     private final ObjectMapper objectMapper;
 
     public AgentRunner(AgentSettings settings,
@@ -54,6 +58,29 @@ public class AgentRunner implements AgentHarness {
                        ToolContextFactory toolContextFactory,
                        ConversationContextManager conversationContextManager,
                        ObjectMapper objectMapper) {
+        this(
+                settings,
+                sessionStore,
+                eventPublisher,
+                promptProvider,
+                toolRegistry,
+                providerRegistry,
+                toolContextFactory,
+                conversationContextManager,
+                new NoopModelCallUsageStore(),
+                objectMapper);
+    }
+
+    public AgentRunner(AgentSettings settings,
+                       SessionStore sessionStore,
+                       AgentEventPublisher eventPublisher,
+                       PromptProvider promptProvider,
+                       ToolRegistry toolRegistry,
+                       ModelProviderRegistry providerRegistry,
+                       ToolContextFactory toolContextFactory,
+                       ConversationContextManager conversationContextManager,
+                       ModelCallUsageStore modelCallUsageStore,
+                       ObjectMapper objectMapper) {
         this.settings = settings;
         this.sessionStore = sessionStore;
         this.eventPublisher = eventPublisher;
@@ -62,6 +89,7 @@ public class AgentRunner implements AgentHarness {
         this.providerRegistry = providerRegistry;
         this.toolContextFactory = toolContextFactory;
         this.conversationContextManager = conversationContextManager;
+        this.modelCallUsageStore = modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
         this.objectMapper = objectMapper;
     }
 
@@ -186,6 +214,7 @@ public class AgentRunner implements AgentHarness {
                 partialReasoning.setLength(0);
                 publish(sessionId, turnId, AgentEvent.MESSAGE_END,
                         eventPayload("message", assistantMessage));
+                publishContextUsage(sessionId, turnId, provider, conversationContext, assistantMessage, response);
 
                 answer = response.getContent();
                 if (response.getToolCalls() == null || response.getToolCalls().isEmpty()) {
@@ -591,6 +620,79 @@ public class AgentRunner implements AgentHarness {
         payload.put("delta", delta);
         payload.put("index", index);
         publish(sessionId, turnId, AgentEvent.MESSAGE_REASONING_UPDATE, payload);
+    }
+
+    private void publishContextUsage(String sessionId,
+                                     String turnId,
+                                     ModelProvider provider,
+                                     ConversationContext conversationContext,
+                                     AgentMessage assistantMessage,
+                                     ModelResponse response) {
+        int contextWindowTokens = conversationContext.getContextWindowTokens() > 0
+                ? conversationContext.getContextWindowTokens()
+                : effectiveContextWindowTokens();
+        int thresholdTokens = conversationContext.getThresholdTokens() > 0
+                ? conversationContext.getThresholdTokens()
+                : compactionThresholdTokens(contextWindowTokens);
+        String estimateSource = conversationContext.getEstimateSource() == null
+                ? ModelCallUsage.ESTIMATE_SOURCE_FULL
+                : conversationContext.getEstimateSource();
+        Integer estimatedTokens = conversationContext.getEstimatedTokens() <= 0
+                ? null
+                : conversationContext.getEstimatedTokens();
+
+        ModelCallUsage record = null;
+        if (response != null && response.getUsage() != null && response.getUsage().hasTokenCounts()) {
+            record = ModelCallUsage.fromUsage(
+                    sessionId,
+                    turnId,
+                    assistantMessage.getMessageId(),
+                    provider == null ? "" : provider.getName(),
+                    settings.getModel(),
+                    contextWindowTokens,
+                    thresholdTokens,
+                    estimateSource,
+                    estimatedTokens,
+                    response.getUsage());
+            modelCallUsageStore.append(record);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("usageId", record == null ? null : record.getUsageId());
+        payload.put("messageId", assistantMessage.getMessageId());
+        payload.put("provider", provider == null ? "" : provider.getName());
+        payload.put("model", settings.getModel());
+        payload.put("contextWindowTokens", contextWindowTokens);
+        payload.put("thresholdTokens", thresholdTokens);
+        payload.put("estimateSource", estimateSource);
+        payload.put("estimatedTokens", estimatedTokens);
+        payload.put("rawEstimatedTokens", conversationContext.getRawEstimatedTokens() <= 0
+                ? null
+                : conversationContext.getRawEstimatedTokens());
+        if (record != null) {
+            payload.put("actualContextTokens", record.getActualContextTokens());
+            payload.put("promptTokens", record.getPromptTokens());
+            payload.put("completionTokens", record.getCompletionTokens());
+            payload.put("reasoningTokens", record.getReasoningTokens());
+            payload.put("cachedTokens", record.getCachedTokens());
+            payload.put("totalTokens", record.getTotalTokens());
+            payload.put("createdAt", record.getCreatedAt());
+        }
+        publish(sessionId, turnId, AgentEvent.CONTEXT_USAGE, payload);
+    }
+
+    private int effectiveContextWindowTokens() {
+        return settings.getContextWindowTokens() <= 0 ? 128000 : settings.getContextWindowTokens();
+    }
+
+    private int compactionThresholdTokens(int contextWindowTokens) {
+        double ratio = settings.getCompactionThresholdRatio() <= 0
+                ? 0.8d
+                : settings.getCompactionThresholdRatio();
+        if (ratio > 1.0d) {
+            ratio = 1.0d;
+        }
+        return Math.max(1, (int) Math.floor(contextWindowTokens * ratio));
     }
 
     private AgentEvent publish(String sessionId,

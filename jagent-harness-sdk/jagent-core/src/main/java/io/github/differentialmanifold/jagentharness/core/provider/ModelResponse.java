@@ -10,6 +10,7 @@ public class ModelResponse {
     private String content;
     private String reasoningContent;
     private List<ToolCall> toolCalls = new ArrayList<ToolCall>();
+    private ModelUsage usage;
     private String rawJson;
 
     public String getContent() {
@@ -34,6 +35,14 @@ public class ModelResponse {
 
     public void setToolCalls(List<ToolCall> toolCalls) {
         this.toolCalls = toolCalls;
+    }
+
+    public ModelUsage getUsage() {
+        return usage;
+    }
+
+    public void setUsage(ModelUsage usage) {
+        this.usage = usage;
     }
 
     public String getRawJson() {

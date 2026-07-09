@@ -1898,6 +1898,7 @@ textarea {
 
 .composer-right {
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .composer-input {
@@ -2041,6 +2042,73 @@ textarea {
   height: 12px;
   border-radius: 2px;
   background: currentColor;
+}
+
+.context-usage-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #667085;
+  cursor: default;
+  padding: 0;
+}
+
+.context-usage-indicator:hover,
+.context-usage-indicator:focus-visible {
+  background: #f2f6fb;
+  outline: none;
+}
+
+.context-usage-indicator svg {
+  width: 22px;
+  height: 22px;
+  transform: rotate(-90deg);
+}
+
+.context-usage-track,
+.context-usage-progress {
+  fill: none;
+  stroke-width: 3;
+}
+
+.context-usage-track {
+  stroke: #d0d7de;
+}
+
+.context-usage-progress {
+  stroke: #667085;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.2s ease;
+}
+
+.context-usage-popover {
+  display: grid;
+  gap: 5px;
+  min-width: 210px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.context-usage-title {
+  color: #98a2b3;
+  font-weight: 600;
+}
+
+.context-usage-primary {
+  color: #fff;
+  font-weight: 600;
+}
+
+.context-usage-details {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+  color: #d0d5dd;
 }
 
 .primary-button:disabled,

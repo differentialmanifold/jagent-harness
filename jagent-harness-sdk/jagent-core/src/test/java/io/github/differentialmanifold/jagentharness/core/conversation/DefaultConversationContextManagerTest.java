@@ -17,6 +17,8 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import org.junit.jupiter.api.Test;
 
 class DefaultConversationContextManagerTest {
@@ -100,6 +102,57 @@ class DefaultConversationContextManagerTest {
         assertEquals(followUp, context.getMessages().get(0));
     }
 
+    @Test
+    void usesLatestActualUsageAsEstimateBaseline() {
+        AgentSettings settings = new AgentSettings();
+        settings.setCompactionEnabled(false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        FakeUsageStore usageStore = new FakeUsageStore();
+        usageStore.latest = new ModelCallUsage();
+        usageStore.latest.setMessageId("m2");
+        usageStore.latest.setActualContextTokens(40);
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                new NoopCompactionStore(),
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper,
+                usageStore);
+
+        AgentMessage user = message("m1", AgentMessage.ROLE_USER, "first");
+        AgentMessage assistant = message("m2", AgentMessage.ROLE_ASSISTANT, "answer");
+        AgentMessage followUp = message("m3", AgentMessage.ROLE_USER, "new follow up");
+
+        ConversationContext context = manager.prepare(request(Arrays.asList(user, assistant, followUp)));
+
+        int deltaTokens = new TokenEstimator().estimateMessages(Collections.singletonList(followUp));
+        assertEquals(40 + deltaTokens, context.getEstimatedTokens());
+        assertEquals(ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE, context.getEstimateSource());
+    }
+
+    @Test
+    void fallsBackToFullEstimateWhenUsageBaselineMessageIsMissing() {
+        AgentSettings settings = new AgentSettings();
+        settings.setCompactionEnabled(false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        FakeUsageStore usageStore = new FakeUsageStore();
+        usageStore.latest = new ModelCallUsage();
+        usageStore.latest.setMessageId("missing");
+        usageStore.latest.setActualContextTokens(40);
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                new NoopCompactionStore(),
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper,
+                usageStore);
+
+        AgentMessage user = message("m1", AgentMessage.ROLE_USER, "first");
+
+        ConversationContext context = manager.prepare(request(Collections.singletonList(user)));
+
+        assertEquals(context.getRawEstimatedTokens(), context.getEstimatedTokens());
+        assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, context.getEstimateSource());
+    }
+
     private DefaultConversationContextManager manager() {
         AgentSettings settings = new AgentSettings();
         settings.setCompactionEnabled(false);
@@ -121,6 +174,15 @@ class DefaultConversationContextManagerTest {
                 null);
     }
 
+    private static AgentMessage message(String messageId, String role, String content) {
+        AgentMessage message = new AgentMessage();
+        message.setMessageId(messageId);
+        message.setSessionId("s1");
+        message.setRole(role);
+        message.setContent(content);
+        return message;
+    }
+
     private static class FakeCompactionStore implements CompactionStore {
         private String cursorMessageId;
 
@@ -132,6 +194,19 @@ class DefaultConversationContextManagerTest {
         @Override
         public void save(String sessionId, String summary, String cursorMessageId) {
             this.cursorMessageId = cursorMessageId;
+        }
+    }
+
+    private static class FakeUsageStore implements ModelCallUsageStore {
+        private ModelCallUsage latest;
+
+        @Override
+        public ModelCallUsage findLatestBySessionId(String sessionId) {
+            return latest;
+        }
+
+        @Override
+        public void append(ModelCallUsage usage) {
         }
     }
 

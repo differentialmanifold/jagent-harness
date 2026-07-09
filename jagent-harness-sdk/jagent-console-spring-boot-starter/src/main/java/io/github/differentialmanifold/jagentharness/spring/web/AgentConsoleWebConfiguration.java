@@ -13,6 +13,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordi
 import io.github.differentialmanifold.jagentharness.core.tool.KnowledgeFileToolConfiguration;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpRuntime;
@@ -106,8 +107,12 @@ public class AgentConsoleWebConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public SessionController sessionController(SessionManager sessionManager,
-                                               WorkspaceRootResolver workspaceRootResolver) {
-        return new SessionController(sessionManager, workspaceRootResolver);
+                                               WorkspaceRootResolver workspaceRootResolver,
+                                               ObjectProvider<ModelCallUsageStore> modelCallUsageStore) {
+        return new SessionController(
+                sessionManager,
+                workspaceRootResolver,
+                modelCallUsageStore.getIfAvailable());
     }
 
     @Bean

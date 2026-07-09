@@ -6,6 +6,7 @@ public class OpenAiCompatibleProviderConfig {
     private String apiKey = "";
     private int timeoutSeconds = 120;
     private boolean streamEnabled = true;
+    private boolean includeUsage = true;
 
     public String getBaseUrl() {
         return baseUrl;
@@ -37,5 +38,13 @@ public class OpenAiCompatibleProviderConfig {
 
     public void setStreamEnabled(boolean streamEnabled) {
         this.streamEnabled = streamEnabled;
+    }
+
+    public boolean isIncludeUsage() {
+        return includeUsage;
+    }
+
+    public void setIncludeUsage(boolean includeUsage) {
+        this.includeUsage = includeUsage;
     }
 }

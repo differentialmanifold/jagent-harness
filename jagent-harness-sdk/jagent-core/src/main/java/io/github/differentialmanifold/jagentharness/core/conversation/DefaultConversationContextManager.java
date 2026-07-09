@@ -18,6 +18,9 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 
 public class DefaultConversationContextManager implements ConversationContextManager {
 
@@ -29,16 +32,26 @@ public class DefaultConversationContextManager implements ConversationContextMan
     private final CompactionStore compactionStore;
     private final AgentEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final ModelCallUsageStore modelCallUsageStore;
     private final TokenEstimator tokenEstimator = new TokenEstimator();
 
     public DefaultConversationContextManager(AgentSettings settings,
                                              CompactionStore compactionStore,
                                              AgentEventPublisher eventPublisher,
                                              ObjectMapper objectMapper) {
+        this(settings, compactionStore, eventPublisher, objectMapper, new NoopModelCallUsageStore());
+    }
+
+    public DefaultConversationContextManager(AgentSettings settings,
+                                             CompactionStore compactionStore,
+                                             AgentEventPublisher eventPublisher,
+                                             ObjectMapper objectMapper,
+                                             ModelCallUsageStore modelCallUsageStore) {
         this.settings = settings;
         this.compactionStore = compactionStore;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.modelCallUsageStore = modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
     }
 
     @Override
@@ -52,21 +65,26 @@ public class DefaultConversationContextManager implements ConversationContextMan
         String cursorMessageId = state == null ? null : state.getCursorMessageId();
         List<AgentMessage> contextMessages = messagesAfterCursor(messages, cursorMessageId);
         String systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
-        int estimatedTokens = estimateRequestTokens(
+        List<AgentMessage> modelMessages = messagesForModel(contextMessages);
+        EstimateSnapshot estimate = estimateRequestTokens(
+                request.getSessionId(),
                 systemPromptWithSummary,
-                messagesForModel(contextMessages),
+                modelMessages,
                 request.getTools());
-        int thresholdTokens = compactionThresholdTokens();
+        int thresholdTokens = estimate.thresholdTokens;
 
-        if (shouldCompact(estimatedTokens, thresholdTokens, contextMessages)) {
+        if (shouldCompact(estimate.estimatedTokens, thresholdTokens, contextMessages)) {
+            EstimateSnapshot beforeCompactionEstimate = estimate;
             List<AgentMessage> recentMessages = recentMessages(contextMessages);
             int compactMessageCount = contextMessages.size() - recentMessages.size();
             if (compactMessageCount > 0) {
                 List<AgentMessage> messagesToCompact = new ArrayList<AgentMessage>(
                         contextMessages.subList(0, compactMessageCount));
                 Map<String, Object> startPayload = new LinkedHashMap<String, Object>();
-                startPayload.put("estimatedTokens", estimatedTokens);
+                startPayload.put("estimatedTokens", estimate.estimatedTokens);
+                startPayload.put("rawEstimatedTokens", estimate.rawEstimatedTokens);
                 startPayload.put("thresholdTokens", thresholdTokens);
+                startPayload.put("estimateSource", estimate.estimateSource);
                 startPayload.put("messageCount", contextMessages.size());
                 startPayload.put("compactMessageCount", messagesToCompact.size());
                 startPayload.put("recentMessageCount", recentMessages.size());
@@ -83,14 +101,19 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
                 contextMessages = recentMessages;
                 systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
-                int compactedTokens = estimateRequestTokens(
+                modelMessages = messagesForModel(contextMessages);
+                estimate = estimateRequestTokens(
+                        request.getSessionId(),
                         systemPromptWithSummary,
-                        messagesForModel(contextMessages),
+                        modelMessages,
                         request.getTools());
                 Map<String, Object> endPayload = new LinkedHashMap<String, Object>();
-                endPayload.put("estimatedTokensBefore", estimatedTokens);
-                endPayload.put("estimatedTokensAfter", compactedTokens);
-                endPayload.put("thresholdTokens", thresholdTokens);
+                endPayload.put("estimatedTokensBefore", beforeCompactionEstimate.estimatedTokens);
+                endPayload.put("rawEstimatedTokensBefore", beforeCompactionEstimate.rawEstimatedTokens);
+                endPayload.put("estimatedTokensAfter", estimate.estimatedTokens);
+                endPayload.put("rawEstimatedTokensAfter", estimate.rawEstimatedTokens);
+                endPayload.put("thresholdTokens", estimate.thresholdTokens);
+                endPayload.put("estimateSource", estimate.estimateSource);
                 endPayload.put("summaryTokens", tokenEstimator.estimateText(summary));
                 endPayload.put("cursorMessageId", cursorMessageId);
                 publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_END, endPayload);
@@ -98,7 +121,20 @@ public class DefaultConversationContextManager implements ConversationContextMan
         }
 
         request.getStopSignal().throwIfAborted();
-        return new ConversationContext(systemPromptWithSummary, messagesForModel(contextMessages));
+        modelMessages = messagesForModel(contextMessages);
+        estimate = estimateRequestTokens(
+                request.getSessionId(),
+                systemPromptWithSummary,
+                modelMessages,
+                request.getTools());
+        return new ConversationContext(
+                systemPromptWithSummary,
+                modelMessages,
+                estimate.estimatedTokens,
+                estimate.rawEstimatedTokens,
+                estimate.contextWindowTokens,
+                estimate.thresholdTokens,
+                estimate.estimateSource);
     }
 
     private boolean shouldCompact(int estimatedTokens,
@@ -111,18 +147,51 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 && contextMessages.size() > Math.max(1, settings.getCompactionRecentMessages());
     }
 
-    private int estimateRequestTokens(String systemPrompt,
-                                      List<AgentMessage> messages,
-                                      Collection<ToolDefinition> tools) {
+    private EstimateSnapshot estimateRequestTokens(String sessionId,
+                                                   String systemPrompt,
+                                                   List<AgentMessage> messages,
+                                                   Collection<ToolDefinition> tools) {
+        int rawEstimatedTokens = rawEstimateRequestTokens(systemPrompt, messages, tools);
+        int contextWindowTokens = effectiveContextWindowTokens();
+        int thresholdTokens = compactionThresholdTokens(contextWindowTokens);
+        ModelCallUsage latestUsage = modelCallUsageStore.findLatestBySessionId(sessionId);
+        if (latestUsage != null && latestUsage.getActualContextTokens() != null) {
+            int baselineIndex = indexOfMessage(messages, latestUsage.getMessageId());
+            if (baselineIndex >= 0) {
+                List<AgentMessage> deltaMessages = messages.subList(baselineIndex + 1, messages.size());
+                int estimatedTokens = latestUsage.getActualContextTokens()
+                        + tokenEstimator.estimateMessages(deltaMessages);
+                return new EstimateSnapshot(
+                        Math.max(1, estimatedTokens),
+                        rawEstimatedTokens,
+                        contextWindowTokens,
+                        thresholdTokens,
+                        ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE);
+            }
+        }
+        return new EstimateSnapshot(
+                rawEstimatedTokens,
+                rawEstimatedTokens,
+                contextWindowTokens,
+                thresholdTokens,
+                ModelCallUsage.ESTIMATE_SOURCE_FULL);
+    }
+
+    private int rawEstimateRequestTokens(String systemPrompt,
+                                         List<AgentMessage> messages,
+                                         Collection<ToolDefinition> tools) {
         return tokenEstimator.estimateText(systemPrompt)
                 + tokenEstimator.estimateMessages(messages)
                 + tokenEstimator.estimateTools(tools);
     }
 
-    private int compactionThresholdTokens() {
-        int contextWindowTokens = settings.getContextWindowTokens() <= 0
+    private int effectiveContextWindowTokens() {
+        return settings.getContextWindowTokens() <= 0
                 ? 128000
                 : settings.getContextWindowTokens();
+    }
+
+    private int compactionThresholdTokens(int contextWindowTokens) {
         double ratio = settings.getCompactionThresholdRatio() <= 0
                 ? 0.8d
                 : settings.getCompactionThresholdRatio();
@@ -130,6 +199,19 @@ public class DefaultConversationContextManager implements ConversationContextMan
             ratio = 1.0d;
         }
         return Math.max(1, (int) Math.floor(contextWindowTokens * ratio));
+    }
+
+    private int indexOfMessage(List<AgentMessage> messages, String messageId) {
+        if (messages == null || messageId == null || messageId.trim().isEmpty()) {
+            return -1;
+        }
+        for (int i = 0; i < messages.size(); i++) {
+            AgentMessage message = messages.get(i);
+            if (messageId.equals(message == null ? null : message.getMessageId())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private List<AgentMessage> messagesAfterCursor(List<AgentMessage> messages, String cursorMessageId) {
@@ -296,5 +378,25 @@ public class DefaultConversationContextManager implements ConversationContextMan
                                String type,
                                Object payload) {
         return eventPublisher.publish(sessionId, turnId, type, payload);
+    }
+
+    private static class EstimateSnapshot {
+        private final int estimatedTokens;
+        private final int rawEstimatedTokens;
+        private final int contextWindowTokens;
+        private final int thresholdTokens;
+        private final String estimateSource;
+
+        private EstimateSnapshot(int estimatedTokens,
+                                 int rawEstimatedTokens,
+                                 int contextWindowTokens,
+                                 int thresholdTokens,
+                                 String estimateSource) {
+            this.estimatedTokens = estimatedTokens;
+            this.rawEstimatedTokens = rawEstimatedTokens;
+            this.contextWindowTokens = contextWindowTokens;
+            this.thresholdTokens = thresholdTokens;
+            this.estimateSource = estimateSource;
+        }
     }
 }

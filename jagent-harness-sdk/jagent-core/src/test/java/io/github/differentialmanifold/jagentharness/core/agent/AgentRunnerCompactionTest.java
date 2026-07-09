@@ -25,10 +25,13 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelUsage;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import org.junit.jupiter.api.Test;
 
 class AgentRunnerCompactionTest {
@@ -89,6 +92,45 @@ class AgentRunnerCompactionTest {
         assertTrue(events.stream().anyMatch(event -> AgentEvent.COMPACTION_END.equals(event.getType())));
     }
 
+    @Test
+    void savesModelUsageAfterAssistantMessageIsPersisted() {
+        FakeSessionStore store = new FakeSessionStore();
+        CapturingUsageStore usageStore = new CapturingUsageStore();
+        FakeModelProvider provider = new FakeModelProvider();
+        provider.usage = new ModelUsage();
+        provider.usage.setPromptTokens(24);
+        provider.usage.setCompletionTokens(251);
+        provider.usage.setReasoningTokens(239);
+        provider.usage.setCachedTokens(0);
+        provider.usage.setTotalTokens(275);
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
+        AgentSettings settings = settings();
+        settings.setCompactionEnabled(false);
+
+        AgentRunner runner = new AgentRunner(
+                settings,
+                store,
+                eventPublisher,
+                new StaticPromptProvider(),
+                new ToolRegistry(),
+                providers,
+                new DefaultToolContextFactory(),
+                new DefaultConversationContextManager(settings, new FakeCompactionStore(), eventPublisher, objectMapper),
+                usageStore,
+                objectMapper);
+
+        List<AgentEvent> events = new ArrayList<AgentEvent>();
+        runner.run("s1", "hello", AgentRunOptions.builder().eventConsumer(events::add).build());
+
+        AgentMessage assistant = store.messages.get(store.messages.size() - 1);
+        assertEquals(assistant.getMessageId(), usageStore.appended.getMessageId());
+        assertEquals(Integer.valueOf(36), usageStore.appended.getActualContextTokens());
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
+    }
+
     private static AgentSettings settings() {
         AgentSettings settings = new AgentSettings();
         settings.setProvider("fake");
@@ -140,6 +182,7 @@ class AgentRunnerCompactionTest {
 
         private final List<ModelRequest> compactionRequests = new ArrayList<ModelRequest>();
         private final List<ModelRequest> normalRequests = new ArrayList<ModelRequest>();
+        private ModelUsage usage;
 
         @Override
         public String getName() {
@@ -159,7 +202,23 @@ class AgentRunnerCompactionTest {
 
             normalRequests.add(request);
             response.setContent("final answer");
+            response.setUsage(usage);
             return response;
+        }
+    }
+
+    private static class CapturingUsageStore implements ModelCallUsageStore {
+
+        private ModelCallUsage appended;
+
+        @Override
+        public ModelCallUsage findLatestBySessionId(String sessionId) {
+            return null;
+        }
+
+        @Override
+        public void append(ModelCallUsage usage) {
+            this.appended = usage;
         }
     }
 

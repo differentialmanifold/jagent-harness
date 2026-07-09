@@ -42,6 +42,7 @@
           :stopping="stopping"
           :stop-ready="stopReady"
           :approval-mode="approvalMode"
+          :context-usage="contextUsage"
           @update:approval-mode="setApprovalMode"
           @send="sendMessage"
           @stop="stopMessage"
@@ -131,6 +132,7 @@ const {
   running,
   stopping,
   stopReady,
+  contextUsage,
   anyRunning,
   approvalMode,
   projectDialogOpen,
