@@ -43,6 +43,8 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolProvider;
 import io.github.differentialmanifold.jagentharness.core.tool.builtin.SkillTool;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
@@ -66,7 +68,7 @@ public class AgentHarnessAutoConfiguration {
         settings.setTemperature(properties.getModel().getTemperature());
         settings.setConfigRoot(PathsSupport.expandUserHome(properties.getPrompt().getConfigRoot()));
         settings.setCompactionEnabled(properties.getCompaction().isEnabled());
-        settings.setContextWindowTokens(properties.getCompaction().getContextWindowTokens());
+        settings.setContextWindowTokens(properties.getModel().getContextWindowTokens());
         settings.setCompactionThresholdRatio(properties.getCompaction().getThresholdRatio());
         settings.setCompactionRecentMessages(properties.getCompaction().getRecentMessages());
         settings.setCompactionTargetTokens(properties.getCompaction().getTargetTokens());
@@ -114,6 +116,7 @@ public class AgentHarnessAutoConfiguration {
         config.setApiKey(properties.getModel().getApiKey());
         config.setTimeoutSeconds(properties.getModel().getTimeoutSeconds());
         config.setStreamEnabled(properties.getModel().isStreamEnabled());
+        config.setIncludeUsage(properties.getModel().isIncludeUsage());
         ModelHttpClient effectiveHttpClient = httpClient.getIfAvailable();
         if (effectiveHttpClient != null) {
             return new OpenAiCompatibleProvider(
@@ -213,11 +216,23 @@ public class AgentHarnessAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public ModelCallUsageStore modelCallUsageStore() {
+        return new NoopModelCallUsageStore();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public ConversationContextManager conversationContextManager(AgentSettings settings,
                                                                  CompactionStore compactionStore,
                                                                  AgentEventPublisher eventPublisher,
-                                                                 ObjectMapper objectMapper) {
-        return new DefaultConversationContextManager(settings, compactionStore, eventPublisher, objectMapper);
+                                                                 ObjectMapper objectMapper,
+                                                                 ModelCallUsageStore modelCallUsageStore) {
+        return new DefaultConversationContextManager(
+                settings,
+                compactionStore,
+                eventPublisher,
+                objectMapper,
+                modelCallUsageStore);
     }
 
     @Bean
@@ -230,6 +245,7 @@ public class AgentHarnessAutoConfiguration {
                                      ModelProviderRegistry providerRegistry,
                                      ObjectProvider<ToolContextFactory> toolContextFactory,
                                      ConversationContextManager conversationContextManager,
+                                     ModelCallUsageStore modelCallUsageStore,
                                      ObjectMapper objectMapper) {
         ToolContextFactory effectiveToolContextFactory = toolContextFactory.getIfAvailable(DefaultToolContextFactory::new);
         return new AgentRunner(
@@ -241,6 +257,7 @@ public class AgentHarnessAutoConfiguration {
                 providerRegistry,
                 effectiveToolContextFactory,
                 conversationContextManager,
+                modelCallUsageStore,
                 objectMapper);
     }
 }

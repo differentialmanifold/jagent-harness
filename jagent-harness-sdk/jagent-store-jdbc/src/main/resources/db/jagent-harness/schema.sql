@@ -46,6 +46,33 @@ create table if not exists compaction_states (
 create unique index if not exists ux_compaction_states_application_session
     on compaction_states (application_id, session_id);
 
+create table if not exists model_call_usages (
+    id integer primary key autoincrement,
+    application_id varchar(128) not null,
+    usage_id varchar(64) not null,
+    session_id varchar(64) not null,
+    turn_id varchar(64),
+    message_id varchar(64) not null,
+    provider varchar(128),
+    model varchar(256),
+    context_window_tokens integer not null,
+    threshold_tokens integer not null,
+    estimate_source varchar(64),
+    estimated_tokens integer,
+    actual_context_tokens integer,
+    prompt_tokens integer,
+    completion_tokens integer,
+    reasoning_tokens integer,
+    cached_tokens integer,
+    total_tokens integer,
+    created_at varchar(64) not null
+);
+
+create unique index if not exists ux_model_call_usages_application_usage
+    on model_call_usages (application_id, usage_id);
+create index if not exists ix_model_call_usages_application_session
+    on model_call_usages (application_id, session_id, id);
+
 create table if not exists messages (
     id integer primary key autoincrement,
     application_id varchar(128) not null,

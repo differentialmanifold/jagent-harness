@@ -41,6 +41,8 @@ public class HarnessProperties {
         private Double temperature;
         private int timeoutSeconds = 120;
         private boolean streamEnabled = true;
+        private boolean includeUsage = true;
+        private int contextWindowTokens = 128000;
         private Retry retry = new Retry();
 
         public String getProvider() {
@@ -97,6 +99,22 @@ public class HarnessProperties {
 
         public void setStreamEnabled(boolean streamEnabled) {
             this.streamEnabled = streamEnabled;
+        }
+
+        public boolean isIncludeUsage() {
+            return includeUsage;
+        }
+
+        public void setIncludeUsage(boolean includeUsage) {
+            this.includeUsage = includeUsage;
+        }
+
+        public int getContextWindowTokens() {
+            return contextWindowTokens;
+        }
+
+        public void setContextWindowTokens(int contextWindowTokens) {
+            this.contextWindowTokens = contextWindowTokens;
         }
 
         public Retry getRetry() {
@@ -173,7 +191,6 @@ public class HarnessProperties {
 
     public static class Compaction {
         private boolean enabled = true;
-        private int contextWindowTokens = 128000;
         private double thresholdRatio = 0.8d;
         private int recentMessages = 20;
         private int targetTokens = 4000;
@@ -184,14 +201,6 @@ public class HarnessProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
-        }
-
-        public int getContextWindowTokens() {
-            return contextWindowTokens;
-        }
-
-        public void setContextWindowTokens(int contextWindowTokens) {
-            this.contextWindowTokens = contextWindowTokens;
         }
 
         public double getThresholdRatio() {

@@ -8,6 +8,7 @@ public class ProviderListResponse {
     private String activeProvider;
     private String model;
     private String baseUrl;
+    private int contextWindowTokens;
     private boolean apiKeyConfigured;
 
     public List<String> getProviders() {
@@ -40,6 +41,14 @@ public class ProviderListResponse {
 
     public void setBaseUrl(String baseUrl) {
         this.baseUrl = baseUrl;
+    }
+
+    public int getContextWindowTokens() {
+        return contextWindowTokens;
+    }
+
+    public void setContextWindowTokens(int contextWindowTokens) {
+        this.contextWindowTokens = contextWindowTokens;
     }
 
     public boolean isApiKeyConfigured() {

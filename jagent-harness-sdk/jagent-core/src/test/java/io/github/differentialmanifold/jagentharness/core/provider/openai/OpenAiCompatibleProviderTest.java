@@ -107,12 +107,55 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
+    void parsesNestedUsageFromNonStreamingResponse() throws Exception {
+        UsageHttpClient httpClient = new UsageHttpClient(
+                "{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}],"
+                        + "\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
+                        + "\"completion_tokens_details\":{\"reasoning_tokens\":239},"
+                        + "\"prompt_tokens_details\":{\"cached_tokens\":3},\"total_tokens\":275}}");
+        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
+                config(false),
+                new ObjectMapper(),
+                httpClient);
+
+        ModelResponse response = provider.chat(request());
+
+        assertEquals(Integer.valueOf(24), response.getUsage().getPromptTokens());
+        assertEquals(Integer.valueOf(251), response.getUsage().getCompletionTokens());
+        assertEquals(Integer.valueOf(239), response.getUsage().getReasoningTokens());
+        assertEquals(Integer.valueOf(3), response.getUsage().getCachedTokens());
+        assertEquals(Integer.valueOf(275), response.getUsage().getTotalTokens());
+        assertEquals(Integer.valueOf(36), response.getUsage().getActualContextTokens());
+    }
+
+    @Test
+    void parsesFlatUsageFromNonStreamingResponse() throws Exception {
+        UsageHttpClient httpClient = new UsageHttpClient(
+                "{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}],"
+                        + "\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
+                        + "\"reasoning_tokens\":239,\"cached_tokens\":3,\"total_tokens\":275}}");
+        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
+                config(false),
+                new ObjectMapper(),
+                httpClient);
+
+        ModelResponse response = provider.chat(request());
+
+        assertEquals(Integer.valueOf(239), response.getUsage().getReasoningTokens());
+        assertEquals(Integer.valueOf(3), response.getUsage().getCachedTokens());
+        assertEquals(Integer.valueOf(36), response.getUsage().getActualContextTokens());
+    }
+
+    @Test
     void streamingResponseCapturesReasoningContentAndEmitsReasoningDeltas() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
-            readAll(exchange.getRequestBody());
+            requestBody.set(new String(readAll(exchange.getRequestBody()), StandardCharsets.UTF_8));
             byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think \"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"
+                    + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
+                    + "\"reasoning_tokens\":239,\"cached_tokens\":0,\"total_tokens\":275}}\n\n"
                     + "data: [DONE]\n\n")
                     .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
@@ -150,6 +193,9 @@ class OpenAiCompatibleProviderTest {
             assertEquals("answer", response.getContent());
             assertEquals(Collections.singletonList("think "), reasoningDeltas);
             assertEquals(Collections.singletonList("answer"), contentDeltas);
+            assertEquals(Integer.valueOf(36), response.getUsage().getActualContextTokens());
+            assertTrue(requestBody.get().contains("\"stream_options\""));
+            assertTrue(requestBody.get().contains("\"include_usage\":true"));
         } finally {
             server.stop(0);
         }
@@ -292,6 +338,25 @@ class OpenAiCompatibleProviderTest {
             return new ModelHttpResponse(
                     200,
                     "{\"choices\":[{\"message\":{\"content\":\"ok\",\"tool_calls\":[]}}]}");
+        }
+
+        @Override
+        public <T> T postStream(ModelHttpRequest request, ModelHttpStreamHandler<T> handler) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static class UsageHttpClient implements ModelHttpClient {
+
+        private final String body;
+
+        private UsageHttpClient(String body) {
+            this.body = body;
+        }
+
+        @Override
+        public ModelHttpResponse postJson(ModelHttpRequest request) {
+            return new ModelHttpResponse(200, body);
         }
 
         @Override

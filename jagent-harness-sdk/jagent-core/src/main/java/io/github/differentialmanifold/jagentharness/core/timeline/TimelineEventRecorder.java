@@ -15,6 +15,7 @@ public class TimelineEventRecorder implements AgentEventListener {
             AgentEvent.MESSAGE_START,
             AgentEvent.MESSAGE_UPDATE,
             AgentEvent.MESSAGE_REASONING_UPDATE,
+            AgentEvent.CONTEXT_USAGE,
             AgentEvent.TOOL_EXECUTION_UPDATE
     ));
 

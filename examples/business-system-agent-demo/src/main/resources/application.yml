@@ -31,6 +31,8 @@ harness:
     temperature: ${JAGENT_TEMPERATURE:}
     timeout-seconds: ${JAGENT_MODEL_TIMEOUT_SECONDS:120}
     stream-enabled: ${JAGENT_MODEL_STREAM_ENABLED:true}
+    include-usage: ${JAGENT_MODEL_INCLUDE_USAGE:true}
+    context-window-tokens: ${JAGENT_CONTEXT_WINDOW_TOKENS:128000}
     retry:
       enabled: ${JAGENT_MODEL_RETRY_ENABLED:true}
       max-attempts: ${JAGENT_MODEL_RETRY_MAX_ATTEMPTS:3}
@@ -38,7 +40,6 @@ harness:
       max-delay-millis: ${JAGENT_MODEL_RETRY_MAX_DELAY_MILLIS:3000}
   compaction:
     enabled: ${JAGENT_COMPACTION_ENABLED:true}
-    context-window-tokens: ${JAGENT_CONTEXT_WINDOW_TOKENS:128000}
     threshold-ratio: ${JAGENT_COMPACTION_THRESHOLD_RATIO:0.8}
     recent-messages: ${JAGENT_COMPACTION_RECENT_MESSAGES:20}
     target-tokens: ${JAGENT_COMPACTION_TARGET_TOKENS:4000}

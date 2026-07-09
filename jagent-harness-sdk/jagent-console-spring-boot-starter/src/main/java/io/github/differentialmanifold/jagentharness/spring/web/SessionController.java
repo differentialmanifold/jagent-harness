@@ -5,6 +5,8 @@ import java.util.List;
 import io.github.differentialmanifold.jagentharness.core.session.SessionDetails;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.CreateSessionRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.DeleteSessionRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.RenameSessionRequest;
@@ -21,10 +23,18 @@ public class SessionController {
 
     private final SessionManager sessionManager;
     private final WorkspaceRootResolver workspaceRootResolver;
+    private final ModelCallUsageStore modelCallUsageStore;
 
     public SessionController(SessionManager sessionManager, WorkspaceRootResolver workspaceRootResolver) {
+        this(sessionManager, workspaceRootResolver, new NoopModelCallUsageStore());
+    }
+
+    public SessionController(SessionManager sessionManager,
+                             WorkspaceRootResolver workspaceRootResolver,
+                             ModelCallUsageStore modelCallUsageStore) {
         this.sessionManager = sessionManager;
         this.workspaceRootResolver = workspaceRootResolver;
+        this.modelCallUsageStore = modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
     }
 
     @PostMapping
@@ -44,8 +54,10 @@ public class SessionController {
 
     @PostMapping("/detail")
     public SessionDetails detail(@RequestBody SessionDetailsRequest request) {
-        return sessionManager.getDetails(
-                requireSessionId(request == null ? null : request.getSessionId()));
+        String sessionId = requireSessionId(request == null ? null : request.getSessionId());
+        SessionDetails details = sessionManager.getDetails(sessionId);
+        details.setLatestUsage(modelCallUsageStore.findLatestBySessionId(sessionId));
+        return details;
     }
 
     @PostMapping("/rename")

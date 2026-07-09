@@ -35,6 +35,7 @@ public class ProviderController {
         result.setActiveProvider(properties.getModel().getProvider());
         result.setModel(properties.getModel().getModel());
         result.setBaseUrl(properties.getModel().getBaseUrl());
+        result.setContextWindowTokens(properties.getModel().getContextWindowTokens());
         result.setApiKeyConfigured(properties.getModel().getApiKey() != null
                 && !properties.getModel().getApiKey().trim().isEmpty());
         return result;

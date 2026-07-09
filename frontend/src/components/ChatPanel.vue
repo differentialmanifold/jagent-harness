@@ -65,6 +65,7 @@
           </el-dropdown>
         </div>
         <div class="composer-right">
+          <ContextUsageIndicator :usage="contextUsage" />
           <el-button
             v-if="running"
             class="composer-stop"
@@ -97,6 +98,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { CaretBottom, Lock, Top, Unlock } from '@element-plus/icons-vue'
+import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import MessageItem from './MessageItem.vue'
 
 const props = defineProps({
@@ -108,6 +110,7 @@ const props = defineProps({
   stopping: { type: Boolean, required: true },
   stopReady: { type: Boolean, required: true },
   approvalMode: { type: String, required: true },
+  contextUsage: { type: Object, default: null },
   draft: { type: String, required: true }
 })
 
