@@ -66,22 +66,11 @@ public class McpConfigValidator {
                 throw new IllegalArgumentException("Reserved or empty MCP header: " + headerName);
             }
             String rawValue = header.getValue() == null ? "" : header.getValue();
-            if (isSensitive(lowerName) && !ENVIRONMENT.matcher(rawValue).find()) {
-                throw new IllegalArgumentException("Sensitive MCP header must reference an environment variable: " + headerName);
-            }
             if (resolveEnvironment) {
                 header.setValue(resolveEnvironment(rawValue));
             }
         }
         return config;
-    }
-
-    private boolean isSensitive(String name) {
-        return "authorization".equals(name)
-                || "proxy-authorization".equals(name)
-                || "cookie".equals(name)
-                || name.contains("api-key")
-                || name.contains("token");
     }
 
     private String resolveEnvironment(String value) {

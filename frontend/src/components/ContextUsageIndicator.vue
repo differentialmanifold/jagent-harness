@@ -23,12 +23,12 @@
     </button>
     <template #content>
       <div class="context-usage-popover">
-        <div class="context-usage-title">Context window:</div>
+        <div class="context-usage-title">Next context baseline</div>
         <div class="context-usage-primary">{{ percentText }} used ({{ remainingText }} left)</div>
         <div class="context-usage-primary">{{ formatTokens(usedTokens) }} / {{ formatTokens(contextWindowTokens) }} tokens used</div>
         <div class="context-usage-details">
-          <span v-if="hasActual">Actual context: {{ formatTokens(usage.actualContextTokens) }}</span>
-          <span>Estimated: {{ formatTokens(usage.estimatedTokens) }}</span>
+          <span v-if="hasActual">Actual baseline: {{ formatTokens(usage.actualContextTokens) }}</span>
+          <span>Estimated baseline: {{ formatTokens(usage.estimatedTokens) }}</span>
           <span v-if="hasActual">Prompt: {{ formatTokens(usage.promptTokens) }}</span>
           <span v-if="hasActual">Completion: {{ formatTokens(usage.completionTokens) }}</span>
           <span v-if="hasActual">Reasoning: {{ formatTokens(usage.reasoningTokens) }}</span>
@@ -42,6 +42,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { ElTooltip } from 'element-plus'
 
 const props = defineProps({
   usage: { type: Object, default: null }
@@ -72,9 +73,9 @@ const remainingText = computed(() => `${Math.max(0, 100 - percentage.value)}%`)
 const tooltipTitle = computed(() => `Context window ${percentText.value} used`)
 const sourceLabel = computed(() => {
   if (usage.value.estimateSource === 'actual_baseline_plus_delta') {
-    return 'Estimate: actual baseline + delta'
+    return 'Estimated from actual baseline + new messages'
   }
-  return hasActual.value ? 'Estimate: full estimate' : 'Estimated only'
+  return hasActual.value ? 'Estimated from full context' : 'Estimated baseline only'
 })
 
 function positiveNumber(value) {

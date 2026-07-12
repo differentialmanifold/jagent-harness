@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.conversation;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -63,14 +64,18 @@ public class DefaultConversationContextManager implements ConversationContextMan
         CompactionState state = compactionStore.findBySessionId(request.getSessionId());
         String summary = state == null ? null : state.getSummary();
         String cursorMessageId = state == null ? null : state.getCursorMessageId();
+        Instant usageBaselineNotBefore = state == null ? null : state.getUpdatedAt();
         List<AgentMessage> contextMessages = messagesAfterCursor(messages, cursorMessageId);
         String systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
         List<AgentMessage> modelMessages = messagesForModel(contextMessages);
+        boolean usageBaselineValid = true;
         EstimateSnapshot estimate = estimateRequestTokens(
                 request.getSessionId(),
                 systemPromptWithSummary,
                 modelMessages,
-                request.getTools());
+                request.getTools(),
+                usageBaselineValid,
+                usageBaselineNotBefore);
         int thresholdTokens = estimate.thresholdTokens;
 
         if (shouldCompact(estimate.estimatedTokens, thresholdTokens, contextMessages)) {
@@ -98,6 +103,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 request.getStopSignal().throwIfAborted();
                 cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
                 compactionStore.save(request.getSessionId(), summary, cursorMessageId);
+                usageBaselineValid = false;
 
                 contextMessages = recentMessages;
                 systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
@@ -106,7 +112,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
                         request.getSessionId(),
                         systemPromptWithSummary,
                         modelMessages,
-                        request.getTools());
+                        request.getTools(),
+                        usageBaselineValid,
+                        usageBaselineNotBefore);
                 Map<String, Object> endPayload = new LinkedHashMap<String, Object>();
                 endPayload.put("estimatedTokensBefore", beforeCompactionEstimate.estimatedTokens);
                 endPayload.put("rawEstimatedTokensBefore", beforeCompactionEstimate.rawEstimatedTokens);
@@ -126,7 +134,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 request.getSessionId(),
                 systemPromptWithSummary,
                 modelMessages,
-                request.getTools());
+                request.getTools(),
+                usageBaselineValid,
+                usageBaselineNotBefore);
         return new ConversationContext(
                 systemPromptWithSummary,
                 modelMessages,
@@ -150,23 +160,27 @@ public class DefaultConversationContextManager implements ConversationContextMan
     private EstimateSnapshot estimateRequestTokens(String sessionId,
                                                    String systemPrompt,
                                                    List<AgentMessage> messages,
-                                                   Collection<ToolDefinition> tools) {
+                                                   Collection<ToolDefinition> tools,
+                                                   boolean usageBaselineValid,
+                                                   Instant usageBaselineNotBefore) {
         int rawEstimatedTokens = rawEstimateRequestTokens(systemPrompt, messages, tools);
         int contextWindowTokens = effectiveContextWindowTokens();
         int thresholdTokens = compactionThresholdTokens(contextWindowTokens);
-        ModelCallUsage latestUsage = modelCallUsageStore.findLatestBySessionId(sessionId);
-        if (latestUsage != null && latestUsage.getActualContextTokens() != null) {
-            int baselineIndex = indexOfMessage(messages, latestUsage.getMessageId());
-            if (baselineIndex >= 0) {
-                List<AgentMessage> deltaMessages = messages.subList(baselineIndex + 1, messages.size());
-                int estimatedTokens = latestUsage.getActualContextTokens()
-                        + tokenEstimator.estimateMessages(deltaMessages);
-                return new EstimateSnapshot(
-                        Math.max(1, estimatedTokens),
-                        rawEstimatedTokens,
-                        contextWindowTokens,
-                        thresholdTokens,
-                        ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE);
+        if (usageBaselineValid) {
+            ModelCallUsage latestUsage = modelCallUsageStore.findLatestBySessionId(sessionId);
+            if (isUsageBaselineUsable(latestUsage, usageBaselineNotBefore)) {
+                int baselineIndex = indexOfMessage(messages, latestUsage.getMessageId());
+                if (baselineIndex >= 0) {
+                    List<AgentMessage> deltaMessages = messages.subList(baselineIndex + 1, messages.size());
+                    int estimatedTokens = latestUsage.getActualContextTokens()
+                            + tokenEstimator.estimateMessages(deltaMessages);
+                    return new EstimateSnapshot(
+                            Math.max(1, estimatedTokens),
+                            rawEstimatedTokens,
+                            contextWindowTokens,
+                            thresholdTokens,
+                            ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE);
+                }
             }
         }
         return new EstimateSnapshot(
@@ -175,6 +189,16 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 contextWindowTokens,
                 thresholdTokens,
                 ModelCallUsage.ESTIMATE_SOURCE_FULL);
+    }
+
+    private boolean isUsageBaselineUsable(ModelCallUsage usage, Instant usageBaselineNotBefore) {
+        if (usage == null || usage.getActualContextTokens() == null) {
+            return false;
+        }
+        if (usageBaselineNotBefore == null) {
+            return true;
+        }
+        return usage.getCreatedAt() != null && !usage.getCreatedAt().isBefore(usageBaselineNotBefore);
     }
 
     private int rawEstimateRequestTokens(String systemPrompt,

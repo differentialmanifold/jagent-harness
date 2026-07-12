@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -153,6 +154,57 @@ class DefaultConversationContextManagerTest {
         assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, context.getEstimateSource());
     }
 
+    @Test
+    void invalidatesActualUsageBaselineAfterCompactionChangesContext() {
+        AgentSettings settings = new AgentSettings();
+        settings.setCompactionEnabled(true);
+        settings.setContextWindowTokens(100);
+        settings.setCompactionThresholdRatio(0.5d);
+        settings.setCompactionRecentMessages(2);
+        ObjectMapper objectMapper = new ObjectMapper();
+        FakeCompactionStore compactionStore = new FakeCompactionStore();
+        FakeUsageStore usageStore = new FakeUsageStore();
+        usageStore.latest = new ModelCallUsage();
+        usageStore.latest.setMessageId("m4");
+        usageStore.latest.setActualContextTokens(100);
+        usageStore.latest.setCreatedAt(Instant.EPOCH);
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                compactionStore,
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper,
+                usageStore);
+
+        AgentMessage oldUser = message("m1", AgentMessage.ROLE_USER, "old user context");
+        AgentMessage oldAssistant = message("m2", AgentMessage.ROLE_ASSISTANT, "old assistant context");
+        AgentMessage recentUser = message("m3", AgentMessage.ROLE_USER, "recent user context");
+        AgentMessage recentAssistant = message("m4", AgentMessage.ROLE_ASSISTANT, "recent assistant context");
+
+        ConversationContext context = manager.prepare(new ConversationContextRequest(
+                "s1",
+                "t1",
+                "System prompt",
+                Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
+                Collections.<ToolDefinition>emptyList(),
+                new CapturingModelProvider()));
+
+        assertEquals("m2", compactionStore.cursorMessageId);
+        assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, context.getEstimateSource());
+        assertEquals(context.getRawEstimatedTokens(), context.getEstimatedTokens());
+        assertEquals(1, usageStore.findCount);
+
+        ConversationContext nextContext = manager.prepare(new ConversationContextRequest(
+                "s1",
+                "t2",
+                "System prompt",
+                Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
+                Collections.<ToolDefinition>emptyList(),
+                new CapturingModelProvider()));
+
+        assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, nextContext.getEstimateSource());
+        assertEquals(nextContext.getRawEstimatedTokens(), nextContext.getEstimatedTokens());
+    }
+
     private DefaultConversationContextManager manager() {
         AgentSettings settings = new AgentSettings();
         settings.setCompactionEnabled(false);
@@ -184,24 +236,38 @@ class DefaultConversationContextManagerTest {
     }
 
     private static class FakeCompactionStore implements CompactionStore {
+        private String summary;
         private String cursorMessageId;
+        private Instant updatedAt;
 
         @Override
         public CompactionState findBySessionId(String sessionId) {
-            return null;
+            if (cursorMessageId == null) {
+                return null;
+            }
+            CompactionState state = new CompactionState();
+            state.setSessionId(sessionId);
+            state.setSummary(summary);
+            state.setCursorMessageId(cursorMessageId);
+            state.setUpdatedAt(updatedAt);
+            return state;
         }
 
         @Override
         public void save(String sessionId, String summary, String cursorMessageId) {
+            this.summary = summary;
             this.cursorMessageId = cursorMessageId;
+            this.updatedAt = Instant.now();
         }
     }
 
     private static class FakeUsageStore implements ModelCallUsageStore {
         private ModelCallUsage latest;
+        private int findCount;
 
         @Override
         public ModelCallUsage findLatestBySessionId(String sessionId) {
+            findCount++;
             return latest;
         }
 

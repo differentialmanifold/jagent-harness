@@ -6,6 +6,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +16,7 @@ import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextRequest;
+import io.github.differentialmanifold.jagentharness.core.conversation.TokenEstimator;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
@@ -38,6 +41,8 @@ import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsag
 
 public class AgentRunner implements AgentHarness {
 
+    private static final Logger LOGGER = Logger.getLogger(AgentRunner.class.getName());
+
     private final AgentSettings settings;
     private final SessionStore sessionStore;
     private final AgentEventPublisher eventPublisher;
@@ -48,6 +53,7 @@ public class AgentRunner implements AgentHarness {
     private final ConversationContextManager conversationContextManager;
     private final ModelCallUsageStore modelCallUsageStore;
     private final ObjectMapper objectMapper;
+    private final TokenEstimator tokenEstimator = new TokenEstimator();
 
     public AgentRunner(AgentSettings settings,
                        SessionStore sessionStore,
@@ -637,9 +643,12 @@ public class AgentRunner implements AgentHarness {
         String estimateSource = conversationContext.getEstimateSource() == null
                 ? ModelCallUsage.ESTIMATE_SOURCE_FULL
                 : conversationContext.getEstimateSource();
-        Integer estimatedTokens = conversationContext.getEstimatedTokens() <= 0
-                ? null
-                : conversationContext.getEstimatedTokens();
+        Integer estimatedTokens = estimateNextContextTokens(
+                conversationContext.getEstimatedTokens(),
+                assistantMessage);
+        Integer rawEstimatedTokens = estimateNextContextTokens(
+                conversationContext.getRawEstimatedTokens(),
+                assistantMessage);
 
         ModelCallUsage record = null;
         if (response != null && response.getUsage() != null && response.getUsage().hasTokenCounts()) {
@@ -654,7 +663,14 @@ public class AgentRunner implements AgentHarness {
                     estimateSource,
                     estimatedTokens,
                     response.getUsage());
-            modelCallUsageStore.append(record);
+            try {
+                modelCallUsageStore.append(record);
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING,
+                        "Failed to persist model usage for session " + sessionId
+                                + " and message " + assistantMessage.getMessageId(),
+                        e);
+            }
         }
 
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
@@ -666,9 +682,7 @@ public class AgentRunner implements AgentHarness {
         payload.put("thresholdTokens", thresholdTokens);
         payload.put("estimateSource", estimateSource);
         payload.put("estimatedTokens", estimatedTokens);
-        payload.put("rawEstimatedTokens", conversationContext.getRawEstimatedTokens() <= 0
-                ? null
-                : conversationContext.getRawEstimatedTokens());
+        payload.put("rawEstimatedTokens", rawEstimatedTokens);
         if (record != null) {
             payload.put("actualContextTokens", record.getActualContextTokens());
             payload.put("promptTokens", record.getPromptTokens());
@@ -679,6 +693,15 @@ public class AgentRunner implements AgentHarness {
             payload.put("createdAt", record.getCreatedAt());
         }
         publish(sessionId, turnId, AgentEvent.CONTEXT_USAGE, payload);
+    }
+
+    private Integer estimateNextContextTokens(int requestEstimatedTokens, AgentMessage assistantMessage) {
+        if (requestEstimatedTokens <= 0) {
+            return null;
+        }
+        long estimatedTokens = (long) requestEstimatedTokens
+                + tokenEstimator.estimateMessages(Collections.singletonList(assistantMessage));
+        return estimatedTokens >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) estimatedTokens;
     }
 
     private int effectiveContextWindowTokens() {

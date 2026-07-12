@@ -19,7 +19,9 @@ public class ModelCallUsage {
     private int contextWindowTokens;
     private int thresholdTokens;
     private String estimateSource;
+    /** Estimated context size for the next model call after this assistant response. */
     private Integer estimatedTokens;
+    /** Provider-reported context size for the next model call after excluding reasoning tokens. */
     private Integer actualContextTokens;
     private Integer promptTokens;
     private Integer completionTokens;
