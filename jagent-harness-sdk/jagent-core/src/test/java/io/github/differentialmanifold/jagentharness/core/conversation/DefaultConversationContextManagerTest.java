@@ -2,18 +2,25 @@ package io.github.differentialmanifold.jagentharness.core.conversation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
@@ -101,6 +108,186 @@ class DefaultConversationContextManagerTest {
         assertTrue(provider.compactionPrompt.contains("interrupted this assistant response"));
         assertEquals(1, context.getMessages().size());
         assertEquals(followUp, context.getMessages().get(0));
+    }
+
+    @Test
+    void doesNotAdvanceCompactionCursorWhenSummaryIsEmpty() {
+        AgentSettings settings = compactingSettings();
+        FakeCompactionStore store = new FakeCompactionStore();
+        CapturingModelProvider provider = new CapturingModelProvider();
+        provider.summary = "  ";
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper);
+
+        List<AgentMessage> messages = Arrays.asList(
+                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("old context ", 100)),
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "old response"),
+                turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "current request"));
+
+        ModelProviderException error = assertThrows(
+                ModelProviderException.class,
+                () -> manager.prepare(request(messages, provider)));
+
+        assertTrue(error.getMessage().contains("empty summary"));
+        assertEquals(0, store.saveCount);
+        assertEquals(null, store.cursorMessageId);
+        assertEquals(null, store.summary);
+    }
+
+    @Test
+    void preservesConfiguredRecentMessagesWithoutSplittingTurns() {
+        AgentSettings settings = compactingSettings();
+        FakeCompactionStore store = new FakeCompactionStore();
+        CapturingModelProvider provider = new CapturingModelProvider();
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper);
+
+        AgentMessage firstUser = turnMessage(
+                "m1", "turn-1", AgentMessage.ROLE_USER, repeated("first turn ", 100));
+        AgentMessage firstAssistant = turnMessage(
+                "m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "first answer");
+        AgentMessage largeUser = turnMessage(
+                "m3", "turn-2", AgentMessage.ROLE_USER, repeated("large middle turn ", 100));
+        AgentMessage largeAssistant = turnMessage(
+                "m4", "turn-2", AgentMessage.ROLE_ASSISTANT, "middle answer");
+        AgentMessage recentUser = turnMessage(
+                "m5", "turn-3", AgentMessage.ROLE_USER, "recent question");
+        AgentMessage recentAssistant = turnMessage(
+                "m6", "turn-3", AgentMessage.ROLE_ASSISTANT, "recent answer");
+
+        ConversationContext context = manager.prepare(request(
+                Arrays.asList(
+                        firstUser,
+                        firstAssistant,
+                        largeUser,
+                        largeAssistant,
+                        recentUser,
+                        recentAssistant),
+                provider));
+
+        assertEquals("m4", store.cursorMessageId);
+        assertTrue(provider.compactionPrompt.contains("first turn"));
+        assertTrue(provider.compactionPrompt.contains("large middle turn"));
+        assertEquals(2, context.getMessages().size());
+        assertEquals("turn-3", context.getMessages().get(0).getTurnId());
+        assertEquals("turn-3", context.getMessages().get(1).getTurnId());
+    }
+
+    @Test
+    void doesNotCompactWhenOnlyOneCompleteTurnExists() {
+        AgentSettings settings = compactingSettings();
+        FakeCompactionStore store = new FakeCompactionStore();
+        CapturingModelProvider provider = new CapturingModelProvider();
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper);
+
+        List<AgentMessage> messages = Arrays.asList(
+                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("large request ", 100)),
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, repeated("large answer ", 100)));
+
+        ConversationContext context = manager.prepare(request(messages, provider));
+
+        assertEquals(0, store.saveCount);
+        assertEquals(0, provider.attempts.get());
+        assertEquals(2, context.getMessages().size());
+    }
+
+    @Test
+    void keepsOversizedToolResultInNormalModelContext() {
+        AgentSettings settings = new AgentSettings();
+        settings.setCompactionEnabled(false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                new NoopCompactionStore(),
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper);
+        AgentMessage toolResult = turnMessage(
+                "m2", "turn-1", AgentMessage.ROLE_TOOL, repeated("x", 2500));
+        toolResult.setToolName("read");
+        toolResult.setToolCallId("call-1");
+
+        ConversationContext context = manager.prepare(request(Collections.singletonList(toolResult)));
+
+        AgentMessage modelToolResult = context.getMessages().get(0);
+        assertEquals(2500, modelToolResult.getContent().length());
+        assertEquals(2500, toolResult.getContent().length());
+        assertEquals(toolResult.getMessageId(), modelToolResult.getMessageId());
+    }
+
+    @Test
+    void truncatesOversizedToolResultOnlyInCompactionPrompt() {
+        AgentSettings settings = compactingSettings();
+        FakeCompactionStore store = new FakeCompactionStore();
+        CapturingModelProvider provider = new CapturingModelProvider();
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper);
+        AgentMessage oldUser = turnMessage(
+                "m1", "turn-1", AgentMessage.ROLE_USER, "Read the large result");
+        AgentMessage toolResult = turnMessage(
+                "m2", "turn-1", AgentMessage.ROLE_TOOL, repeated("x", 2500));
+        toolResult.setToolName("read");
+        toolResult.setToolCallId("call-1");
+        AgentMessage currentUser = turnMessage(
+                "m3", "turn-2", AgentMessage.ROLE_USER, "Continue");
+
+        manager.prepare(request(Arrays.asList(oldUser, toolResult, currentUser), provider));
+
+        int toolHeader = provider.compactionPrompt.indexOf("[tool]");
+        int contentStart = provider.compactionPrompt.indexOf('\n', toolHeader) + 1;
+        int contentEnd = provider.compactionPrompt.indexOf("\n\n", contentStart);
+        String compactedToolContent = provider.compactionPrompt.substring(contentStart, contentEnd);
+        assertEquals(2000, compactedToolContent.length());
+        assertTrue(compactedToolContent.endsWith("...[tool result truncated]"));
+        assertEquals(2500, toolResult.getContent().length());
+    }
+
+    @Test
+    void retriesRetryableCompactionModelFailure() {
+        AgentSettings settings = compactingSettings();
+        settings.setModelRetryMaxAttempts(3);
+        settings.setModelRetryInitialDelayMillis(0L);
+        settings.setModelRetryMaxDelayMillis(0L);
+        FakeCompactionStore store = new FakeCompactionStore();
+        RetryOnceCompactionProvider provider = new RetryOnceCompactionProvider();
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                store,
+                eventPublisher,
+                objectMapper);
+        List<AgentEvent> events = new ArrayList<AgentEvent>();
+        List<AgentMessage> messages = Arrays.asList(
+                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("old context ", 100)),
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "old answer"),
+                turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "current request"));
+
+        ConversationContext context = eventPublisher.withEventConsumer(
+                events::add,
+                () -> manager.prepare(request(messages, provider)));
+
+        assertEquals(2, provider.attempts.get());
+        assertEquals(1, store.saveCount);
+        assertEquals("summary after retry", store.summary);
+        assertEquals(1, context.getMessages().size());
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.MODEL_RETRY.equals(event.getType())));
     }
 
     @Test
@@ -217,13 +404,17 @@ class DefaultConversationContextManagerTest {
     }
 
     private ConversationContextRequest request(List<AgentMessage> messages) {
+        return request(messages, null);
+    }
+
+    private ConversationContextRequest request(List<AgentMessage> messages, ModelProvider provider) {
         return new ConversationContextRequest(
                 "s1",
                 "t1",
                 "System prompt",
                 messages,
                 Collections.<ToolDefinition>emptyList(),
-                null);
+                provider);
     }
 
     private static AgentMessage message(String messageId, String role, String content) {
@@ -235,10 +426,39 @@ class DefaultConversationContextManagerTest {
         return message;
     }
 
+    private static AgentMessage turnMessage(String messageId,
+                                            String turnId,
+                                            String role,
+                                            String content) {
+        AgentMessage message = message(messageId, role, content);
+        message.setTurnId(turnId);
+        return message;
+    }
+
+    private static AgentSettings compactingSettings() {
+        AgentSettings settings = new AgentSettings();
+        settings.setModel("test-model");
+        settings.setCompactionEnabled(true);
+        settings.setContextWindowTokens(1);
+        settings.setCompactionThresholdRatio(1.0d);
+        settings.setCompactionRecentMessages(1);
+        settings.setCompactionTargetTokens(1);
+        return settings;
+    }
+
+    private static String repeated(String value, int count) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            builder.append(value);
+        }
+        return builder.toString();
+    }
+
     private static class FakeCompactionStore implements CompactionStore {
         private String summary;
         private String cursorMessageId;
         private Instant updatedAt;
+        private int saveCount;
 
         @Override
         public CompactionState findBySessionId(String sessionId) {
@@ -255,6 +475,7 @@ class DefaultConversationContextManagerTest {
 
         @Override
         public void save(String sessionId, String summary, String cursorMessageId) {
+            saveCount++;
             this.summary = summary;
             this.cursorMessageId = cursorMessageId;
             this.updatedAt = Instant.now();
@@ -278,6 +499,8 @@ class DefaultConversationContextManagerTest {
 
     private static class CapturingModelProvider implements ModelProvider {
         private String compactionPrompt;
+        private String summary = "Compacted summary";
+        private final AtomicInteger attempts = new AtomicInteger();
 
         @Override
         public String getName() {
@@ -286,9 +509,37 @@ class DefaultConversationContextManagerTest {
 
         @Override
         public ModelResponse chat(ModelRequest request) {
+            attempts.incrementAndGet();
             compactionPrompt = request.getMessages().get(0).getContent();
             ModelResponse response = new ModelResponse();
-            response.setContent("Compacted summary");
+            response.setContent(summary);
+            response.setToolCalls(Collections.<ToolCall>emptyList());
+            return response;
+        }
+    }
+
+    private static class RetryOnceCompactionProvider implements ModelProvider {
+        private final AtomicInteger attempts = new AtomicInteger();
+
+        @Override
+        public String getName() {
+            return "retry-once";
+        }
+
+        @Override
+        public ModelResponse chat(ModelRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ModelResponse chat(ModelRequest request,
+                                  ModelDeltaConsumer deltaConsumer,
+                                  StopSignal stopSignal) {
+            if (attempts.incrementAndGet() == 1) {
+                throw new ModelProviderException("temporary compaction failure", null, true);
+            }
+            ModelResponse response = new ModelResponse();
+            response.setContent("summary after retry");
             response.setToolCalls(Collections.<ToolCall>emptyList());
             return response;
         }

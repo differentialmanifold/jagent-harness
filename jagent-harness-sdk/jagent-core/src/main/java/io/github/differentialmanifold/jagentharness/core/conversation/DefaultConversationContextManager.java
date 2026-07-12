@@ -10,11 +10,14 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.ModelCallRetryExecutor;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
@@ -25,6 +28,12 @@ import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsag
 
 public class DefaultConversationContextManager implements ConversationContextManager {
 
+    private static final int MAX_TOOL_RESULT_CHARS = 2000;
+    private static final String TOOL_RESULT_TRUNCATED_SUFFIX = "\n...[tool result truncated]";
+    private static final String COMPACTION_SUMMARY_HEADER =
+            "\n\n## Compacted Conversation Summary\n"
+                    + "The following summary condenses earlier messages that are no longer included verbatim. "
+                    + "Use it as durable context while prioritizing newer messages when there is a conflict.\n\n";
     private static final String ABORTED_RESPONSE_CONTEXT =
             "The user interrupted the preceding assistant response. "
                     + "Treat it as incomplete and do not continue it unless explicitly requested.";
@@ -34,6 +43,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
     private final AgentEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final ModelCallUsageStore modelCallUsageStore;
+    private final ModelCallRetryExecutor modelCallRetryExecutor;
     private final TokenEstimator tokenEstimator = new TokenEstimator();
 
     public DefaultConversationContextManager(AgentSettings settings,
@@ -53,6 +63,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
         this.modelCallUsageStore = modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
+        this.modelCallRetryExecutor = new ModelCallRetryExecutor(settings, eventPublisher);
     }
 
     @Override
@@ -80,8 +91,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
         if (shouldCompact(estimate.estimatedTokens, thresholdTokens, contextMessages)) {
             EstimateSnapshot beforeCompactionEstimate = estimate;
-            List<AgentMessage> recentMessages = recentMessages(contextMessages);
-            int compactMessageCount = contextMessages.size() - recentMessages.size();
+            RecentSelection recentSelection = selectRecentMessages(contextMessages);
+            List<AgentMessage> recentMessages = recentSelection.messages;
+            int compactMessageCount = recentSelection.startIndex;
             if (compactMessageCount > 0) {
                 List<AgentMessage> messagesToCompact = new ArrayList<AgentMessage>(
                         contextMessages.subList(0, compactMessageCount));
@@ -93,13 +105,17 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 startPayload.put("messageCount", contextMessages.size());
                 startPayload.put("compactMessageCount", messagesToCompact.size());
                 startPayload.put("recentMessageCount", recentMessages.size());
+                startPayload.put("compactTurnCount", recentSelection.compactTurnCount);
+                startPayload.put("recentTurnCount", recentSelection.recentTurnCount);
                 publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_START, startPayload);
 
                 summary = compactConversation(
                         request.getProvider(),
                         summary,
                         messagesToCompact,
-                        request.getStopSignal());
+                        request.getStopSignal(),
+                        request.getSessionId(),
+                        request.getTurnId());
                 request.getStopSignal().throwIfAborted();
                 cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
                 compactionStore.save(request.getSessionId(), summary, cursorMessageId);
@@ -154,7 +170,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 && thresholdTokens > 0
                 && estimatedTokens >= thresholdTokens
                 && contextMessages != null
-                && contextMessages.size() > Math.max(1, settings.getCompactionRecentMessages());
+                && contextMessages.size() > Math.max(1, effectiveRecentMessages());
     }
 
     private EstimateSnapshot estimateRequestTokens(String sessionId,
@@ -255,24 +271,99 @@ public class DefaultConversationContextManager implements ConversationContextMan
         return new ArrayList<AgentMessage>(messages);
     }
 
-    private List<AgentMessage> recentMessages(List<AgentMessage> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return new ArrayList<AgentMessage>();
-        }
-        int recentCount = settings.getCompactionRecentMessages() <= 0
+    private int effectiveRecentMessages() {
+        return settings.getCompactionRecentMessages() <= 0
                 ? 20
                 : settings.getCompactionRecentMessages();
-        int start = Math.max(0, messages.size() - recentCount);
-        while (start > 0 && AgentMessage.ROLE_TOOL.equals(messages.get(start).getRole())) {
-            start--;
+    }
+
+    private RecentSelection selectRecentMessages(List<AgentMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return new RecentSelection(
+                    0,
+                    new ArrayList<AgentMessage>(),
+                    0,
+                    0);
         }
-        return new ArrayList<AgentMessage>(messages.subList(start, messages.size()));
+        List<TurnRange> turns = turnRanges(messages);
+        int startIndex = Math.max(0, messages.size() - effectiveRecentMessages());
+        for (TurnRange turn : turns) {
+            if (startIndex >= turn.startIndex && startIndex < turn.endIndex) {
+                startIndex = turn.startIndex;
+                break;
+            }
+        }
+        int compactTurnCount = 0;
+        int recentTurnCount = 0;
+        for (TurnRange turn : turns) {
+            if (turn.endIndex <= startIndex) {
+                compactTurnCount++;
+            } else {
+                recentTurnCount++;
+            }
+        }
+        return new RecentSelection(
+                startIndex,
+                new ArrayList<AgentMessage>(messages.subList(startIndex, messages.size())),
+                compactTurnCount,
+                recentTurnCount);
+    }
+
+    private List<TurnRange> turnRanges(List<AgentMessage> messages) {
+        List<TurnRange> turns = new ArrayList<TurnRange>();
+        if (messages == null || messages.isEmpty()) {
+            return turns;
+        }
+        int startIndex = 0;
+        String currentTurnId = normalizedTurnId(messages.get(0));
+        for (int i = 1; i < messages.size(); i++) {
+            AgentMessage message = messages.get(i);
+            String nextTurnId = normalizedTurnId(message);
+            boolean explicitTurnChanged = currentTurnId != null || nextTurnId != null
+                    ? !sameValue(currentTurnId, nextTurnId)
+                    : false;
+            boolean legacyTurnStarted = currentTurnId == null
+                    && nextTurnId == null
+                    && AgentMessage.ROLE_USER.equals(message.getRole());
+            if (explicitTurnChanged || legacyTurnStarted) {
+                turns.add(new TurnRange(startIndex, i));
+                startIndex = i;
+                currentTurnId = nextTurnId;
+            }
+        }
+        turns.add(new TurnRange(startIndex, messages.size()));
+        return turns;
+    }
+
+    private String normalizedTurnId(AgentMessage message) {
+        if (message == null || message.getTurnId() == null || message.getTurnId().trim().isEmpty()) {
+            return null;
+        }
+        return message.getTurnId().trim();
+    }
+
+    private boolean sameValue(String left, String right) {
+        return left == null ? right == null : left.equals(right);
+    }
+
+    private boolean isOversizedToolResult(AgentMessage message) {
+        return message != null
+                && AgentMessage.ROLE_TOOL.equals(message.getRole())
+                && message.getContent() != null
+                && message.getContent().length() > MAX_TOOL_RESULT_CHARS;
+    }
+
+    private String truncatedToolResult(String content) {
+        int prefixLength = MAX_TOOL_RESULT_CHARS - TOOL_RESULT_TRUNCATED_SUFFIX.length();
+        return content.substring(0, prefixLength) + TOOL_RESULT_TRUNCATED_SUFFIX;
     }
 
     private String compactConversation(ModelProvider provider,
                                        String previousSummary,
                                        List<AgentMessage> messagesToCompact,
-                                       StopSignal stopSignal) {
+                                       StopSignal stopSignal,
+                                       String sessionId,
+                                       String turnId) {
         ModelRequest request = new ModelRequest();
         request.setModel(settings.getModel());
         request.setSystemPrompt(compactionSystemPrompt());
@@ -281,20 +372,31 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 compactionUserPrompt(previousSummary, messagesToCompact))));
         request.setTools(Collections.<ToolDefinition>emptyList());
 
-        ModelResponse response = provider.chat(request, (java.util.function.Consumer<String>) null, stopSignal);
+        ModelResponse response = modelCallRetryExecutor.call(
+                provider,
+                request,
+                (ModelDeltaConsumer) null,
+                null,
+                stopSignal,
+                sessionId,
+                turnId);
         String summary = response == null ? null : response.getContent();
         if (summary == null || summary.trim().isEmpty()) {
-            return previousSummary == null ? "" : previousSummary;
+            throw new ModelProviderException("Compaction returned an empty summary", null, false);
         }
         return summary.trim();
     }
 
-    private String compactionSystemPrompt() {
-        int targetTokens = settings.getCompactionTargetTokens() <= 0
+    private int effectiveCompactionTargetTokens() {
+        return settings.getCompactionTargetTokens() <= 0
                 ? 4000
                 : settings.getCompactionTargetTokens();
+    }
+
+    private String compactionSystemPrompt() {
         return "You compact long agent conversations for future context. "
-                + "Produce a concise but complete summary under about " + targetTokens + " tokens. "
+                + "Produce a concise but complete summary under about "
+                + effectiveCompactionTargetTokens() + " tokens. "
                 + "Preserve durable facts, user intent, decisions, constraints, file paths, code changes, "
                 + "tool results, unresolved tasks, and current next steps. "
                 + "Do not invent details. Do not include generic filler.";
@@ -330,7 +432,10 @@ public class DefaultConversationContextManager implements ConversationContextMan
             }
             rendered.append("\n");
             if (message.getContent() != null && !message.getContent().isEmpty()) {
-                rendered.append(message.getContent()).append("\n");
+                String content = isOversizedToolResult(message)
+                        ? truncatedToolResult(message.getContent())
+                        : message.getContent();
+                rendered.append(content).append("\n");
             }
             if (isAbortedAssistant(message)) {
                 rendered.append("The user interrupted this assistant response before completion.\n");
@@ -386,11 +491,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
         if (summary == null || summary.trim().isEmpty()) {
             return prompt;
         }
-        return prompt
-                + "\n\n## Compacted Conversation Summary\n"
-                + "The following summary condenses earlier messages that are no longer included verbatim. "
-                + "Use it as durable context while prioritizing newer messages when there is a conflict.\n\n"
-                + summary.trim();
+        return prompt + COMPACTION_SUMMARY_HEADER + summary.trim();
     }
 
     private String valueOrEmpty(String value) {
@@ -421,6 +522,33 @@ public class DefaultConversationContextManager implements ConversationContextMan
             this.contextWindowTokens = contextWindowTokens;
             this.thresholdTokens = thresholdTokens;
             this.estimateSource = estimateSource;
+        }
+    }
+
+    private static class TurnRange {
+        private final int startIndex;
+        private final int endIndex;
+
+        private TurnRange(int startIndex, int endIndex) {
+            this.startIndex = startIndex;
+            this.endIndex = endIndex;
+        }
+    }
+
+    private static class RecentSelection {
+        private final int startIndex;
+        private final List<AgentMessage> messages;
+        private final int compactTurnCount;
+        private final int recentTurnCount;
+
+        private RecentSelection(int startIndex,
+                                List<AgentMessage> messages,
+                                int compactTurnCount,
+                                int recentTurnCount) {
+            this.startIndex = startIndex;
+            this.messages = messages;
+            this.compactTurnCount = compactTurnCount;
+            this.recentTurnCount = recentTurnCount;
         }
     }
 }
