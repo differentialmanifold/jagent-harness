@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionState;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
 import io.github.differentialmanifold.jagentharness.core.conversation.DefaultConversationContextManager;
+import io.github.differentialmanifold.jagentharness.core.conversation.TokenEstimator;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
@@ -128,7 +129,52 @@ class AgentRunnerCompactionTest {
         AgentMessage assistant = store.messages.get(store.messages.size() - 1);
         assertEquals(assistant.getMessageId(), usageStore.appended.getMessageId());
         assertEquals(Integer.valueOf(36), usageStore.appended.getActualContextTokens());
+        ModelRequest modelRequest = provider.normalRequests.get(0);
+        TokenEstimator estimator = new TokenEstimator();
+        int expectedNextContextEstimate = estimator.estimateText(modelRequest.getSystemPrompt())
+                + estimator.estimateMessages(modelRequest.getMessages())
+                + estimator.estimateMessages(Collections.singletonList(assistant));
+        assertEquals(Integer.valueOf(expectedNextContextEstimate), usageStore.appended.getEstimatedTokens());
         assertTrue(events.stream().anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
+    }
+
+    @Test
+    void continuesRunAndPublishesUsageWhenUsagePersistenceFails() {
+        FakeSessionStore store = new FakeSessionStore();
+        FakeModelProvider provider = new FakeModelProvider();
+        provider.usage = new ModelUsage();
+        provider.usage.setPromptTokens(10);
+        provider.usage.setCompletionTokens(5);
+        provider.usage.setTotalTokens(15);
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
+        AgentSettings settings = settings();
+        settings.setCompactionEnabled(false);
+
+        AgentRunner runner = new AgentRunner(
+                settings,
+                store,
+                eventPublisher,
+                new StaticPromptProvider(),
+                new ToolRegistry(),
+                providers,
+                new DefaultToolContextFactory(),
+                new DefaultConversationContextManager(settings, new FakeCompactionStore(), eventPublisher, objectMapper),
+                new FailingUsageStore(),
+                objectMapper);
+
+        List<AgentEvent> events = new ArrayList<AgentEvent>();
+        AgentRunResult result = runner.run(
+                "s1",
+                "hello",
+                AgentRunOptions.builder().eventConsumer(events::add).build());
+
+        assertEquals("final answer", result.getAnswer());
+        assertEquals(2, store.messages.size());
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
+        assertTrue(events.stream().anyMatch(event -> AgentEvent.AGENT_END.equals(event.getType())));
     }
 
     private static AgentSettings settings() {
@@ -219,6 +265,19 @@ class AgentRunnerCompactionTest {
         @Override
         public void append(ModelCallUsage usage) {
             this.appended = usage;
+        }
+    }
+
+    private static class FailingUsageStore implements ModelCallUsageStore {
+
+        @Override
+        public ModelCallUsage findLatestBySessionId(String sessionId) {
+            return null;
+        }
+
+        @Override
+        public void append(ModelCallUsage usage) {
+            throw new IllegalStateException("usage store unavailable");
         }
     }
 

@@ -3,7 +3,6 @@ package io.github.differentialmanifold.jagentharness.mcp.spring;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -85,11 +84,23 @@ class McpConfigurationManagerTest {
     }
 
     @Test
-    void requiresEnvironmentReferenceForSensitiveHeaders() {
+    void allowsLiteralSensitiveHeaders() {
         McpServerConfig config = server("secure", "https://example.com/mcp").getValue();
         config.getHeaders().put("Authorization", "Bearer literal-token");
 
-        assertThrows(IllegalArgumentException.class, () -> new McpConfigValidator().validate("secure", config));
+        McpServerConfig validated = new McpConfigValidator().validate("secure", config);
+
+        assertEquals("Bearer literal-token", validated.getHeaders().get("Authorization"));
+    }
+
+    @Test
+    void preservesEnvironmentReferencesUntilRuntimeResolution() {
+        McpServerConfig config = server("secure", "https://example.com/mcp").getValue();
+        config.getHeaders().put("Authorization", "Bearer ${MCP_TEST_TOKEN}");
+
+        McpServerConfig validated = new McpConfigValidator().validate("secure", config);
+
+        assertEquals("Bearer ${MCP_TEST_TOKEN}", validated.getHeaders().get("Authorization"));
     }
 
     @Test

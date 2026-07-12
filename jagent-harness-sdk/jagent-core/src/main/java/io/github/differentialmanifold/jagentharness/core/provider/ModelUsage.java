@@ -48,6 +48,10 @@ public class ModelUsage {
         this.totalTokens = totalTokens;
     }
 
+    /**
+     * Returns the provider-reported baseline for the next model call. Reasoning tokens are excluded
+     * because reasoning content is not replayed in conversation history.
+     */
     public Integer getActualContextTokens() {
         if (totalTokens == null) {
             return null;
