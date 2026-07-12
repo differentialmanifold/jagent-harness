@@ -69,19 +69,19 @@ class AgentRunnerCompactionTest {
                 AgentRunOptions.builder().eventConsumer(events::add).build());
 
         assertEquals("summary from compact", compactionStore.summary);
-        assertEquals("m3", compactionStore.cursorMessageId);
+        assertEquals("m2", compactionStore.cursorMessageId);
         assertEquals(1, provider.compactionRequests.size());
         assertEquals(1, provider.normalRequests.size());
 
         ModelRequest normalRequest = provider.normalRequests.get(0);
         assertTrue(normalRequest.getSystemPrompt().contains("Compacted Conversation Summary"));
         assertTrue(normalRequest.getSystemPrompt().contains("summary from compact"));
-        assertEquals(2, normalRequest.getMessages().size());
-        assertEquals("m4", normalRequest.getMessages().get(0).getMessageId());
-        assertEquals("new request that must remain verbatim", normalRequest.getMessages().get(1).getContent());
+        assertEquals(3, normalRequest.getMessages().size());
+        assertEquals("m3", normalRequest.getMessages().get(0).getMessageId());
+        assertEquals("m4", normalRequest.getMessages().get(1).getMessageId());
+        assertEquals("new request that must remain verbatim", normalRequest.getMessages().get(2).getContent());
         assertFalse(containsMessage(normalRequest.getMessages(), "m1"));
         assertFalse(containsMessage(normalRequest.getMessages(), "m2"));
-        assertFalse(containsMessage(normalRequest.getMessages(), "m3"));
         AgentMessage userMessage = store.messages.get(store.messages.size() - 2);
         AgentMessage assistantMessage = store.messages.get(store.messages.size() - 1);
         assertEquals(result.getTurnId(), userMessage.getTurnId());
