@@ -345,8 +345,9 @@ async function saveJsonConfig() {
       jsonError.value = `Server ${name} must define a URL.`
       return
     }
-    if (config.transport !== 'streamable-http') {
-      jsonError.value = `Server ${name} must use transport streamable-http.`
+    const transportValues = [config.transport, config.type].filter((value) => value != null && `${value}`.trim())
+    if (transportValues.some((value) => !isStreamableHttpTransport(value))) {
+      jsonError.value = `Server ${name} must use Streamable HTTP.`
       return
     }
   }
@@ -566,6 +567,11 @@ function formatJson(value) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isStreamableHttpTransport(value) {
+  const normalized = `${value}`.trim().toLowerCase().replace(/[-_\s]/g, '')
+  return normalized === 'http' || normalized === 'streamablehttp'
 }
 
 function headerEntries(config) {

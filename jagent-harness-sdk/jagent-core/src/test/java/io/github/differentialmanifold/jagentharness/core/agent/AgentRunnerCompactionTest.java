@@ -12,6 +12,8 @@ import java.util.List;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionState;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
+import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
+import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.DefaultConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.TokenEstimator;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
@@ -136,6 +138,51 @@ class AgentRunnerCompactionTest {
                 + estimator.estimateMessages(Collections.singletonList(assistant));
         assertEquals(Integer.valueOf(expectedNextContextEstimate), usageStore.appended.getEstimatedTokens());
         assertTrue(events.stream().anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
+    }
+
+    @Test
+    void estimatesUsageFromFullContextInsteadOfCompactionBaseline() {
+        FakeSessionStore store = new FakeSessionStore();
+        CapturingUsageStore usageStore = new CapturingUsageStore();
+        FakeModelProvider provider = new FakeModelProvider();
+        provider.usage = new ModelUsage();
+        provider.usage.setPromptTokens(10);
+        provider.usage.setCompletionTokens(5);
+        provider.usage.setTotalTokens(15);
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
+        AgentSettings settings = settings();
+        settings.setCompactionEnabled(false);
+        ConversationContextManager contextManager = request -> new ConversationContext(
+                request.getSystemPrompt(),
+                request.getMessages(),
+                12,
+                120,
+                1000,
+                800,
+                ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE);
+
+        AgentRunner runner = new AgentRunner(
+                settings,
+                store,
+                eventPublisher,
+                new StaticPromptProvider(),
+                new ToolRegistry(),
+                providers,
+                new DefaultToolContextFactory(),
+                contextManager,
+                usageStore,
+                objectMapper);
+
+        runner.run("s1", "hello");
+
+        AgentMessage assistant = store.messages.get(store.messages.size() - 1);
+        int expectedEstimate = 120
+                + new TokenEstimator().estimateMessages(Collections.singletonList(assistant));
+        assertEquals(Integer.valueOf(expectedEstimate), usageStore.appended.getEstimatedTokens());
+        assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, usageStore.appended.getEstimateSource());
     }
 
     @Test

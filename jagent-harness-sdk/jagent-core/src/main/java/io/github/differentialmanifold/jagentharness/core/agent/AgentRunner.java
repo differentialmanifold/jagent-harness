@@ -528,13 +528,8 @@ public class AgentRunner implements AgentHarness {
         int thresholdTokens = conversationContext.getThresholdTokens() > 0
                 ? conversationContext.getThresholdTokens()
                 : compactionThresholdTokens(contextWindowTokens);
-        String estimateSource = conversationContext.getEstimateSource() == null
-                ? ModelCallUsage.ESTIMATE_SOURCE_FULL
-                : conversationContext.getEstimateSource();
+        String estimateSource = ModelCallUsage.ESTIMATE_SOURCE_FULL;
         Integer estimatedTokens = estimateNextContextTokens(
-                conversationContext.getEstimatedTokens(),
-                assistantMessage);
-        Integer rawEstimatedTokens = estimateNextContextTokens(
                 conversationContext.getRawEstimatedTokens(),
                 assistantMessage);
 
@@ -570,7 +565,6 @@ public class AgentRunner implements AgentHarness {
         payload.put("thresholdTokens", thresholdTokens);
         payload.put("estimateSource", estimateSource);
         payload.put("estimatedTokens", estimatedTokens);
-        payload.put("rawEstimatedTokens", rawEstimatedTokens);
         if (record != null) {
             payload.put("actualContextTokens", record.getActualContextTokens());
             payload.put("promptTokens", record.getPromptTokens());

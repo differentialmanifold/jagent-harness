@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.mcp.spring;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -42,6 +43,14 @@ class McpConfigurationManagerTest {
         assertEquals("http://project/shared", runtime.getEffectiveServers().get("shared").getConfig().getUrl());
         assertEquals(java.util.Collections.singletonList("global"),
                 runtime.getEffectiveServers().get("shared").getOverriddenSources());
+        McpScopeConfigSnapshot globalScope = manager.scopeSnapshot(KnowledgeScope.global());
+        assertEquals(2, globalScope.getServers().size());
+        assertEquals("global", globalScope.getServers().get("shared").getSource());
+        assertNull(globalScope.getServers().get("project-only"));
+        McpScopeConfigSnapshot projectScope = manager.scopeSnapshot(KnowledgeScope.project("project-1"));
+        assertEquals(2, projectScope.getServers().size());
+        assertEquals("project", projectScope.getServers().get("shared").getSource());
+        assertNull(projectScope.getServers().get("global-only"));
         String initialFingerprint = runtime.getFingerprint();
 
         store.writeFile(KnowledgeScope.global(), "mcp.json",
@@ -56,8 +65,11 @@ class McpConfigurationManagerTest {
         assertEquals("http://changed/project",
                 refreshed.getEffectiveServers().get("changed-project").getConfig().getUrl());
         assertNotEquals(initialFingerprint, refreshed.getFingerprint());
-        assertEquals(2, manager.currentSnapshot("project-1", KnowledgeScope.project("project-1"))
-                .getEffectiveServers().size());
+        McpScopeConfigSnapshot refreshedProject = manager.scopeSnapshot(KnowledgeScope.project("project-1"));
+        assertEquals(1, refreshedProject.getServers().size());
+        assertEquals("http://changed/project",
+                refreshedProject.getServers().get("changed-project").getConfig().getUrl());
+        assertNull(refreshedProject.getServers().get("changed-global"));
     }
 
     @Test
@@ -104,6 +116,32 @@ class McpConfigurationManagerTest {
     }
 
     @Test
+    void acceptsCommonStreamableHttpConfigurationAliases() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String[] values = new String[]{
+                "streamable-http", "streamableHttp", "streamable_http", "Streamable HTTP", "http"
+        };
+        for (String value : values) {
+            McpServerConfig config = server("remote", "https://example.com/mcp").getValue();
+            config.setTransport(value);
+
+            McpServerConfig validated = new McpConfigValidator().validate("remote", config);
+
+            assertEquals(McpServerConfig.STREAMABLE_HTTP, validated.getTransport());
+        }
+
+        McpConfigDocument typeDocument = objectMapper.readValue(
+                "{\"mcpServers\":{\"remote\":{\"type\":\"http\",\"url\":\"https://example.com/mcp\"}}}",
+                McpConfigDocument.class);
+        assertEquals(McpServerConfig.STREAMABLE_HTTP,
+                typeDocument.getMcpServers().get("remote").getTransport());
+
+        McpServerConfig sse = server("legacy", "https://example.com/sse").getValue();
+        sse.setTransport("sse");
+        assertThrows(IllegalArgumentException.class, () -> new McpConfigValidator().validate("legacy", sse));
+    }
+
+    @Test
     void replacesAndDeletesTheSingleDatabaseConfigFile() throws Exception {
         MemoryStore store = new MemoryStore();
         McpConfigurationManager manager = new McpConfigurationManager(
@@ -116,13 +154,13 @@ class McpConfigurationManagerTest {
 
         manager.saveDatabase(second);
         assertEquals(second + "\n", store.readFile("mcp.json").getContent());
-        assertEquals(1, manager.currentSnapshot(null, KnowledgeScope.global()).getEffectiveServers().size());
+        assertEquals(1, manager.scopeSnapshot(KnowledgeScope.global()).getServers().size());
         assertEquals("http://second/mcp",
-                manager.currentSnapshot(null, KnowledgeScope.global()).getEffectiveServers().get("second").getConfig().getUrl());
+                manager.scopeSnapshot(KnowledgeScope.global()).getServers().get("second").getConfig().getUrl());
 
         manager.deleteDatabase();
         assertNull(store.readFile("mcp.json"));
-        assertNull(manager.currentSnapshot(null, KnowledgeScope.global()).getDatabaseConfig());
+        assertNull(manager.scopeSnapshot(KnowledgeScope.global()).getDatabaseConfig());
     }
 
     @SafeVarargs
