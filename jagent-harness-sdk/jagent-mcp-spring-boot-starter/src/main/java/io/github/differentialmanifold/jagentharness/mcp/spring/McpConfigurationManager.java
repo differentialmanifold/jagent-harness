@@ -41,11 +41,32 @@ public class McpConfigurationManager {
     }
 
     public synchronized McpConfigSnapshot runtimeSnapshot(String projectId) {
-        return snapshot(projectId, null);
+        String normalizedProjectId = projectId == null ? "" : projectId.trim();
+        String globalContent = configContent(KnowledgeScope.global());
+        String projectContent = normalizedProjectId.isEmpty()
+                ? null
+                : configContent(KnowledgeScope.project(normalizedProjectId));
+        return merge(
+                readContent(globalContent, "global database " + configFile),
+                readContent(projectContent, "project database " + configFile),
+                fingerprint(normalizedProjectId, globalContent, projectContent));
     }
 
-    public McpConfigSnapshot currentSnapshot(String projectId, KnowledgeScope selectedScope) {
-        return snapshot(projectId, selectedScope);
+    public McpScopeConfigSnapshot scopeSnapshot(KnowledgeScope scope) {
+        KnowledgeScope selectedScope = scope == null ? KnowledgeScope.global() : scope;
+        String content = configContent(selectedScope);
+        Map<String, McpServerConfig> configs = readContent(
+                content,
+                selectedScope.getType() + " database " + configFile);
+        String source = selectedScope.isGlobal() ? SOURCE_GLOBAL : SOURCE_PROJECT;
+        Map<String, McpConfigEntry> servers = new LinkedHashMap<String, McpConfigEntry>();
+        for (Map.Entry<String, McpServerConfig> entry : configs.entrySet()) {
+            servers.put(entry.getKey(), new McpConfigEntry(
+                    entry.getValue().copy(),
+                    source,
+                    Collections.<String>emptyList()));
+        }
+        return new McpScopeConfigSnapshot(servers, content);
     }
 
     public KnowledgeFile saveDatabase(String content) {
@@ -82,25 +103,8 @@ public class McpConfigurationManager {
         return validator.validateAndResolve(name, config);
     }
 
-    private McpConfigSnapshot snapshot(String projectId, KnowledgeScope selectedScope) {
-        String normalizedProjectId = projectId == null ? "" : projectId.trim();
-        String globalContent = configContent(KnowledgeScope.global());
-        String projectContent = normalizedProjectId.isEmpty()
-                ? null
-                : configContent(KnowledgeScope.project(normalizedProjectId));
-        String selectedContent = selectedScope == null
-                ? null
-                : selectedScope.isGlobal() ? globalContent : projectContent;
-        return merge(
-                readContent(globalContent, "global database " + configFile),
-                readContent(projectContent, "project database " + configFile),
-                selectedContent,
-                fingerprint(normalizedProjectId, globalContent, projectContent));
-    }
-
     private McpConfigSnapshot merge(Map<String, McpServerConfig> global,
                                     Map<String, McpServerConfig> project,
-                                    String selectedConfig,
                                     String fingerprint) {
         Map<String, McpServerConfig> configs = new LinkedHashMap<String, McpServerConfig>();
         Map<String, String> sources = new LinkedHashMap<String, String>();
@@ -115,7 +119,7 @@ public class McpConfigurationManager {
                     sources.get(entry.getKey()),
                     overridden.get(entry.getKey())));
         }
-        return new McpConfigSnapshot(effective, selectedConfig, fingerprint);
+        return new McpConfigSnapshot(effective, fingerprint);
     }
 
     private void mergeSource(Map<String, McpServerConfig> configs,

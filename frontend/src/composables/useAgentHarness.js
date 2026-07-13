@@ -932,7 +932,6 @@ export function useAgentHarness() {
       thresholdTokens: numberOrNull(usage.thresholdTokens),
       estimateSource: usage.estimateSource || '',
       estimatedTokens: numberOrNull(usage.estimatedTokens),
-      rawEstimatedTokens: numberOrNull(usage.rawEstimatedTokens),
       actualContextTokens: numberOrNull(usage.actualContextTokens),
       promptTokens: numberOrNull(usage.promptTokens),
       completionTokens: numberOrNull(usage.completionTokens),

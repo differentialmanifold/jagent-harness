@@ -71,12 +71,7 @@ const progressStyle = computed(() => ({
 const percentText = computed(() => `${percentage.value}%`)
 const remainingText = computed(() => `${Math.max(0, 100 - percentage.value)}%`)
 const tooltipTitle = computed(() => `Context window ${percentText.value} used`)
-const sourceLabel = computed(() => {
-  if (usage.value.estimateSource === 'actual_baseline_plus_delta') {
-    return 'Estimated from actual baseline + new messages'
-  }
-  return hasActual.value ? 'Estimated from full context' : 'Estimated baseline only'
-})
+const sourceLabel = computed(() => 'Estimated independently from the full context')
 
 function positiveNumber(value) {
   const number = Number(value)

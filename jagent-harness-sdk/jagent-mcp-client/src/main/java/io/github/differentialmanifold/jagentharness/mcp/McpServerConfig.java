@@ -1,10 +1,12 @@
 package io.github.differentialmanifold.jagentharness.mcp;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class McpServerConfig {
@@ -49,8 +51,22 @@ public class McpServerConfig {
         return transport;
     }
 
+    @JsonAlias("type")
     public void setTransport(String transport) {
-        this.transport = transport;
+        this.transport = normalizeTransport(transport);
+    }
+
+    public static String normalizeTransport(String transport) {
+        String value = transport == null ? "" : transport.trim();
+        if (value.isEmpty()) {
+            return STREAMABLE_HTTP;
+        }
+        String compact = value.toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s_-]", "");
+        if ("http".equals(compact) || "streamablehttp".equals(compact)) {
+            return STREAMABLE_HTTP;
+        }
+        return value;
     }
 
     public String getUrl() {

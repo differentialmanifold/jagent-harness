@@ -9,9 +9,9 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigEntry;
-import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigSnapshot;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpRuntime;
+import io.github.differentialmanifold.jagentharness.mcp.spring.McpScopeConfigSnapshot;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpServerRuntimeStatus;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpTestResult;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpToolCallResult;
@@ -102,12 +102,10 @@ public class McpController {
         String projectId = session == null ? null : session.getProjectId();
         KnowledgeScope selectedScope = scope(requestedScope, session);
         String effectiveProjectId = selectedScope.isGlobal() ? null : projectId;
-        McpConfigSnapshot snapshot = configurationManager.currentSnapshot(
-                effectiveProjectId,
-                selectedScope);
+        McpScopeConfigSnapshot snapshot = configurationManager.scopeSnapshot(selectedScope);
         Map<String, McpServerRuntimeStatus> statuses = runtime.statuses(effectiveProjectId);
         List<McpServerResponse> servers = new ArrayList<McpServerResponse>();
-        for (Map.Entry<String, McpConfigEntry> entry : snapshot.getEffectiveServers().entrySet()) {
+        for (Map.Entry<String, McpConfigEntry> entry : snapshot.getServers().entrySet()) {
             McpServerRuntimeStatus status = statuses.get(entry.getKey());
             servers.add(new McpServerResponse(
                     entry.getKey(),
