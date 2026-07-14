@@ -15,6 +15,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
+import io.github.differentialmanifold.jagentharness.spring.ModelAccessTokenProvider;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpRuntime;
 import org.springframework.beans.factory.ObjectProvider;
@@ -100,8 +101,9 @@ public class AgentConsoleWebConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ProviderController providerController(ModelProviderRegistry providerRegistry,
-                                                 HarnessProperties properties) {
-        return new ProviderController(providerRegistry, properties);
+                                                 HarnessProperties properties,
+                                                 ModelAccessTokenProvider accessTokenProvider) {
+        return new ProviderController(providerRegistry, properties, accessTokenProvider);
     }
 
     @Bean
