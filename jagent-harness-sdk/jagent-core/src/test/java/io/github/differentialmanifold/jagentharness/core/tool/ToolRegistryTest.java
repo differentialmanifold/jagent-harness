@@ -56,7 +56,7 @@ class ToolRegistryTest {
 
         assertEquals(1, registry.all().size());
         List<ToolDefinition> tools = new ArrayList<ToolDefinition>(
-                registry.all(new AgentContext("session", "turn")));
+                registry.all(new AgentContext("session", "run", "turn")));
         assertEquals(2, tools.size());
         assertSame(dynamic, tools.get(1));
     }
@@ -71,9 +71,9 @@ class ToolRegistryTest {
                 Collections.<ToolDefinition>emptyList(),
                 Collections.singletonList(provider));
 
-        assertSame(dynamic, registry.get("remote", new AgentContext("session", "turn")));
+        assertSame(dynamic, registry.get("remote", new AgentContext("session", "run", "turn")));
         assertNull(registry.get("remote"));
-        assertNull(registry.get("remote", new AgentContext("other", "turn")));
+        assertNull(registry.get("remote", new AgentContext("other", "run", "turn")));
     }
 
     @Test
@@ -82,7 +82,8 @@ class ToolRegistryTest {
                 Collections.singletonList(new StubTool("read", "local")),
                 Collections.singletonList(context -> Collections.singletonList(new StubTool("read", "remote"))));
 
-        assertThrows(IllegalStateException.class, () -> registry.all(new AgentContext("session", "turn")));
+        assertThrows(IllegalStateException.class,
+                () -> registry.all(new AgentContext("session", "run", "turn")));
     }
 
     @Test
@@ -105,7 +106,7 @@ class ToolRegistryTest {
                 Collections.singletonList(readOnly));
 
         List<ToolDefinition> resolved = new ArrayList<ToolDefinition>(
-                registry.all(new AgentContext("session", "turn")));
+                registry.all(new AgentContext("session", "run", "turn")));
 
         assertEquals(2, resolved.size());
         assertEquals("read", resolved.get(0).getName());

@@ -11,20 +11,26 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalMode;
 
 public class AgentRunOptions {
 
+    private final String runId;
     private final String traceId;
     private final Map<String, Object> attributes;
     private final Consumer<AgentEvent> eventConsumer;
     private final StopSignal stopSignal;
     private final ToolApprovalMode approvalMode;
     private final ToolApprovalHandler approvalHandler;
+    private final RunInputSource runInputSource;
 
     private AgentRunOptions(Builder builder) {
+        this.runId = builder.runId;
         this.traceId = builder.traceId;
         this.attributes = Collections.unmodifiableMap(new LinkedHashMap<String, Object>(builder.attributes));
         this.eventConsumer = builder.eventConsumer;
         this.stopSignal = builder.stopSignal == null ? StopSignal.none() : builder.stopSignal;
         this.approvalMode = builder.approvalMode == null ? ToolApprovalMode.FULL_ACCESS : builder.approvalMode;
         this.approvalHandler = builder.approvalHandler;
+        this.runInputSource = builder.runInputSource == null
+                ? RunInputSource.none()
+                : builder.runInputSource;
     }
 
     public static AgentRunOptions empty() {
@@ -33,6 +39,10 @@ public class AgentRunOptions {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    public String getRunId() {
+        return runId;
     }
 
     public String getTraceId() {
@@ -59,27 +69,40 @@ public class AgentRunOptions {
         return approvalHandler;
     }
 
+    public RunInputSource getRunInputSource() {
+        return runInputSource;
+    }
+
     public AgentRunOptions withEventConsumer(Consumer<AgentEvent> eventConsumer) {
         return toBuilder().eventConsumer(eventConsumer).build();
     }
 
     public Builder toBuilder() {
         return builder()
+                .runId(runId)
                 .traceId(traceId)
                 .attributes(attributes)
                 .eventConsumer(eventConsumer)
                 .stopSignal(stopSignal)
                 .approvalMode(approvalMode)
-                .approvalHandler(approvalHandler);
+                .approvalHandler(approvalHandler)
+                .runInputSource(runInputSource);
     }
 
     public static class Builder {
+        private String runId;
         private String traceId;
         private final Map<String, Object> attributes = new LinkedHashMap<String, Object>();
         private Consumer<AgentEvent> eventConsumer;
         private StopSignal stopSignal = StopSignal.none();
         private ToolApprovalMode approvalMode = ToolApprovalMode.FULL_ACCESS;
         private ToolApprovalHandler approvalHandler;
+        private RunInputSource runInputSource = RunInputSource.none();
+
+        public Builder runId(String runId) {
+            this.runId = runId;
+            return this;
+        }
 
         public Builder traceId(String traceId) {
             this.traceId = traceId;
@@ -119,6 +142,11 @@ public class AgentRunOptions {
 
         public Builder approvalHandler(ToolApprovalHandler approvalHandler) {
             this.approvalHandler = approvalHandler;
+            return this;
+        }
+
+        public Builder runInputSource(RunInputSource runInputSource) {
+            this.runInputSource = runInputSource == null ? RunInputSource.none() : runInputSource;
             return this;
         }
 

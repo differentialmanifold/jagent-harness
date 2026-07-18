@@ -97,6 +97,7 @@ class DefaultConversationContextManagerTest {
 
         ConversationContext context = manager.prepare(new ConversationContextRequest(
                 "s1",
+                "r1",
                 "t1",
                 "System prompt",
                 Arrays.asList(originalUser, interrupted, followUp),
@@ -369,6 +370,7 @@ class DefaultConversationContextManagerTest {
 
         ConversationContext context = manager.prepare(new ConversationContextRequest(
                 "s1",
+                "r1",
                 "t1",
                 "System prompt",
                 Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
@@ -382,6 +384,7 @@ class DefaultConversationContextManagerTest {
 
         ConversationContext nextContext = manager.prepare(new ConversationContextRequest(
                 "s1",
+                "r1",
                 "t2",
                 "System prompt",
                 Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
@@ -410,6 +413,7 @@ class DefaultConversationContextManagerTest {
     private ConversationContextRequest request(List<AgentMessage> messages, ModelProvider provider) {
         return new ConversationContextRequest(
                 "s1",
+                "r1",
                 "t1",
                 "System prompt",
                 messages,

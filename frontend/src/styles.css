@@ -1905,6 +1905,32 @@ textarea {
   min-width: 0;
 }
 
+.pending-inputs {
+  display: grid;
+  gap: 6px;
+  max-height: 104px;
+  overflow: auto;
+  border-top: 1px solid #edf0f4;
+  padding: 8px 8px 0;
+}
+
+.pending-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #475467;
+  font-size: 12px;
+}
+
+.pending-input-content {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .approval-dropdown {
   max-width: 100%;
 }

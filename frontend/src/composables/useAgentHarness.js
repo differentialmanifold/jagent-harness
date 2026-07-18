@@ -3,12 +3,6 @@ import { request } from '../api/http'
 import { loadJson, saveJson } from '../utils/storage'
 import { projectName, projectPathLabel } from '../utils/workspace'
 
-const ignoredCoreEvents = new Set([
-  'agent_start',
-  'turn_start',
-  'turn_end'
-])
-
 const DEFAULT_PROJECT_NAME = 'Default Project'
 
 export function useAgentHarness() {
@@ -59,6 +53,10 @@ export function useAgentHarness() {
   const stopping = computed(() => currentRuntimeState.value.stopping)
   const stopReady = computed(() => currentRuntimeState.value.stopReady)
   const contextUsage = computed(() => currentRuntimeState.value.contextUsage)
+  const activeRunId = computed(() => currentRuntimeState.value.activeRunId)
+  const pendingInputs = computed(() => currentRuntimeState.value.pendingInputs)
+  const submittingInput = computed(() => currentRuntimeState.value.submittingInput)
+  const messageRevision = computed(() => currentRuntimeState.value.messageRevision)
   const anyRunning = computed(() => Array.from(sessionRuntimeStates.values()).some((state) => state.running))
 
   const providerLabel = computed(() => {
@@ -72,8 +70,11 @@ export function useAgentHarness() {
     const pendingApproval = state.messages.find((message) => message.role === 'tool' && message.approval?.pending)
     const runningTool = state.messages.find((message) => message.role === 'tool' && message.running)
     const thinking = state.messages.find((message) => message.role === 'assistant' && message.thinking)
+    const pendingCount = state.pendingInputs.length
     const prefix = state.stopping
       ? 'Stopping agent run'
+      : state.finishing
+        ? 'Finishing agent run'
       : state.running && !state.stopReady
         ? 'Starting agent run'
       : pendingApproval
@@ -85,7 +86,8 @@ export function useAgentHarness() {
       : state.running
         ? 'Agent loop is streaming events'
         : `${state.messages.length} messages`
-    return `${prefix} | ${currentProjectLabel(currentSession.value.workspacePath)}`
+    const pendingLabel = pendingCount > 0 ? ` | ${pendingCount} queued` : ''
+    return `${prefix}${pendingLabel} | ${currentProjectLabel(currentSession.value.workspacePath)}`
   })
 
   const currentProjectKey = computed(() => currentSession.value ? sessionProjectKey(currentSession.value) : '')
@@ -118,6 +120,8 @@ export function useAgentHarness() {
   onBeforeUnmount(() => {
     for (const state of sessionRuntimeStates.values()) {
       clearStopFallback(state)
+      cancelDeltaFlush(state)
+      cancelRuntimeInputSubmission(state)
       if (state.streamController) {
         state.streamController.abort()
       }
@@ -355,7 +359,10 @@ export function useAgentHarness() {
     const content = draft.value
     const sessionId = currentSession.value.sessionId
     const state = runtimeState(sessionId)
-    if (state.running) return
+    if (state.running) {
+      await submitRuntimeInput(content, state)
+      return
+    }
     if (shouldAutoNameChat(currentSession.value, state.messages)) {
       await renameChatFromPrompt(sessionId, content)
     }
@@ -364,8 +371,9 @@ export function useAgentHarness() {
     state.stopping = false
     state.stopReady = false
     state.stopRequested = false
+    state.finishing = false
     resetTransientRunState(state)
-    state.activeRequestId = null
+    state.activeRunId = null
     state.streamController = markRaw(new AbortController())
     try {
       await streamRequest(
@@ -380,29 +388,89 @@ export function useAgentHarness() {
       }
     } finally {
       clearStopFallback(state)
-      state.activeRequestId = null
+      cancelRuntimeInputSubmission(state)
+      state.pendingInputs.splice(0)
       state.streamController = null
       state.stopRequested = false
       state.stopping = false
       state.stopReady = false
       state.running = false
+      state.finishing = false
+      state.activeRunId = null
+    }
+  }
+
+  async function submitRuntimeInput(content, state) {
+    if (!state.running
+        || state.submittingInput
+        || state.stopping
+        || !state.stopReady
+        || !state.activeRunId) return
+    const runId = state.activeRunId
+    const controller = markRaw(new AbortController())
+
+    const inputId = createInputId()
+    const input = {
+      inputId,
+      content,
+      status: 'submitting',
+      createdAt: new Date().toISOString(),
+      sequence: ++state.inputSequence
+    }
+    state.pendingInputs.push(input)
+    state.submittingInput = true
+    state.runtimeInputController = controller
+    state.runtimeInputId = inputId
+    state.draft = ''
+
+    try {
+      const receipt = await request(`/api/chat/runs/${encodeURIComponent(runId)}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content, inputId }),
+        signal: controller.signal
+      })
+      if (state.runtimeInputController !== controller || state.activeRunId !== runId) return
+      const pending = state.pendingInputs.find((item) => item.inputId === inputId)
+      if (pending) {
+        Object.assign(pending, normalizePendingInput(receipt, input))
+      }
+    } catch (error) {
+      if (state.appliedRuntimeInputId === inputId) return
+      if (error.name === 'AbortError' || state.runtimeInputController !== controller) return
+      removePendingInputs(state, [inputId])
+      if (!state.draft.trim()) {
+        state.draft = content
+      }
+      appendLocalErrorMessage(state, `Failed to submit message: ${error.message}`)
+    } finally {
+      if (state.runtimeInputController === controller) {
+        state.runtimeInputController = null
+        state.submittingInput = false
+      }
+      if (state.runtimeInputId === inputId) {
+        state.runtimeInputId = null
+      }
+      if (state.appliedRuntimeInputId === inputId) {
+        state.appliedRuntimeInputId = null
+      }
     }
   }
 
   async function stopMessage() {
     const state = currentRuntimeState.value
-    if (!state.running || state.stopping || !state.stopReady || !state.activeRequestId) return
+    if (!state.running || state.stopping || !state.stopReady || !state.activeRunId) return
+    const runId = state.activeRunId
     state.stopping = true
     state.stopRequested = true
+    cancelRuntimeInputSubmission(state)
     state.stopFallbackTimer = window.setTimeout(() => {
       if (state.streamController) {
         state.streamController.abort()
       }
     }, 3000)
     try {
-      await request('/api/chat/requests/stop', {
-        method: 'POST',
-        body: JSON.stringify({ requestId: state.activeRequestId })
+      await request(`/api/chat/runs/${encodeURIComponent(runId)}/stop`, {
+        method: 'POST'
       })
     } catch (error) {
       clearStopFallback(state)
@@ -423,9 +491,9 @@ export function useAgentHarness() {
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || response.statusText)
     }
-    state.activeRequestId = response.headers.get('X-Request-Id')
-    if (!state.activeRequestId) {
-      throw new Error('Chat stream response is missing X-Request-Id')
+    state.activeRunId = response.headers.get('X-Run-Id')
+    if (!state.activeRunId) {
+      throw new Error('Chat stream response is missing X-Run-Id')
     }
     state.stopReady = true
 
@@ -475,16 +543,40 @@ export function useAgentHarness() {
 
   function replayTimelineEvents(events, state) {
     resetTransientRunState(state)
+    cancelDeltaFlush(state)
+    state.activeRunId = null
+    state.activeTurnId = null
+    state.turns.clear()
+    state.pendingInputs.splice(0)
+    state.replaying = true
     state.messages.splice(0)
-    for (const event of events) {
-      handleAgentEvent(event.type || 'message', event, state, { replay: true })
+    try {
+      for (const event of events) {
+        handleAgentEvent(event.type || 'message', event, state, { replay: true })
+      }
+    } finally {
+      state.replaying = false
+      state.activeRunId = null
+      state.activeTurnId = null
+      state.running = false
+      state.stopReady = false
+      state.finishing = false
+      markMessagesChanged(state)
     }
   }
 
   function handleAgentEvent(eventName, event, state, options = {}) {
     const payload = parsePayload(event.payloadJson)
     const type = event.type || eventName
-    if (type === 'message_start') {
+    if (type === 'agent_start') {
+      startRun(event, payload, state)
+    } else if (type === 'turn_start') {
+      startTurn(event, payload, state)
+    } else if (type === 'turn_end') {
+      completeTurn(event, payload, state)
+    } else if (type === 'run_input_batch_applied') {
+      applyRunInputBatch(payload, state)
+    } else if (type === 'message_start') {
       if (!options.replay) {
         startThinkingMessage(event, payload, state)
       }
@@ -522,32 +614,241 @@ export function useAgentHarness() {
     } else if (type === 'agent_end') {
       clearEmptyThinkingMessage(state)
       completePendingTools('completed', state)
+      finishRun(event, payload, state)
       if (options.replay) {
         resetTransientRunState(state)
       } else {
-        state.running = false
+        cancelRuntimeInputSubmission(state)
+        state.pendingInputs.splice(0)
+        state.stopReady = false
+        state.stopping = false
+        state.finishing = true
+        // Keep the composer closed until EOF confirms that run resources and the stream have
+        // finished closing, even though agent_end has already made the run itself terminal.
+        state.running = true
       }
     } else if (type === 'agent_stopped') {
       clearStopFallback(state)
+      cancelRuntimeInputSubmission(state)
       clearEmptyThinkingMessage(state)
       completePendingTools('stopped', state)
       resetTransientRunState(state)
+      state.pendingInputs.splice(0)
+      state.activeRunId = null
+      state.finishing = false
+      finishActiveTurn('stopped', state)
       if (!options.replay) {
         state.stopping = false
         state.stopReady = false
         state.running = false
       }
     } else if (type === 'agent_error') {
+      cancelRuntimeInputSubmission(state)
       failActiveStreamingMessage(state)
       completePendingTools('failed', state)
       resetTransientRunState(state)
+      state.pendingInputs.splice(0)
+      state.activeRunId = null
+      state.finishing = false
+      finishActiveTurn('failed', state)
       if (options.replay) {
         appendCustomEventMessage(event, type, payload, state)
       } else {
-        throw new Error(payload.message || 'Agent stream failed')
+        throw new Error(payload.message || payload.error || 'Agent stream failed')
       }
-    } else if (!ignoredCoreEvents.has(type)) {
+    } else {
       appendCustomEventMessage(event, type, payload, state)
+    }
+  }
+
+  function startRun(event, payload, state) {
+    state.activeRunId = eventRunId(event, payload)
+    state.running = true
+    state.finishing = false
+    if (state.activeRunId) {
+      state.stopReady = true
+    }
+  }
+
+  function finishRun(event, payload, state) {
+    const runId = eventRunId(event, payload)
+    if (!runId || runId === state.activeRunId) {
+      state.activeRunId = null
+    }
+    finishActiveTurn('completed', state)
+  }
+
+  function startTurn(event, payload, state) {
+    const turnId = eventTurnId(event, payload)
+    if (!turnId) return
+    const existing = state.turns.get(turnId)
+    const sequence = Number(payload.turnIndex || payload.sequence)
+    state.turns.set(turnId, {
+      ...(existing || {}),
+      turnId,
+      runId: eventRunId(event, payload),
+      sequence: Number.isFinite(sequence) && sequence > 0 ? sequence : ++state.turnSequence,
+      status: 'running',
+      startedAt: payload.startedAt || event.createdAt || new Date().toISOString(),
+      endedAt: null
+    })
+    state.activeTurnId = turnId
+    pruneTurns(state)
+  }
+
+  function completeTurn(event, payload, state) {
+    const turnId = eventTurnId(event, payload)
+    if (!turnId) return
+    const existing = state.turns.get(turnId) || {
+      turnId,
+      runId: eventRunId(event, payload),
+      sequence: ++state.turnSequence
+    }
+    state.turns.set(turnId, {
+      ...existing,
+      status: payload.status || 'completed',
+      endedAt: payload.endedAt || event.createdAt || new Date().toISOString()
+    })
+    if (state.activeTurnId === turnId) {
+      state.activeTurnId = null
+    }
+    pruneTurns(state)
+  }
+
+  function finishActiveTurn(status, state) {
+    if (!state.activeTurnId) return
+    const turn = state.turns.get(state.activeTurnId)
+    if (turn) {
+      state.turns.set(state.activeTurnId, {
+        ...turn,
+        status,
+        endedAt: new Date().toISOString()
+      })
+    }
+    state.activeTurnId = null
+  }
+
+  function pruneTurns(state) {
+    while (state.turns.size > 24) {
+      state.turns.delete(state.turns.keys().next().value)
+    }
+  }
+
+  function applyRunInputBatch(payload, state) {
+    const inputIds = payload.inputIds || []
+    removePendingInputs(state, inputIds)
+    if (state.runtimeInputId && inputIds.includes(state.runtimeInputId)) {
+      state.appliedRuntimeInputId = state.runtimeInputId
+      cancelRuntimeInputSubmission(state)
+    }
+  }
+
+  function normalizePendingInput(source, defaults = {}) {
+    const value = source || {}
+    return {
+      inputId: value.inputId || defaults.inputId || '',
+      content: value.content ?? defaults.content ?? '',
+      status: String(value.status || defaults.status || 'pending').toLowerCase(),
+      sequence: Number(value.sequence ?? defaults.sequence) || 0,
+      createdAt: value.createdAt || defaults.createdAt || new Date().toISOString()
+    }
+  }
+
+  function removePendingInputs(state, inputIds) {
+    const ids = new Set((inputIds || []).filter(Boolean))
+    if (ids.size === 0) return
+    for (let index = state.pendingInputs.length - 1; index >= 0; index--) {
+      if (ids.has(state.pendingInputs[index].inputId)) {
+        state.pendingInputs.splice(index, 1)
+      }
+    }
+  }
+
+  function eventRunId(event, payload) {
+    return event.runId || payload.runId || ''
+  }
+
+  function eventTurnId(event, payload) {
+    return event.turnId || payload.turnId || ''
+  }
+
+  function createInputId() {
+    if (globalThis.crypto?.randomUUID) {
+      return `input_${globalThis.crypto.randomUUID()}`
+    }
+    return `input_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  }
+
+  function activateTurnStream(event, payload, state) {
+    const turnId = eventTurnId(event, payload)
+    if (!turnId) return
+    const streamId = `stream:${turnId}`
+    if (state.activeStreamId && state.activeStreamId !== streamId) {
+      flushStreamingDeltas(state)
+    }
+    state.activeStreamId = streamId
+  }
+
+  function scheduleDeltaFlush(state) {
+    if (state.deltaFlushHandle !== null) return
+    const flush = () => {
+      state.deltaFlushHandle = null
+      state.deltaFlushKind = null
+      applyStreamingDeltas(state)
+    }
+    if (document.visibilityState === 'visible') {
+      state.deltaFlushKind = 'animation'
+      state.deltaFlushHandle = window.requestAnimationFrame(flush)
+    } else {
+      state.deltaFlushKind = 'timeout'
+      state.deltaFlushHandle = window.setTimeout(flush, 16)
+    }
+  }
+
+  function flushStreamingDeltas(state) {
+    cancelScheduledDeltaFlush(state)
+    applyStreamingDeltas(state)
+  }
+
+  function applyStreamingDeltas(state) {
+    const contentDelta = state.pendingContentDelta
+    const reasoningDelta = state.pendingReasoningDelta
+    state.pendingContentDelta = ''
+    state.pendingReasoningDelta = ''
+    if ((!contentDelta && !reasoningDelta) || !state.activeStreamId) return
+    const message = state.messages.find((item) => item.messageId === state.activeStreamId)
+    if (!message) return
+    if (contentDelta) {
+      message.content = `${message.content || ''}${contentDelta}`
+    }
+    if (reasoningDelta) {
+      message.reasoningContent = `${message.reasoningContent || ''}${reasoningDelta}`
+    }
+    message.thinking = false
+    markMessagesChanged(state)
+  }
+
+  function cancelDeltaFlush(state) {
+    cancelScheduledDeltaFlush(state)
+    state.pendingContentDelta = ''
+    state.pendingReasoningDelta = ''
+  }
+
+  function cancelScheduledDeltaFlush(state) {
+    if (state.deltaFlushHandle !== null) {
+      if (state.deltaFlushKind === 'animation') {
+        window.cancelAnimationFrame(state.deltaFlushHandle)
+      } else {
+        window.clearTimeout(state.deltaFlushHandle)
+      }
+    }
+    state.deltaFlushHandle = null
+    state.deltaFlushKind = null
+  }
+
+  function markMessagesChanged(state) {
+    if (!state.replaying) {
+      state.messageRevision += 1
     }
   }
 
@@ -558,6 +859,7 @@ export function useAgentHarness() {
       role: 'assistant',
       content: `Agent error: ${message || 'Unknown error'}`
     })
+    markMessagesChanged(state)
   }
 
   function appendModelRetryMessage(event, payload, state) {
@@ -579,6 +881,7 @@ export function useAgentHarness() {
       content: lines.join('\n'),
       kind: 'model-retry'
     })
+    markMessagesChanged(state)
   }
 
   function formatDelay(delayMillis) {
@@ -588,39 +891,44 @@ export function useAgentHarness() {
   }
 
   function appendStreamingText(event, payload, state) {
-    if (!state.activeStreamId) {
-      state.activeStreamId = `stream:${event.turnId}:active`
-    }
+    activateTurnStream(event, payload, state)
+    if (!state.activeStreamId) return
     ensureStreamingMessage(event, state)
     const delta = payload.delta || ''
     if (!delta) return
-    const message = state.messages.find((item) => item.messageId === state.activeStreamId)
-    if (message) {
-      message.content = `${message.content || ''}${delta}`
-      message.thinking = false
-    }
+    state.pendingContentDelta += delta
+    scheduleDeltaFlush(state)
   }
 
   function appendStreamingReasoning(event, payload, state) {
-    if (!state.activeStreamId) {
-      state.activeStreamId = `stream:${event.turnId}:active`
-    }
+    activateTurnStream(event, payload, state)
+    if (!state.activeStreamId) return
     ensureStreamingMessage(event, state)
     const delta = payload.delta || ''
     if (!delta) return
-    const message = state.messages.find((item) => item.messageId === state.activeStreamId)
-    if (message) {
-      message.reasoningContent = `${message.reasoningContent || ''}${delta}`
-      message.thinking = false
-    }
+    state.pendingReasoningDelta += delta
+    scheduleDeltaFlush(state)
   }
 
   function startThinkingMessage(event, payload, state) {
-    clearEmptyThinkingMessage(state)
-    state.activeStreamId = `stream:${event.turnId}:${payload.iteration || Date.now()}`
+    const turnId = eventTurnId(event, payload)
+    if (state.activeStreamId && state.activeStreamId !== `stream:${turnId}`) {
+      clearEmptyThinkingMessage(state)
+    }
+    activateTurnStream(event, payload, state)
+    if (!state.activeStreamId) return
+    const existing = state.messages.find((message) => message.messageId === state.activeStreamId)
+    if (existing) {
+      existing.streaming = true
+      existing.thinking = true
+      markMessagesChanged(state)
+      return
+    }
     state.messages.push({
       messageId: state.activeStreamId,
       sessionId: event.sessionId,
+      runId: eventRunId(event, payload),
+      turnId: eventTurnId(event, payload),
       role: 'assistant',
       content: '',
       reasoningContent: '',
@@ -628,6 +936,7 @@ export function useAgentHarness() {
       thinking: true,
       startedAt: Date.now()
     })
+    markMessagesChanged(state)
   }
 
   function ensureStreamingMessage(event, state) {
@@ -636,6 +945,8 @@ export function useAgentHarness() {
       state.messages.push({
         messageId: state.activeStreamId,
         sessionId: event.sessionId,
+        runId: event.runId || state.activeRunId,
+        turnId: event.turnId || state.activeTurnId,
         role: 'assistant',
         content: '',
         reasoningContent: '',
@@ -643,12 +954,14 @@ export function useAgentHarness() {
         thinking: true,
         startedAt: Date.now()
       })
+      markMessagesChanged(state)
     }
   }
 
   function mergeMessage(message, state) {
     if (!message || !message.messageId) return
     if (message.role === 'assistant' && state.activeStreamId) {
+      cancelDeltaFlush(state)
       replaceStreamingMessage(message, state)
       return
     }
@@ -662,6 +975,7 @@ export function useAgentHarness() {
     } else {
       state.messages.push(message)
     }
+    markMessagesChanged(state)
   }
 
   function replaceStreamingMessage(message, state) {
@@ -672,15 +986,18 @@ export function useAgentHarness() {
       state.messages.push(message)
     }
     state.activeStreamId = null
+    markMessagesChanged(state)
   }
 
   function clearEmptyThinkingMessage(state) {
     if (!state.activeStreamId) return
+    flushStreamingDeltas(state)
     const index = state.messages.findIndex((message) => message.messageId === state.activeStreamId)
     if (index >= 0
         && !state.messages[index].content
         && !state.messages[index].reasoningContent) {
       state.messages.splice(index, 1)
+      markMessagesChanged(state)
     }
     state.activeStreamId = null
   }
@@ -690,12 +1007,15 @@ export function useAgentHarness() {
     const index = state.messages.findIndex((message) => message.messageId === state.activeStreamId)
     if (index >= 0) {
       state.messages.splice(index, 1)
+      markMessagesChanged(state)
     }
+    cancelDeltaFlush(state)
     state.activeStreamId = null
   }
 
   function failActiveStreamingMessage(state) {
     if (!state.activeStreamId) return
+    flushStreamingDeltas(state)
     const index = state.messages.findIndex((message) => message.messageId === state.activeStreamId)
     if (index < 0) {
       state.activeStreamId = null
@@ -709,7 +1029,9 @@ export function useAgentHarness() {
       message.thinking = false
       message.failed = true
     }
+    cancelDeltaFlush(state)
     state.activeStreamId = null
+    markMessagesChanged(state)
   }
 
   function startToolExecution(event, payload, state) {
@@ -728,12 +1050,14 @@ export function useAgentHarness() {
       running: true,
       startedAt: Date.now()
     })
+    markMessagesChanged(state)
   }
 
   function updateToolExecution(payload, state) {
     const message = pendingToolMessage(payload.toolCallId, state)
     if (!message) return
     message.progress = payload.message || payload.status || payload.text || ''
+    markMessagesChanged(state)
   }
 
   function completeToolExecution(payload, state) {
@@ -747,11 +1071,12 @@ export function useAgentHarness() {
       message.approval.pending = false
       message.approval.responding = false
     }
+    markMessagesChanged(state)
   }
 
   function requestToolApproval(event, payload, state) {
     const approval = {
-      requestId: payload.requestId || state.activeRequestId,
+      runId: payload.runId || eventRunId(event, payload) || state.activeRunId,
       approvalId: payload.approvalId,
       title: payload.title || 'Approval required',
       message: payload.message || '',
@@ -765,6 +1090,7 @@ export function useAgentHarness() {
     if (message) {
       message.approval = approval
       message.progress = approval.title
+      markMessagesChanged(state)
       return
     }
     state.messages.push({
@@ -773,6 +1099,7 @@ export function useAgentHarness() {
       role: 'status',
       content: `${approval.title}: ${approval.target || approval.action || 'tool execution'}`
     })
+    markMessagesChanged(state)
   }
 
   function resolveToolApprovalEvent(payload, state) {
@@ -783,9 +1110,10 @@ export function useAgentHarness() {
     message.approval.approved = payload.approved === true
     message.approval.reason = payload.reason || ''
     message.progress = message.approval.approved ? 'Approved' : 'Denied'
+    markMessagesChanged(state)
   }
 
-  async function resolveToolApproval({ approvalId, requestId, approved }) {
+  async function resolveToolApproval({ approvalId, runId, approved }) {
     if (!approvalId) return
     const state = currentRuntimeState.value
     const message = state.messages.find((item) => item.approval?.approvalId === approvalId)
@@ -797,7 +1125,7 @@ export function useAgentHarness() {
       await request('/api/chat/approvals/resolve', {
         method: 'POST',
         body: JSON.stringify({
-          requestId: requestId || approval?.requestId || state.activeRequestId,
+          runId: runId || approval?.runId || state.activeRunId,
           approvalId,
           approved,
           reason: approved ? 'Approved by user' : 'Denied by user'
@@ -812,6 +1140,7 @@ export function useAgentHarness() {
       if (message) {
         message.progress = approved ? 'Approved' : 'Denied'
       }
+      markMessagesChanged(state)
     } catch (error) {
       if (approval) {
         approval.responding = false
@@ -830,6 +1159,7 @@ export function useAgentHarness() {
       state.messages.push(message)
     }
     state.pendingToolMessages.delete(message.toolCallId)
+    markMessagesChanged(state)
     return true
   }
 
@@ -847,6 +1177,7 @@ export function useAgentHarness() {
   }
 
   function completePendingTools(status, state) {
+    let changed = false
     for (const messageId of state.pendingToolMessages.values()) {
       const message = state.messages.find((item) => item.messageId === messageId)
       if (!message || !message.running) continue
@@ -854,10 +1185,13 @@ export function useAgentHarness() {
       message.completedAt = Date.now()
       message.stopped = status === 'stopped'
       message.failed = status === 'failed'
+      changed = true
     }
+    if (changed) markMessagesChanged(state)
   }
 
   function resetTransientRunState(state) {
+    cancelDeltaFlush(state)
     state.activeStreamId = null
     state.pendingToolMessages.clear()
   }
@@ -877,6 +1211,7 @@ export function useAgentHarness() {
     } else {
       state.messages.push(message)
     }
+    markMessagesChanged(state)
   }
 
   function compactStatusText(payload, active) {
@@ -895,6 +1230,7 @@ export function useAgentHarness() {
       role: 'status',
       content: customEventText(type, payload)
     })
+    markMessagesChanged(state)
   }
 
   function customEventText(type, payload) {
@@ -1045,12 +1381,28 @@ export function useAgentHarness() {
       stopping: false,
       stopReady: false,
       stopRequested: false,
+      finishing: false,
+      activeRunId: null,
+      activeTurnId: null,
       activeStreamId: null,
-      activeRequestId: null,
       streamController: null,
+      runtimeInputController: null,
+      runtimeInputId: null,
+      appliedRuntimeInputId: null,
       stopFallbackTimer: null,
       contextUsage: null,
-      pendingToolMessages: new Map()
+      pendingToolMessages: new Map(),
+      turns: new Map(),
+      turnSequence: 0,
+      pendingInputs: [],
+      inputSequence: 0,
+      submittingInput: false,
+      pendingContentDelta: '',
+      pendingReasoningDelta: '',
+      deltaFlushHandle: null,
+      deltaFlushKind: null,
+      replaying: false,
+      messageRevision: 0
     }
   }
 
@@ -1065,6 +1417,16 @@ export function useAgentHarness() {
     if (state.stopFallbackTimer) {
       window.clearTimeout(state.stopFallbackTimer)
       state.stopFallbackTimer = null
+    }
+  }
+
+  function cancelRuntimeInputSubmission(state) {
+    const controller = state.runtimeInputController
+    state.runtimeInputController = null
+    state.runtimeInputId = null
+    state.submittingInput = false
+    if (controller) {
+      controller.abort()
     }
   }
 
@@ -1085,6 +1447,10 @@ export function useAgentHarness() {
     stopping,
     stopReady,
     contextUsage,
+    activeRunId,
+    pendingInputs,
+    submittingInput,
+    messageRevision,
     anyRunning,
     approvalMode,
     projectDialogOpen,

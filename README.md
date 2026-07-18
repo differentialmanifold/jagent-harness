@@ -9,7 +9,7 @@ This repository also includes coding and business-system examples with Spring Bo
 ## Features
 
 - Java 8 and Maven based SDK.
-- Agent loop for model calls, tool calls, tool results, and follow-up model calls.
+- Agent loop for model calls, tool calls, tool results, and subsequent model calls.
 - Tools are Java methods, not command-line wrappers.
 - Spring Bean extension points for tools, model providers, skill providers, storage, and custom events.
 - OpenAI-compatible chat completions provider.
@@ -60,7 +60,7 @@ Short version:
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.6.0.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.7.0.jar
 ```
 
 In another terminal:
@@ -73,10 +73,10 @@ npm run dev:coding
 
 Open `http://localhost:5173`.
 
-### Stop a streamed run
+### Runtime input and stopping
 
-The backend assigns a transport-level `requestId` to each streamed chat request and returns it in
-the `X-Request-Id` response header:
+The backend assigns one `runId` to each streamed agent run and returns it in the `X-Run-Id`
+response header:
 
 ```json
 {
@@ -85,24 +85,44 @@ the `X-Request-Id` response header:
 }
 ```
 
-Stop that request without exposing the agent's internal `turnId`:
+While that run is active, send another user message through the same runtime-input endpoint:
 
 ```bash
 curl -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"requestId":"req_1234567890abcdef"}' \
-  http://localhost:18080/api/chat/requests/stop
+  -d '{"inputId":"input-message-1","content":"Also update the tests"}' \
+  http://localhost:18080/api/chat/runs/run_1234567890abcdef/messages
 ```
 
-The frontend reads the backend-generated request ID from the response header, keeps the SSE
-connection open until it receives `agent_stopped`, and uses `AbortController` only as a timeout
-fallback.
+The client does not classify the message or ask the user to choose an input mode. All messages
+visible at a safe turn boundary are appended as separate user messages in submission order, followed
+by one model call. The main model interprets them in the existing conversation context and decides
+whether they correct the current approach, add constraints, or request additional work. A turn
+contains one model call and every tool call produced by it; active model/tool work is never
+interrupted. The identifier hierarchy remains `sessionId > runId > turnId > toolCallId`.
+
+Stop the entire run using the same run ID:
+
+```bash
+curl -X POST \
+  http://localhost:18080/api/chat/runs/run_1234567890abcdef/stop
+```
+
+Every terminal run state closes its input gate and cancels unclaimed runtime messages. For an
+explicit Stop, the frontend also uses `AbortController` as a timeout fallback.
+
 Active runs are coordinated through `RunStopCoordinator`. The JDBC store provides the default
-implementation and records each request in the shared database, so a stop request can reach a run
-owned by another service instance. Each active request watches only its own database row; there is
-no full-table polling. Rows are retained after completion: the status starts as `NORMAL` and changes
-to `STOP_REQUESTED` only when the stop endpoint is called. Backend-generated request IDs are not
-reused. A custom coordinator bean can replace JDBC with Redis or another transport.
+implementation and records each run in the shared database, so a stop request can reach a run
+owned by another service instance. Each registered run watches only its own database row; there is
+no full-table polling. Run rows are retained: a run that was not stopped remains `NORMAL`, while a
+requested stop remains `STOP_REQUESTED`. Multiple runs may execute for the same session; the run ID
+selects the exact run to stop. Backend-generated run IDs are not reused. A custom
+coordinator bean can replace JDBC with Redis or another transport.
+
+JDBC runtime input is deliberately best-effort. Pending input is stored separately from conversation
+messages and is polled once at each safe turn boundary. Submission and polling do not take an explicit
+application transaction or boundary lock, so an input accepted in the final race window may not be
+executed. The `202 Accepted` response acknowledges the submission attempt, not delivery.
 
 ## Spring Boot Usage
 
@@ -110,7 +130,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.6.0</jagent-harness.version>
+    <jagent-harness.version>0.7.0</jagent-harness.version>
 </properties>
 
 <dependencies>
@@ -138,6 +158,8 @@ The Spring Boot starter includes the default OpenAI-compatible provider; add a c
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
 When multiple host applications share one database, set a distinct `harness.store.jdbc.application-id` for each application so sessions, messages, prompt files, skills, approvals, and stop requests stay isolated.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
+The initializer creates missing objects but does not alter existing tables. Existing databases must
+be migrated or recreated for the required `run_id` columns and runtime-input queue tables.
 The schema includes the virtual knowledge filesystem, skill manifest, and active
 agent run tables. Multi-instance deployments must point every instance at the same database;
 the default SQLite configuration is intended for local single-host development.
@@ -282,8 +304,8 @@ Common environment variables used by the example applications:
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
 | `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
-| `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active request to check its own stop row. |
-| `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-request stop listeners. |
+| `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active run to check its own stop row. |
+| `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-run stop listeners. |
 | `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
 | `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |
 | `JAGENT_COMPACTION_ENABLED` | `true` | Enable context compaction. |

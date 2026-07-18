@@ -19,7 +19,8 @@ public class PromptService implements PromptProvider {
             "You are a server-side agent running inside JAgentHarness.\n"
                     + "Use available tools and skills to help the user accomplish the task.\n"
                     + "Every executable capability is exposed as a registered tool, and every available skill describes a reusable workflow or domain instruction.\n"
-                    + "When a tool result is needed, call the tool and continue after the result is returned.\n";
+                    + "When a tool result is needed, call the tool and continue after the result is returned.\n"
+                    + "Trailing user messages may be added between turns while a run is active; treat them as the user's latest input and decide from their content whether to correct the current approach, extend the task, or change the order of remaining work. Interpret multiple new messages in order, and prefer newer instructions when they conflict with older ones.\n";
 
     private final SkillRegistry skillRegistry;
     private final Path defaultConfigRoot;
@@ -61,13 +62,13 @@ public class PromptService implements PromptProvider {
     public String buildSystemPrompt(Collection<ToolDefinition> tools, Path configRoot) {
         return buildSystemPrompt(new PromptContext(
                 tools,
-                new AgentContext(null, null, null, null, configRoot, null)));
+                new AgentContext(null, null, null, null, null, configRoot, null)));
     }
 
     @Override
     public String buildSystemPrompt(PromptContext context) {
         PromptContext effectiveContext = context == null
-                ? new PromptContext(null, new AgentContext(null, null, null, null, configRoot(), null))
+                ? new PromptContext(null, new AgentContext(null, null, null, null, null, configRoot(), null))
                 : context;
         AgentContext agentContext = effectiveContext.getAgentContext();
         StringBuilder prompt = new StringBuilder();

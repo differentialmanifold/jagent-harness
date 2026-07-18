@@ -51,7 +51,8 @@ create table if not exists model_call_usages (
     application_id varchar(128) not null,
     usage_id varchar(64) not null,
     session_id varchar(64) not null,
-    turn_id varchar(64),
+    run_id varchar(64) not null,
+    turn_id varchar(64) not null,
     message_id varchar(64) not null,
     provider varchar(128),
     model varchar(256),
@@ -72,13 +73,16 @@ create unique index if not exists ux_model_call_usages_application_usage
     on model_call_usages (application_id, usage_id);
 create index if not exists ix_model_call_usages_application_session
     on model_call_usages (application_id, session_id, id);
+create index if not exists ix_model_call_usages_application_run_turn
+    on model_call_usages (application_id, run_id, turn_id, id);
 
 create table if not exists messages (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
     message_id varchar(64) not null,
     session_id varchar(64) not null,
-    turn_id varchar(64),
+    run_id varchar(64) not null,
+    turn_id varchar(64) not null,
     parent_message_id varchar(64),
     role varchar(32) not null,
     content text,
@@ -94,12 +98,15 @@ create unique index if not exists ux_messages_application_message
     on messages (application_id, message_id);
 create index if not exists ix_messages_application_session
     on messages (application_id, session_id);
+create index if not exists ix_messages_application_run_turn
+    on messages (application_id, run_id, turn_id, id);
 
 create table if not exists timeline_events (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
     event_id varchar(64) not null,
     session_id varchar(64) not null,
+    run_id varchar(64) not null,
     turn_id varchar(64),
     type varchar(128) not null,
     payload_json text,
@@ -110,6 +117,8 @@ create unique index if not exists ux_timeline_events_application_event
     on timeline_events (application_id, event_id);
 create index if not exists ix_timeline_events_application_session
     on timeline_events (application_id, session_id);
+create index if not exists ix_timeline_events_application_run_turn
+    on timeline_events (application_id, run_id, turn_id, id);
 
 create table if not exists knowledge_files (
     id integer primary key autoincrement,
@@ -161,20 +170,54 @@ create index if not exists ix_skill_manifests_application_dir_path
 create table if not exists agent_runs (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
-    request_id varchar(128) not null,
+    run_id varchar(64) not null,
     session_id varchar(64) not null,
     status varchar(32) not null,
     created_at bigint not null,
     updated_at bigint not null
 );
 
-create unique index if not exists ux_agent_runs_application_request
-    on agent_runs (application_id, request_id);
+create unique index if not exists ux_agent_runs_application_run
+    on agent_runs (application_id, run_id);
+
+create table if not exists agent_active_runs (
+    id integer primary key autoincrement,
+    application_id varchar(128) not null,
+    session_id varchar(64) not null,
+    run_id varchar(64) not null,
+    accepting_inputs integer not null,
+    created_at bigint not null,
+    updated_at bigint not null
+);
+
+create unique index if not exists ux_agent_active_runs_application_run
+    on agent_active_runs (application_id, run_id);
+
+create table if not exists agent_run_inputs (
+    id integer primary key autoincrement,
+    application_id varchar(128) not null,
+    input_id varchar(128) not null,
+    session_id varchar(64) not null,
+    run_id varchar(64) not null,
+    content text not null,
+    status varchar(32) not null,
+    claimed_after_turn_id varchar(64),
+    created_at bigint not null,
+    updated_at bigint not null,
+    claimed_at bigint
+);
+
+create unique index if not exists ux_agent_run_inputs_application_input
+    on agent_run_inputs (application_id, input_id);
+create index if not exists ix_agent_run_inputs_pending_run
+    on agent_run_inputs (application_id, run_id, status, id);
+create index if not exists ix_agent_run_inputs_claimed_boundary
+    on agent_run_inputs (application_id, run_id, status, claimed_after_turn_id, id);
 
 create table if not exists agent_approvals (
     id integer primary key autoincrement,
     application_id varchar(128) not null,
-    request_id varchar(128) not null,
+    run_id varchar(64) not null,
     approval_id varchar(128) not null,
     session_id varchar(64) not null,
     tool_call_id varchar(128),
@@ -191,7 +234,7 @@ create table if not exists agent_approvals (
     resolved_at bigint
 );
 
-create unique index if not exists ux_agent_approvals_request_approval
-    on agent_approvals (application_id, request_id, approval_id);
-create index if not exists ix_agent_approvals_request_status
-    on agent_approvals (application_id, request_id, status);
+create unique index if not exists ux_agent_approvals_run_approval
+    on agent_approvals (application_id, run_id, approval_id);
+create index if not exists ix_agent_approvals_run_status
+    on agent_approvals (application_id, run_id, status);

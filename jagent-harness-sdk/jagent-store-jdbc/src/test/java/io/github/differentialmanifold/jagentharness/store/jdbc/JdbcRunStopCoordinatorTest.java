@@ -23,24 +23,24 @@ class JdbcRunStopCoordinatorTest {
     Path tempDir;
 
     @Test
-    void propagatesStopBetweenInstancesForOneRequest() throws Exception {
+    void propagatesStopBetweenInstancesForOneRun() throws Exception {
         JdbcTemplate jdbcTemplate = createDatabase();
         JdbcRunStopCoordinator owner = coordinator(jdbcTemplate);
         JdbcRunStopCoordinator apiInstance = coordinator(jdbcTemplate);
-        RunStopHandle first = owner.register("request-1", "session-1");
-        RunStopHandle second = owner.register("request-2", "session-1");
+        RunStopHandle first = owner.register("run-1", "session-1");
+        RunStopHandle second = owner.register("run-2", "session-1");
         CountDownLatch firstStopped = new CountDownLatch(1);
         CountDownLatch secondStopped = new CountDownLatch(1);
         first.onStop(firstStopped::countDown);
         second.onStop(secondStopped::countDown);
 
         try {
-            assertEquals(StopRequestResult.REQUESTED, apiInstance.requestStop("request-1"));
+            assertEquals(StopRequestResult.REQUESTED, apiInstance.requestStop("run-1"));
             assertTrue(firstStopped.await(2, TimeUnit.SECONDS));
             assertTrue(first.isAborted());
             assertFalse(secondStopped.await(500, TimeUnit.MILLISECONDS));
             assertFalse(second.isAborted());
-            assertEquals(StopRequestResult.ALREADY_REQUESTED, apiInstance.requestStop("request-1"));
+            assertEquals(StopRequestResult.ALREADY_REQUESTED, apiInstance.requestStop("run-1"));
         } finally {
             first.close();
             second.close();
@@ -48,41 +48,41 @@ class JdbcRunStopCoordinatorTest {
             apiInstance.close();
         }
 
-        assertEquals(StopRequestResult.ALREADY_REQUESTED, coordinatorResult(jdbcTemplate, "request-1"));
+        assertEquals(StopRequestResult.ALREADY_REQUESTED, coordinatorResult(jdbcTemplate, "run-1"));
         assertEquals(
                 "STOP_REQUESTED",
                 jdbcTemplate.queryForObject(
-                        "select status from agent_runs where application_id = ? and request_id = ?",
+                        "select status from agent_runs where application_id = ? and run_id = ?",
                         String.class,
                         "default",
-                        "request-1"));
+                        "run-1"));
     }
 
     @Test
-    void rejectsDuplicateRequestIdAndRetainsNormalRecordOnClose() {
+    void rejectsDuplicateRunIdAndRetainsNormalRecordOnClose() {
         JdbcTemplate jdbcTemplate = createDatabase();
         JdbcRunStopCoordinator firstCoordinator = coordinator(jdbcTemplate);
         JdbcRunStopCoordinator secondCoordinator = coordinator(jdbcTemplate);
-        RunStopHandle handle = firstCoordinator.register("request-1", "session-1");
+        RunStopHandle handle = firstCoordinator.register("run-1", "session-1");
 
         try {
             assertTrue(
                     jdbcTemplate.queryForObject(
-                            "select id from agent_runs where application_id = ? and request_id = ?",
+                            "select id from agent_runs where application_id = ? and run_id = ?",
                             Long.class,
                             "default",
-                            "request-1") > 0L);
+                            "run-1") > 0L);
             assertThrows(
                     ActiveRunException.class,
-                    () -> secondCoordinator.register("request-1", "session-2"));
+                    () -> secondCoordinator.register("run-1", "session-2"));
             handle.close();
             assertEquals(
                     "NORMAL",
                     jdbcTemplate.queryForObject(
-                            "select status from agent_runs where application_id = ? and request_id = ?",
+                            "select status from agent_runs where application_id = ? and run_id = ?",
                             String.class,
                             "default",
-                            "request-1"));
+                            "run-1"));
         } finally {
             handle.close();
             firstCoordinator.close();
@@ -104,10 +104,10 @@ class JdbcRunStopCoordinatorTest {
         return new JdbcRunStopCoordinator(jdbcTemplate, storeProperties("default"), properties);
     }
 
-    private StopRequestResult coordinatorResult(JdbcTemplate jdbcTemplate, String requestId) {
+    private StopRequestResult coordinatorResult(JdbcTemplate jdbcTemplate, String runId) {
         JdbcRunStopCoordinator coordinator = coordinator(jdbcTemplate);
         try {
-            return coordinator.requestStop(requestId);
+            return coordinator.requestStop(runId);
         } finally {
             coordinator.close();
         }

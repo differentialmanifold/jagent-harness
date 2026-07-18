@@ -30,6 +30,8 @@ class JdbcModelCallUsageStoreTest {
         ModelCallUsage latest = store.findLatestBySessionId("session-1");
 
         assertEquals("usage-2", latest.getUsageId());
+        assertEquals("run-1", latest.getRunId());
+        assertEquals("turn-1", latest.getTurnId());
         assertEquals("message-2", latest.getMessageId());
         assertEquals(Integer.valueOf(140), latest.getActualContextTokens());
         assertEquals(Integer.valueOf(150), latest.getTotalTokens());
@@ -40,6 +42,7 @@ class JdbcModelCallUsageStoreTest {
         ModelCallUsage usage = new ModelCallUsage();
         usage.setUsageId(usageId);
         usage.setSessionId(sessionId);
+        usage.setRunId("run-1");
         usage.setTurnId("turn-1");
         usage.setMessageId(messageId);
         usage.setProvider("provider");

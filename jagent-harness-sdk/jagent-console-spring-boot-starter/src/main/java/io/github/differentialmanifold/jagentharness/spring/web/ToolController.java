@@ -121,7 +121,7 @@ public class ToolController {
                 .build();
         String toolCallId = Ids.newId("tool");
         ToolContext context = toolContextFactory
-                .create(session, Ids.newId("debug"), options)
+                .create(session, Ids.newId("run"), Ids.newId("turn"), options)
                 .forToolCall(toolCallId, toolName);
         ToolExecutionResult result = tool.execute(
                 context,

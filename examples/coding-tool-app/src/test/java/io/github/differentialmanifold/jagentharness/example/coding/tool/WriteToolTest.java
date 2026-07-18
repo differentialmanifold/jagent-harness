@@ -86,6 +86,7 @@ class WriteToolTest {
                                         ToolApprovalDecision decision) {
         return new ToolContext(
                 "session",
+                "run",
                 "turn",
                 null,
                 workspaceRoot,

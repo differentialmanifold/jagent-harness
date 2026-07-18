@@ -15,31 +15,34 @@ public class ToolContext extends AgentContext {
     private final String currentToolCallId;
     private final String currentToolName;
 
-    public ToolContext(String sessionId, String turnId) {
-        this(sessionId, turnId, null, null, null, Collections.<String, Object>emptyMap());
+    public ToolContext(String sessionId, String runId, String turnId) {
+        this(sessionId, runId, turnId, null, null, null, Collections.<String, Object>emptyMap());
     }
 
-    public ToolContext(String sessionId, String turnId, Path workspaceRoot) {
-        this(sessionId, turnId, null, workspaceRoot, null, Collections.<String, Object>emptyMap());
+    public ToolContext(String sessionId, String runId, String turnId, Path workspaceRoot) {
+        this(sessionId, runId, turnId, null, workspaceRoot, null, Collections.<String, Object>emptyMap());
     }
 
     public ToolContext(String sessionId,
+                       String runId,
                        String turnId,
                        String traceId,
                        Map<String, Object> attributes) {
-        this(sessionId, turnId, traceId, null, null, attributes);
+        this(sessionId, runId, turnId, traceId, null, null, attributes);
     }
 
     public ToolContext(String sessionId,
+                       String runId,
                        String turnId,
                        String traceId,
                        Path workspaceRoot,
                        Path configRoot,
                        Map<String, Object> attributes) {
-        this(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, StopSignal.none());
+        this(sessionId, runId, turnId, traceId, workspaceRoot, configRoot, attributes, StopSignal.none());
     }
 
     public ToolContext(String sessionId,
+                       String runId,
                        String turnId,
                        String traceId,
                        Path workspaceRoot,
@@ -47,6 +50,7 @@ public class ToolContext extends AgentContext {
                        Map<String, Object> attributes,
                        StopSignal stopSignal) {
         this(sessionId,
+                runId,
                 turnId,
                 traceId,
                 workspaceRoot,
@@ -60,6 +64,7 @@ public class ToolContext extends AgentContext {
     }
 
     public ToolContext(String sessionId,
+                       String runId,
                        String turnId,
                        String traceId,
                        Path workspaceRoot,
@@ -70,11 +75,12 @@ public class ToolContext extends AgentContext {
                        ToolApprovalHandler approvalHandler,
                        String currentToolCallId,
                        String currentToolName) {
-        this(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, stopSignal, approvalMode,
+        this(sessionId, runId, turnId, traceId, workspaceRoot, configRoot, attributes, stopSignal, approvalMode,
                 approvalHandler, currentToolCallId, currentToolName, null);
     }
 
     public ToolContext(String sessionId,
+                       String runId,
                        String turnId,
                        String traceId,
                        Path workspaceRoot,
@@ -86,7 +92,7 @@ public class ToolContext extends AgentContext {
                        String currentToolCallId,
                        String currentToolName,
                        String projectId) {
-        super(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, projectId);
+        super(sessionId, runId, turnId, traceId, workspaceRoot, configRoot, attributes, projectId);
         this.stopSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         this.approvalMode = approvalMode == null ? ToolApprovalMode.FULL_ACCESS : approvalMode;
         this.approvalHandler = approvalHandler;
@@ -117,6 +123,7 @@ public class ToolContext extends AgentContext {
     public ToolContext forToolCall(String toolCallId, String toolName) {
         return new ToolContext(
                 getSessionId(),
+                getRunId(),
                 getTurnId(),
                 getTraceId(),
                 getWorkspaceRoot(),

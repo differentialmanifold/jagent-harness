@@ -67,6 +67,6 @@ class SkillRegistryTest {
     }
 
     private AgentContext context(Path globalRoot, Path workspaceRoot) {
-        return new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null);
+        return new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null);
     }
 }

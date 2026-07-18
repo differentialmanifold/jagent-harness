@@ -41,6 +41,10 @@
           :running="running"
           :stopping="stopping"
           :stop-ready="stopReady"
+          :active-run-id="activeRunId"
+          :pending-inputs="pendingInputs"
+          :submitting-input="submittingInput"
+          :message-revision="messageRevision"
           :approval-mode="approvalMode"
           :context-usage="contextUsage"
           @update:approval-mode="setApprovalMode"
@@ -133,6 +137,10 @@ const {
   stopping,
   stopReady,
   contextUsage,
+  activeRunId,
+  pendingInputs,
+  submittingInput,
+  messageRevision,
   anyRunning,
   approvalMode,
   projectDialogOpen,

@@ -164,7 +164,7 @@ class BashToolTest {
         ObjectNode arguments = objectMapper.createObjectNode();
         arguments.put("command", "printf ok");
 
-        tool.execute(new ToolContext("session", "turn", tempDir), arguments);
+        tool.execute(new ToolContext("session", "run", "turn", tempDir), arguments);
     }
 
     @Test
@@ -190,6 +190,7 @@ class BashToolTest {
         TestStopSignal control = new TestStopSignal();
         ToolContext context = new ToolContext(
                 "session",
+                "run",
                 "turn",
                 null,
                 tempDir,
@@ -226,6 +227,7 @@ class BashToolTest {
                                         ToolApprovalDecision decision) {
         return new ToolContext(
                 "session",
+                "run",
                 "turn",
                 null,
                 tempDir,

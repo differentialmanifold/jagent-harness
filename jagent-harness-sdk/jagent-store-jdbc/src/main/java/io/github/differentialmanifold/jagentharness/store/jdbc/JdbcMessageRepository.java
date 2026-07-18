@@ -29,14 +29,15 @@ public class JdbcMessageRepository implements MessageRepository {
     @Override
     public void append(AgentMessage message) {
         jdbcTemplate.update("insert into messages "
-                        + "(application_id, message_id, session_id, turn_id, parent_message_id, role, content, "
+                        + "(application_id, message_id, session_id, run_id, turn_id, parent_message_id, role, content, "
                         + "reasoning_content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
                         + "stop_reason, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 message.getMessageId(),
                 message.getSessionId(),
+                message.getRunId(),
                 message.getTurnId(),
                 message.getParentMessageId(),
                 message.getRole(),
@@ -64,6 +65,7 @@ public class JdbcMessageRepository implements MessageRepository {
             AgentMessage message = new AgentMessage();
             message.setMessageId(rs.getString("message_id"));
             message.setSessionId(rs.getString("session_id"));
+            message.setRunId(rs.getString("run_id"));
             message.setTurnId(rs.getString("turn_id"));
             message.setParentMessageId(rs.getString("parent_message_id"));
             message.setRole(rs.getString("role"));

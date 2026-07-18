@@ -20,11 +20,12 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
     @Override
     public void append(AgentEvent event) {
         jdbcTemplate.update("insert into timeline_events "
-                        + "(application_id, event_id, session_id, turn_id, type, payload_json, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?)",
+                        + "(application_id, event_id, session_id, run_id, turn_id, type, payload_json, created_at) "
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 event.getEventId(),
                 event.getSessionId(),
+                event.getRunId(),
                 event.getTurnId(),
                 event.getType(),
                 event.getPayloadJson(),
@@ -46,6 +47,7 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
             AgentEvent event = new AgentEvent();
             event.setEventId(rs.getString("event_id"));
             event.setSessionId(rs.getString("session_id"));
+            event.setRunId(rs.getString("run_id"));
             event.setTurnId(rs.getString("turn_id"));
             event.setType(rs.getString("type"));
             event.setPayloadJson(rs.getString("payload_json"));

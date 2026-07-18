@@ -42,47 +42,47 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     }
 
     @Override
-    public RunStopHandle register(String requestId, String sessionId) {
+    public RunStopHandle register(String runId, String sessionId) {
         long now = System.currentTimeMillis();
         try {
             jdbcTemplate.update(
                     "insert into agent_runs "
-                            + "(application_id, request_id, session_id, status, created_at, updated_at) "
+                            + "(application_id, run_id, session_id, status, created_at, updated_at) "
                             + "values (?, ?, ?, ?, ?, ?)",
                     applicationId,
-                    requestId,
+                    runId,
                     sessionId,
                     STATUS_NORMAL,
                     now,
                     now);
         } catch (DataAccessException e) {
-            if (findStatus(requestId) != null) {
-                throw new ActiveRunException(requestId);
+            if (findStatus(runId) != null) {
+                throw new ActiveRunException(runId);
             }
             throw e;
         }
 
-        JdbcRunStopHandle handle = new JdbcRunStopHandle(requestId, sessionId);
+        JdbcRunStopHandle handle = new JdbcRunStopHandle(runId, sessionId);
         handle.start();
         return handle;
     }
 
     @Override
-    public StopRequestResult requestStop(String requestId) {
+    public StopRequestResult requestStop(String runId) {
         long now = System.currentTimeMillis();
         int updated = jdbcTemplate.update(
                 "update agent_runs set status = ?, updated_at = ? "
-                        + "where application_id = ? and request_id = ? and status = ?",
+                        + "where application_id = ? and run_id = ? and status = ?",
                 STATUS_STOP_REQUESTED,
                 now,
                 applicationId,
-                requestId,
+                runId,
                 STATUS_NORMAL);
         if (updated > 0) {
             return StopRequestResult.REQUESTED;
         }
 
-        String status = findStatus(requestId);
+        String status = findStatus(runId);
         if (status == null) {
             return StopRequestResult.NOT_FOUND;
         }
@@ -96,12 +96,12 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         listenerExecutor.shutdownNow();
     }
 
-    private String findStatus(String requestId) {
+    private String findStatus(String runId) {
         List<String> rows = jdbcTemplate.query(
-                "select status from agent_runs where application_id = ? and request_id = ?",
+                "select status from agent_runs where application_id = ? and run_id = ?",
                 (resultSet, rowNum) -> resultSet.getString("status"),
                 applicationId,
-                requestId);
+                runId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -121,7 +121,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
 
     private class JdbcRunStopHandle implements RunStopHandle {
 
-        private final String requestId;
+        private final String runId;
         private final String sessionId;
         private final AtomicBoolean aborted = new AtomicBoolean(false);
         private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -129,8 +129,8 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         private final List<Runnable> listeners = new ArrayList<Runnable>();
         private volatile ScheduledFuture<?> listenerTask;
 
-        private JdbcRunStopHandle(String requestId, String sessionId) {
-            this.requestId = requestId;
+        private JdbcRunStopHandle(String runId, String sessionId) {
+            this.runId = runId;
             this.sessionId = sessionId;
         }
 
@@ -143,8 +143,8 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         }
 
         @Override
-        public String getRequestId() {
-            return requestId;
+        public String getRunId() {
+            return runId;
         }
 
         @Override
@@ -202,12 +202,12 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
                 return;
             }
             try {
-                String status = findStatus(requestId);
+                String status = findStatus(runId);
                 if (STATUS_STOP_REQUESTED.equals(status)) {
                     requestLocalStop();
                 }
             } catch (RuntimeException ignored) {
-                // Retry this request's status lookup on the next polling interval.
+                // Retry this run's status lookup on the next polling interval.
             }
         }
 

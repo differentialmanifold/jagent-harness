@@ -107,7 +107,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 startPayload.put("recentMessageCount", recentMessages.size());
                 startPayload.put("compactTurnCount", recentSelection.compactTurnCount);
                 startPayload.put("recentTurnCount", recentSelection.recentTurnCount);
-                publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_START, startPayload);
+                publish(request.getSessionId(), request.getRunId(), request.getTurnId(),
+                        AgentEvent.COMPACTION_START, startPayload);
 
                 summary = compactConversation(
                         request.getProvider(),
@@ -115,6 +116,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                         messagesToCompact,
                         request.getStopSignal(),
                         request.getSessionId(),
+                        request.getRunId(),
                         request.getTurnId());
                 request.getStopSignal().throwIfAborted();
                 cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
@@ -140,7 +142,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 endPayload.put("estimateSource", estimate.estimateSource);
                 endPayload.put("summaryTokens", tokenEstimator.estimateText(summary));
                 endPayload.put("cursorMessageId", cursorMessageId);
-                publish(request.getSessionId(), request.getTurnId(), AgentEvent.COMPACTION_END, endPayload);
+                publish(request.getSessionId(), request.getRunId(), request.getTurnId(),
+                        AgentEvent.COMPACTION_END, endPayload);
             }
         }
 
@@ -363,6 +366,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                                        List<AgentMessage> messagesToCompact,
                                        StopSignal stopSignal,
                                        String sessionId,
+                                       String runId,
                                        String turnId) {
         ModelRequest request = new ModelRequest();
         request.setModel(settings.getModel());
@@ -379,6 +383,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 null,
                 stopSignal,
                 sessionId,
+                runId,
                 turnId);
         String summary = response == null ? null : response.getContent();
         if (summary == null || summary.trim().isEmpty()) {
@@ -468,6 +473,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 modelMessages.add(message);
             }
             AgentMessage interrupted = AgentMessage.user(message.getSessionId(), ABORTED_RESPONSE_CONTEXT);
+            interrupted.setRunId(message.getRunId());
             interrupted.setTurnId(message.getTurnId());
             interrupted.setParentMessageId(message.getMessageId());
             modelMessages.add(interrupted);
@@ -499,10 +505,11 @@ public class DefaultConversationContextManager implements ConversationContextMan
     }
 
     private AgentEvent publish(String sessionId,
+                               String runId,
                                String turnId,
                                String type,
                                Object payload) {
-        return eventPublisher.publish(sessionId, turnId, type, payload);
+        return eventPublisher.publish(sessionId, runId, turnId, type, payload);
     }
 
     private static class EstimateSnapshot {

@@ -84,7 +84,7 @@ class FindToolTest {
     }
 
     private JsonNode execute(ObjectMapper objectMapper, FindTool tool, ObjectNode arguments) throws Exception {
-        ToolExecutionResult result = tool.execute(new ToolContext("session", "turn", workspaceRoot), arguments);
+        ToolExecutionResult result = tool.execute(new ToolContext("session", "run", "turn", workspaceRoot), arguments);
         return objectMapper.readTree(result.getContent());
     }
 

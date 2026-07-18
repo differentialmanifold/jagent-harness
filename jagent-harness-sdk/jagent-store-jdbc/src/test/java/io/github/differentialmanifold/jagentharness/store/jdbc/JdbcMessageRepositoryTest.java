@@ -29,6 +29,8 @@ class JdbcMessageRepositoryTest {
                 properties);
 
         AgentMessage message = AgentMessage.assistant("session-1", "final answer", Collections.emptyList());
+        message.setRunId("run-1");
+        message.setTurnId("turn-1");
         message.setReasoningContent("think first");
         repository.append(message);
 
@@ -36,6 +38,8 @@ class JdbcMessageRepositoryTest {
         assertEquals(1, messages.size());
         assertEquals("final answer", messages.get(0).getContent());
         assertEquals("think first", messages.get(0).getReasoningContent());
+        assertEquals("run-1", messages.get(0).getRunId());
+        assertEquals("turn-1", messages.get(0).getTurnId());
     }
 
     private JdbcTemplate createDatabase() {

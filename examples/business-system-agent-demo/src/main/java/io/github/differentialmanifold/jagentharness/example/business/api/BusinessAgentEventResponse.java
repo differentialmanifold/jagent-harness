@@ -6,6 +6,7 @@ public class BusinessAgentEventResponse {
 
     private final String eventId;
     private final String sessionId;
+    private final String runId;
     private final String turnId;
     private final String type;
     private final JsonNode payload;
@@ -13,12 +14,14 @@ public class BusinessAgentEventResponse {
 
     public BusinessAgentEventResponse(String eventId,
                                       String sessionId,
+                                      String runId,
                                       String turnId,
                                       String type,
                                       JsonNode payload,
                                       String createdAt) {
         this.eventId = eventId;
         this.sessionId = sessionId;
+        this.runId = runId;
         this.turnId = turnId;
         this.type = type;
         this.payload = payload;
@@ -31,6 +34,10 @@ public class BusinessAgentEventResponse {
 
     public String getSessionId() {
         return sessionId;
+    }
+
+    public String getRunId() {
+        return runId;
     }
 
     public String getTurnId() {

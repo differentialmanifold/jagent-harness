@@ -27,6 +27,7 @@ public class ModelCallRetryExecutor {
                               Runnable resetAttempt,
                               StopSignal stopSignal,
                               String sessionId,
+                              String runId,
                               String turnId) {
         StopSignal effectiveStopSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         Runnable effectiveResetAttempt = resetAttempt == null ? new Runnable() {
@@ -49,6 +50,7 @@ public class ModelCallRetryExecutor {
                 long retryDelayMillis = delayMillis;
                 publishRetry(
                         sessionId,
+                        runId,
                         turnId,
                         provider,
                         attempt,
@@ -118,6 +120,7 @@ public class ModelCallRetryExecutor {
     }
 
     private void publishRetry(String sessionId,
+                              String runId,
                               String turnId,
                               ModelProvider provider,
                               int failedAttempt,
@@ -138,6 +141,6 @@ public class ModelCallRetryExecutor {
         payload.put("resetOutput", true);
         payload.put("message", "Model request failed, retrying attempt " + nextAttempt + " of " + maxAttempts);
         payload.put("error", exception == null ? "" : exception.getMessage());
-        eventPublisher.publish(sessionId, turnId, AgentEvent.MODEL_RETRY, payload);
+        eventPublisher.publish(sessionId, runId, turnId, AgentEvent.MODEL_RETRY, payload);
     }
 }

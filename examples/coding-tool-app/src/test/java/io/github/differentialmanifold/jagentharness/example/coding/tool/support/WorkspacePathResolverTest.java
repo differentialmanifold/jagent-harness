@@ -16,7 +16,7 @@ class WorkspacePathResolverTest {
     @Test
     void resolvesBackslashInputAndReturnsForwardSlashPaths() {
         WorkspacePathResolver resolver = new WorkspacePathResolver();
-        ToolContext context = new ToolContext("session", "turn", workspaceRoot);
+        ToolContext context = new ToolContext("session", "run", "turn", workspaceRoot);
 
         Path resolved = resolver.resolve(context, "src\\test\\Practice.java");
 

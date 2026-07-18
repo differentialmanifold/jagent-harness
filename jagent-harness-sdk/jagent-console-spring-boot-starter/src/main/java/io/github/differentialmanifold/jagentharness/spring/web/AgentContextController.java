@@ -65,6 +65,7 @@ public class AgentContextController {
                 session == null ? null : session.getSessionId(),
                 null,
                 null,
+                null,
                 workspaceRoot,
                 configRoot,
                 null,

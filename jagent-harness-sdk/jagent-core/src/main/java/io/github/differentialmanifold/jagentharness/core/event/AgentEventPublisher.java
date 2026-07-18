@@ -6,7 +6,7 @@ import java.util.function.Supplier;
 
 public interface AgentEventPublisher {
 
-    AgentEvent publish(String sessionId, String turnId, String type, Object payload);
+    AgentEvent publish(String sessionId, String runId, String turnId, String type, Object payload);
 
     default <T> T withEventConsumer(Consumer<AgentEvent> eventConsumer, Supplier<T> action) {
         return action.get();

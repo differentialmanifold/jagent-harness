@@ -17,6 +17,7 @@ public class AgentMessage {
 
     private String messageId;
     private String sessionId;
+    private String runId;
     private String turnId;
     private String parentMessageId;
     private String role;
@@ -73,6 +74,14 @@ public class AgentMessage {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getRunId() {
+        return runId;
+    }
+
+    public void setRunId(String runId) {
+        this.runId = runId;
     }
 
     public String getTurnId() {

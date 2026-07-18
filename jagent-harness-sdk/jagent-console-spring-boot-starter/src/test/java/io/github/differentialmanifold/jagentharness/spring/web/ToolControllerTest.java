@@ -135,9 +135,13 @@ class ToolControllerTest {
     private ToolContextFactory toolContextFactory() {
         return new ToolContextFactory() {
             @Override
-            public ToolContext create(SessionRecord session, String turnId, AgentRunOptions options) {
+            public ToolContext create(SessionRecord session,
+                                      String runId,
+                                      String turnId,
+                                      AgentRunOptions options) {
                 return new ToolContext(
                         session == null ? null : session.getSessionId(),
+                        runId,
                         turnId,
                         session == null ? null : Paths.get(session.getWorkspacePath()));
             }

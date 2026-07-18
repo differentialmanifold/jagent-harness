@@ -8,6 +8,7 @@ public class AgentEvent {
 
     public static final String AGENT_START = "agent_start";
     public static final String AGENT_END = "agent_end";
+    public static final String AGENT_ERROR = "agent_error";
     public static final String AGENT_STOPPED = "agent_stopped";
     public static final String TURN_START = "turn_start";
     public static final String TURN_END = "turn_end";
@@ -24,18 +25,25 @@ public class AgentEvent {
     public static final String TOOL_APPROVAL_RESOLVED = "tool_approval_resolved";
     public static final String COMPACTION_START = "compaction_start";
     public static final String COMPACTION_END = "compaction_end";
+    public static final String RUN_INPUT_BATCH_APPLIED = "run_input_batch_applied";
 
     private String eventId;
     private String sessionId;
+    private String runId;
     private String turnId;
     private String type;
     private String payloadJson;
     private Instant createdAt;
 
-    public static AgentEvent of(String sessionId, String turnId, String type, String payloadJson) {
+    public static AgentEvent of(String sessionId,
+                                String runId,
+                                String turnId,
+                                String type,
+                                String payloadJson) {
         AgentEvent event = new AgentEvent();
         event.setEventId(Ids.newId("evt"));
         event.setSessionId(sessionId);
+        event.setRunId(runId);
         event.setTurnId(turnId);
         event.setType(type);
         event.setPayloadJson(payloadJson);
@@ -57,6 +65,14 @@ public class AgentEvent {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getRunId() {
+        return runId;
+    }
+
+    public void setRunId(String runId) {
+        this.runId = runId;
     }
 
     public String getTurnId() {

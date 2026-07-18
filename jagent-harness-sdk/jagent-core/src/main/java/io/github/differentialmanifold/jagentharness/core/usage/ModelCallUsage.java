@@ -12,6 +12,7 @@ public class ModelCallUsage {
 
     private String usageId;
     private String sessionId;
+    private String runId;
     private String turnId;
     private String messageId;
     private String provider;
@@ -31,6 +32,7 @@ public class ModelCallUsage {
     private Instant createdAt;
 
     public static ModelCallUsage fromUsage(String sessionId,
+                                           String runId,
                                            String turnId,
                                            String messageId,
                                            String provider,
@@ -43,6 +45,7 @@ public class ModelCallUsage {
         ModelCallUsage record = new ModelCallUsage();
         record.setUsageId(Ids.newId("usage"));
         record.setSessionId(sessionId);
+        record.setRunId(runId);
         record.setTurnId(turnId);
         record.setMessageId(messageId);
         record.setProvider(provider);
@@ -77,6 +80,14 @@ public class ModelCallUsage {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getRunId() {
+        return runId;
+    }
+
+    public void setRunId(String runId) {
+        this.runId = runId;
     }
 
     public String getTurnId() {

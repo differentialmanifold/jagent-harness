@@ -254,6 +254,6 @@ class EditToolTest {
     }
 
     private ToolContext toolContext() {
-        return new ToolContext("session", "turn", workspaceRoot);
+        return new ToolContext("session", "run", "turn", workspaceRoot);
     }
 }

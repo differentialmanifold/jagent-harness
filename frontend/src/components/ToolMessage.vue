@@ -160,7 +160,7 @@ const visibleApproval = computed(() => {
 function approvalPayload(approved) {
   return {
     approvalId: props.message.approval?.approvalId,
-    requestId: props.message.approval?.requestId,
+    runId: props.message.approval?.runId,
     approved
   }
 }

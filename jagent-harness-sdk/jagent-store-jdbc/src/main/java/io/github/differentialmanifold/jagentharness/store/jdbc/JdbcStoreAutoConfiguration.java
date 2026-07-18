@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 import javax.sql.DataSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
@@ -79,6 +80,13 @@ public class JdbcStoreAutoConfiguration {
                                                          JdbcStoreProperties storeProperties,
                                                          JdbcRunStopProperties properties) {
         return new JdbcRunStopCoordinator(jdbcTemplate, storeProperties, properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(RunInputCoordinator.class)
+    public JdbcRunInputCoordinator jdbcRunInputCoordinator(JdbcTemplate jdbcTemplate,
+                                                           JdbcStoreProperties storeProperties) {
+        return new JdbcRunInputCoordinator(jdbcTemplate, storeProperties);
     }
 
     @Bean

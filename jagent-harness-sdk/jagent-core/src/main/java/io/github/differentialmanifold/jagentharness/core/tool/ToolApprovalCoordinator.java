@@ -4,13 +4,13 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 
 public interface ToolApprovalCoordinator {
 
-    ToolApprovalDecision awaitDecision(String requestId,
+    ToolApprovalDecision awaitDecision(String runId,
                                        String sessionId,
                                        ToolApprovalRequest request,
                                        StopSignal stopSignal,
                                        Runnable onPending) throws Exception;
 
-    boolean resolve(String requestId, String approvalId, boolean approved, String reason);
+    boolean resolve(String runId, String approvalId, boolean approved, String reason);
 
-    void cancelRequest(String requestId);
+    void cancelRun(String runId);
 }
