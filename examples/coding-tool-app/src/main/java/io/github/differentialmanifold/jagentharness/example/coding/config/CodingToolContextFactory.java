@@ -22,10 +22,11 @@ public class CodingToolContextFactory implements ToolContextFactory {
     }
 
     @Override
-    public ToolContext create(SessionRecord session, String turnId, AgentRunOptions options) {
+    public ToolContext create(SessionRecord session, String runId, String turnId, AgentRunOptions options) {
         AgentRunOptions effectiveOptions = options == null ? AgentRunOptions.empty() : options;
         return new ToolContext(
                 session == null ? null : session.getSessionId(),
+                runId,
                 turnId,
                 effectiveOptions.getTraceId(),
                 workspaceRoot(session),

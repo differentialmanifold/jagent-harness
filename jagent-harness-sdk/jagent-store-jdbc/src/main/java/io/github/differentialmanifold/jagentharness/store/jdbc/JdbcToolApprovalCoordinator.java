@@ -40,18 +40,18 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
     }
 
     @Override
-    public ToolApprovalDecision awaitDecision(String requestId,
+    public ToolApprovalDecision awaitDecision(String runId,
                                               String sessionId,
                                               ToolApprovalRequest request,
                                               StopSignal stopSignal,
                                               Runnable onPending) throws Exception {
-        insertApproval(requestId, sessionId, request);
+        insertApproval(runId, sessionId, request);
         try {
             if (onPending != null) {
                 onPending.run();
             }
         } catch (RuntimeException e) {
-            cancelApproval(requestId, request.getApprovalId(), "Tool approval was cancelled");
+            cancelApproval(runId, request.getApprovalId(), "Tool approval was cancelled");
             throw e;
         }
         try {
@@ -60,7 +60,7 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
                     stopSignal.throwIfAborted();
                 }
 
-                ApprovalRow row = findApproval(requestId, request.getApprovalId());
+                ApprovalRow row = findApproval(runId, request.getApprovalId());
                 if (row == null) {
                     return ToolApprovalDecision.denied("Tool approval was not found");
                 }
@@ -81,63 +81,63 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
                 sleep();
             }
         } catch (StopRequestedException e) {
-            cancelApproval(requestId, request.getApprovalId(), "Tool approval was cancelled");
+            cancelApproval(runId, request.getApprovalId(), "Tool approval was cancelled");
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             if (stopSignal != null) {
                 stopSignal.throwIfAborted();
             }
-            cancelApproval(requestId, request.getApprovalId(), "Tool approval was cancelled");
+            cancelApproval(runId, request.getApprovalId(), "Tool approval was cancelled");
             throw e;
         }
     }
 
     @Override
-    public boolean resolve(String requestId, String approvalId, boolean approved, String reason) {
+    public boolean resolve(String runId, String approvalId, boolean approved, String reason) {
         long now = System.currentTimeMillis();
         int updated = jdbcTemplate.update(
                 "update agent_approvals "
                         + "set status = ?, decision_reason = ?, resolved_at = ?, updated_at = ? "
-                        + "where application_id = ? and request_id = ? and approval_id = ? and status = ?",
+                        + "where application_id = ? and run_id = ? and approval_id = ? and status = ?",
                 approved ? STATUS_APPROVED : STATUS_DENIED,
                 reason == null ? "" : reason,
                 now,
                 now,
                 applicationId,
-                requestId,
+                runId,
                 approvalId,
                 STATUS_PENDING);
         return updated > 0;
     }
 
     @Override
-    public void cancelRequest(String requestId) {
+    public void cancelRun(String runId) {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "update agent_approvals "
                         + "set status = ?, decision_reason = ?, resolved_at = ?, updated_at = ? "
-                        + "where application_id = ? and request_id = ? and status = ?",
+                        + "where application_id = ? and run_id = ? and status = ?",
                 STATUS_CANCELLED,
                 "Tool approval was cancelled",
                 now,
                 now,
                 applicationId,
-                requestId,
+                runId,
                 STATUS_PENDING);
     }
 
-    private void insertApproval(String requestId, String sessionId, ToolApprovalRequest request) {
+    private void insertApproval(String runId, String sessionId, ToolApprovalRequest request) {
         long now = System.currentTimeMillis();
         try {
             jdbcTemplate.update(
                     "insert into agent_approvals "
-                            + "(application_id, request_id, approval_id, session_id, tool_call_id, tool_name, status, "
+                            + "(application_id, run_id, approval_id, session_id, tool_call_id, tool_name, status, "
                             + "title, message, action, target, metadata_json, decision_reason, "
                             + "created_at, updated_at, resolved_at) "
                             + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     applicationId,
-                    requestId,
+                    runId,
                     request.getApprovalId(),
                     sessionId,
                     request.getToolCallId(),
@@ -153,38 +153,38 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
                     now,
                     null);
         } catch (DataAccessException e) {
-            if (findApproval(requestId, request.getApprovalId()) != null) {
+            if (findApproval(runId, request.getApprovalId()) != null) {
                 throw new IllegalStateException(
-                        "Tool approval already exists: " + requestId + "/" + request.getApprovalId(),
+                        "Tool approval already exists: " + runId + "/" + request.getApprovalId(),
                         e);
             }
             throw e;
         }
     }
 
-    private ApprovalRow findApproval(String requestId, String approvalId) {
+    private ApprovalRow findApproval(String runId, String approvalId) {
         List<ApprovalRow> rows = jdbcTemplate.query(
                 "select status, decision_reason from agent_approvals "
-                        + "where application_id = ? and request_id = ? and approval_id = ?",
+                        + "where application_id = ? and run_id = ? and approval_id = ?",
                 approvalRowMapper,
                 applicationId,
-                requestId,
+                runId,
                 approvalId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private void cancelApproval(String requestId, String approvalId, String reason) {
+    private void cancelApproval(String runId, String approvalId, String reason) {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "update agent_approvals "
                         + "set status = ?, decision_reason = ?, resolved_at = ?, updated_at = ? "
-                        + "where application_id = ? and request_id = ? and approval_id = ? and status = ?",
+                        + "where application_id = ? and run_id = ? and approval_id = ? and status = ?",
                 STATUS_CANCELLED,
                 reason == null ? "" : reason,
                 now,
                 now,
                 applicationId,
-                requestId,
+                runId,
                 approvalId,
                 STATUS_PENDING);
     }

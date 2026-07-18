@@ -123,7 +123,7 @@ class ReadToolTest {
     }
 
     private ToolContext toolContext() {
-        return new ToolContext("session", "turn", null, workspaceRoot, null, null);
+        return new ToolContext("session", "run", "turn", null, workspaceRoot, null, null);
     }
 
     private void write(Path path, String content) throws Exception {

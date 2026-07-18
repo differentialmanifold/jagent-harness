@@ -3,9 +3,11 @@ package io.github.differentialmanifold.jagentharness.core.agent;
 public class AgentRunResult {
 
     private String sessionId;
-    private String turnId;
+    private String runId;
+    private String firstTurnId;
+    private String lastTurnId;
     private String answer;
-    private int iterations;
+    private int turnCount;
 
     public String getSessionId() {
         return sessionId;
@@ -15,12 +17,28 @@ public class AgentRunResult {
         this.sessionId = sessionId;
     }
 
-    public String getTurnId() {
-        return turnId;
+    public String getRunId() {
+        return runId;
     }
 
-    public void setTurnId(String turnId) {
-        this.turnId = turnId;
+    public void setRunId(String runId) {
+        this.runId = runId;
+    }
+
+    public String getFirstTurnId() {
+        return firstTurnId;
+    }
+
+    public void setFirstTurnId(String firstTurnId) {
+        this.firstTurnId = firstTurnId;
+    }
+
+    public String getLastTurnId() {
+        return lastTurnId;
+    }
+
+    public void setLastTurnId(String lastTurnId) {
+        this.lastTurnId = lastTurnId;
     }
 
     public String getAnswer() {
@@ -31,12 +49,12 @@ public class AgentRunResult {
         this.answer = answer;
     }
 
-    public int getIterations() {
-        return iterations;
+    public int getTurnCount() {
+        return turnCount;
     }
 
-    public void setIterations(int iterations) {
-        this.iterations = iterations;
+    public void setTurnCount(int turnCount) {
+        this.turnCount = turnCount;
     }
 
 }

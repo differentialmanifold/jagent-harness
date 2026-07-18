@@ -59,7 +59,7 @@ class McpClientIntegrationTest {
 
             McpRemoteTool remoteTool = new McpRemoteTool("demo", tools.get(0), client, objectMapper);
             ToolExecutionResult result = remoteTool.execute(
-                    new ToolContext("session", "turn"),
+                    new ToolContext("session", "run", "turn"),
                     objectMapper.readTree("{\"value\":\"hello\"}"));
 
             assertEquals("echo: hello", result.getContent());

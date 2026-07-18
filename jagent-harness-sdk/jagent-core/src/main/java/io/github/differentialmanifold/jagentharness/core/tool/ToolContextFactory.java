@@ -5,5 +5,5 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
 
 public interface ToolContextFactory {
 
-    ToolContext create(SessionRecord session, String turnId, AgentRunOptions options);
+    ToolContext create(SessionRecord session, String runId, String turnId, AgentRunOptions options);
 }

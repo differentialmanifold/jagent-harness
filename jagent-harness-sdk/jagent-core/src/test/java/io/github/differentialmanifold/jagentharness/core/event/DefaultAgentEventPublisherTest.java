@@ -22,13 +22,15 @@ class DefaultAgentEventPublisherTest {
                 Collections.<AgentEventListener>singletonList(listenerEvents::add));
 
         publisher.withEventConsumer(scopedEvents::add, () -> {
-            publisher.publish("s1", "t1", "plugin.progress", payload("message", "Half done"));
+            publisher.publish("s1", "r1", "t1", "plugin.progress", payload("message", "Half done"));
             return null;
         });
 
         assertEquals(1, scopedEvents.size());
         assertEquals(1, listenerEvents.size());
         assertEquals("plugin.progress", scopedEvents.get(0).getType());
+        assertEquals("r1", scopedEvents.get(0).getRunId());
+        assertEquals("t1", scopedEvents.get(0).getTurnId());
         assertEquals(scopedEvents.get(0).getEventId(), listenerEvents.get(0).getEventId());
     }
 
@@ -39,7 +41,7 @@ class DefaultAgentEventPublisherTest {
         CustomEventSource eventSource = new CustomEventSource(publisher);
 
         publisher.withEventConsumer(scopedEvents::add, () -> {
-            eventSource.publishStatus("s1", "t1", "plugin.status", payload("message", "Ready"));
+            eventSource.publishStatus("s1", "r1", "t1", "plugin.status", payload("message", "Ready"));
             return null;
         });
 
@@ -54,8 +56,12 @@ class DefaultAgentEventPublisherTest {
             this.publisher = publisher;
         }
 
-        private void publishStatus(String sessionId, String turnId, String type, Map<String, Object> payload) {
-            publisher.publish(sessionId, turnId, type, payload);
+        private void publishStatus(String sessionId,
+                                   String runId,
+                                   String turnId,
+                                   String type,
+                                   Map<String, Object> payload) {
+            publisher.publish(sessionId, runId, turnId, type, payload);
         }
     }
 

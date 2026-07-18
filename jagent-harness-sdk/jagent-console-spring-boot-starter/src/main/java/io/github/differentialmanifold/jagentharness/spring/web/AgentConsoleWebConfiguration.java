@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
@@ -81,6 +82,7 @@ public class AgentConsoleWebConfiguration {
                                          AgentHarness agentHarness,
                                          TaskExecutor agentTaskExecutor,
                                          RunStopCoordinator runStopCoordinator,
+                                         RunInputCoordinator runInputCoordinator,
                                          ToolApprovalCoordinator toolApprovalCoordinator,
                                          ObjectMapper objectMapper) {
         return new ChatController(
@@ -88,6 +90,7 @@ public class AgentConsoleWebConfiguration {
                 agentHarness,
                 agentTaskExecutor,
                 runStopCoordinator,
+                runInputCoordinator,
                 toolApprovalCoordinator,
                 objectMapper);
     }

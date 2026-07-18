@@ -8,11 +8,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInputReceipt;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
-import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
@@ -22,11 +23,13 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalHandle
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalMode;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatApprovalRequest;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatInputRequest;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatInputResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatRunRequest;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatStopRequest;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,12 +40,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/chat")
 public class ChatController {
 
-    static final String REQUEST_ID_HEADER = "X-Request-Id";
+    static final String RUN_ID_HEADER = "X-Run-Id";
 
     private final SessionManager sessionManager;
     private final AgentHarness agentHarness;
     private final TaskExecutor agentTaskExecutor;
     private final RunStopCoordinator runStopCoordinator;
+    private final RunInputCoordinator runInputCoordinator;
     private final ToolApprovalCoordinator toolApprovalCoordinator;
     private final ObjectMapper objectMapper;
 
@@ -50,12 +54,14 @@ public class ChatController {
                           AgentHarness agentHarness,
                           TaskExecutor agentTaskExecutor,
                           RunStopCoordinator runStopCoordinator,
+                          RunInputCoordinator runInputCoordinator,
                           ToolApprovalCoordinator toolApprovalCoordinator,
                           ObjectMapper objectMapper) {
         this.sessionManager = sessionManager;
         this.agentHarness = agentHarness;
         this.agentTaskExecutor = agentTaskExecutor;
         this.runStopCoordinator = runStopCoordinator;
+        this.runInputCoordinator = runInputCoordinator;
         this.toolApprovalCoordinator = toolApprovalCoordinator;
         this.objectMapper = objectMapper;
     }
@@ -64,48 +70,57 @@ public class ChatController {
     public ResponseEntity<SseEmitter> stream(@RequestBody ChatRunRequest request) {
         ChatRunRequest effectiveRequest = requireRunRequest(request);
         String sessionId = effectiveRequest.getSessionId();
-        String requestId = Ids.newId("req");
-        RunStopHandle stopHandle = runStopCoordinator.register(requestId, sessionId);
+        String runId = Ids.newId("run");
+        RunStopHandle stopHandle = runStopCoordinator.register(runId, sessionId);
         SseEmitter emitter = new SseEmitter(0L);
         try {
+            runInputCoordinator.activateRun(sessionId, runId);
             agentTaskExecutor.execute(() -> {
                 try {
-                    AgentRunOptions options = optionsFrom(effectiveRequest)
-                            .toBuilder()
-                            .eventConsumer(event -> sendEvent(emitter, event))
-                            .stopSignal(stopHandle)
-                            .approvalMode(approvalMode(effectiveRequest))
-                            .approvalHandler(approvalHandler(effectiveRequest, requestId, sessionId, emitter))
-                            .build();
-                    agentHarness.run(
-                            sessionId,
-                            effectiveRequest.getContent(),
-                            options);
-                    emitter.complete();
-                } catch (StopRequestedException e) {
-                    emitter.complete();
-                } catch (Exception e) {
-                    sendAgentError(emitter, sessionId, e);
-                    emitter.complete();
+                    runRequest(
+                            effectiveRequest,
+                            runId,
+                            stopHandle,
+                            emitter);
+                } catch (Exception ignored) {
                 } finally {
-                    toolApprovalCoordinator.cancelRequest(requestId);
-                    stopHandle.close();
-                    Thread.interrupted();
+                    try {
+                        toolApprovalCoordinator.cancelRun(runId);
+                    } finally {
+                        try {
+                            stopHandle.close();
+                        } finally {
+                            Thread.interrupted();
+                            emitter.complete();
+                        }
+                    }
                 }
             });
         } catch (RuntimeException e) {
+            runInputCoordinator.closeRun(sessionId, runId);
             stopHandle.close();
             throw e;
         }
         return ResponseEntity.ok()
-                .header(REQUEST_ID_HEADER, requestId)
+                .header(RUN_ID_HEADER, runId)
                 .body(emitter);
     }
 
-    @PostMapping("/requests/stop")
-    public ResponseEntity<Void> stop(@RequestBody ChatStopRequest request) {
-        String requestId = request == null ? null : request.getRequestId();
-        StopRequestResult result = runStopCoordinator.requestStop(requireRequestId(requestId));
+    @PostMapping("/runs/{runId}/messages")
+    public ResponseEntity<ChatInputResponse> submitMessage(
+            @PathVariable("runId") String runId,
+            @RequestBody ChatInputRequest request) {
+        ChatInputRequest effectiveRequest = requireInputRequest(request);
+        RunInputReceipt receipt = runInputCoordinator.submitInput(
+                requireId(runId, "runId"),
+                effectiveRequest.getContent(),
+                inputId(effectiveRequest));
+        return ResponseEntity.accepted().body(toResponse(receipt));
+    }
+
+    @PostMapping("/runs/{runId}/stop")
+    public ResponseEntity<Void> stop(@PathVariable("runId") String runId) {
+        StopRequestResult result = runStopCoordinator.requestStop(requireId(runId, "runId"));
         if (result == StopRequestResult.NOT_FOUND) {
             return ResponseEntity.notFound().build();
         }
@@ -114,10 +129,10 @@ public class ChatController {
 
     @PostMapping("/approvals/resolve")
     public ResponseEntity<Void> resolveApproval(@RequestBody ChatApprovalRequest request) {
-        String requestId = request == null ? null : request.getRequestId();
+        String runId = request == null ? null : request.getRunId();
         String approvalId = request == null ? null : request.getApprovalId();
         boolean resolved = toolApprovalCoordinator.resolve(
-                requireRequestId(requestId),
+                requireId(runId, "runId"),
                 requireApprovalId(approvalId),
                 request != null && request.isApproved(),
                 request == null ? null : request.getReason());
@@ -139,19 +154,20 @@ public class ChatController {
         return request;
     }
 
+    private ChatInputRequest requireInputRequest(ChatInputRequest request) {
+        if (request == null || request.getContent() == null
+                || request.getContent().trim().isEmpty()) {
+            throw new IllegalArgumentException("content is required");
+        }
+        request.setContent(request.getContent().trim());
+        return request;
+    }
+
     private String requireSessionId(String sessionId) {
         if (sessionId == null || sessionId.trim().isEmpty()) {
             throw new IllegalArgumentException("sessionId is required");
         }
         return sessionId.trim();
-    }
-
-    private String requireRequestId(String requestId) {
-        String value = requestId == null ? "" : requestId.trim();
-        if (value.isEmpty() || value.length() > 128) {
-            throw new IllegalArgumentException("requestId must contain 1-128 characters");
-        }
-        return value;
     }
 
     private String requireApprovalId(String approvalId) {
@@ -162,14 +178,63 @@ public class ChatController {
         return value;
     }
 
+    private String requireId(String id, String name) {
+        String value = id == null ? "" : id.trim();
+        if (value.isEmpty() || value.length() > 128) {
+            throw new IllegalArgumentException(name + " must contain 1-128 characters");
+        }
+        return value;
+    }
+
+    private String inputId(ChatInputRequest request) {
+        String inputId = request.getInputId();
+        return inputId == null || inputId.trim().isEmpty()
+                ? Ids.newId("input")
+                : requireId(inputId, "inputId");
+    }
+
+    private ChatInputResponse toResponse(RunInputReceipt receipt) {
+        return new ChatInputResponse(
+                receipt.getInputId(),
+                receipt.getStatus().name());
+    }
+
     private void sendEvent(SseEmitter emitter, AgentEvent event) {
         try {
             emitter.send(SseEmitter.event()
                     .id(event.getEventId())
                     .name(event.getType())
                     .data(event));
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to stream agent event", e);
+        } catch (IOException | IllegalStateException ignored) {
+            // The run lifecycle is independent of a browser disconnect. The stream can still
+            // finish, persist its output, and release its active-run state normally.
+        }
+    }
+
+    private void runRequest(ChatRunRequest request,
+                            String runId,
+                            RunStopHandle stopHandle,
+                            SseEmitter emitter) {
+        String sessionId = request.getSessionId();
+        try {
+            stopHandle.throwIfAborted();
+            AgentRunOptions options = optionsFrom(request)
+                    .toBuilder()
+                    .runId(runId)
+                    .eventConsumer(event -> sendEvent(emitter, event))
+                    .stopSignal(stopHandle)
+                    .runInputSource(runInputCoordinator)
+                    .approvalMode(approvalMode(request))
+                    .approvalHandler(approvalHandler(
+                            request,
+                            sessionId,
+                            runId,
+                            emitter))
+                    .build();
+            agentHarness.run(sessionId, request.getContent(), options);
+            stopHandle.throwIfAborted();
+        } finally {
+            runInputCoordinator.closeRun(sessionId, runId);
         }
     }
 
@@ -191,49 +256,55 @@ public class ChatController {
     }
 
     private ToolApprovalHandler approvalHandler(ChatRunRequest request,
-                                                String requestId,
                                                 String sessionId,
+                                                String runId,
                                                 SseEmitter emitter) {
         if (approvalMode(request) != ToolApprovalMode.ASK_FOR_APPROVAL) {
             return null;
         }
         return (approvalRequest, stopSignal) -> requestApproval(
-                requestId,
                 sessionId,
+                runId,
                 emitter,
                 approvalRequest,
                 stopSignal);
     }
 
-    private ToolApprovalDecision requestApproval(String requestId,
-                                                 String sessionId,
+    private ToolApprovalDecision requestApproval(String sessionId,
+                                                 String runId,
                                                  SseEmitter emitter,
                                                  ToolApprovalRequest approvalRequest,
                                                  StopSignal stopSignal) throws Exception {
         ToolApprovalDecision decision = toolApprovalCoordinator.awaitDecision(
-                requestId,
+                runId,
                 sessionId,
                 approvalRequest,
                 stopSignal,
                 () -> sendApprovalEvent(
                         emitter,
                         AgentEvent.TOOL_APPROVAL_REQUESTED,
-                        requestId,
                         sessionId,
+                        runId,
                         approvalRequest,
                         null));
-        sendApprovalEvent(emitter, AgentEvent.TOOL_APPROVAL_RESOLVED, requestId, sessionId, approvalRequest, decision);
+        sendApprovalEvent(
+                emitter,
+                AgentEvent.TOOL_APPROVAL_RESOLVED,
+                sessionId,
+                runId,
+                approvalRequest,
+                decision);
         return decision;
     }
 
     private void sendApprovalEvent(SseEmitter emitter,
                                    String type,
-                                   String requestId,
                                    String sessionId,
+                                   String runId,
                                    ToolApprovalRequest approvalRequest,
                                    ToolApprovalDecision decision) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
-        payload.put("requestId", requestId);
+        payload.put("runId", runId);
         payload.put("approvalId", approvalRequest.getApprovalId());
         payload.put("toolCallId", approvalRequest.getToolCallId());
         payload.put("toolName", approvalRequest.getToolName());
@@ -246,20 +317,7 @@ public class ChatController {
             payload.put("approved", decision.isApproved());
             payload.put("reason", decision.getReason());
         }
-        sendEvent(emitter, AgentEvent.of(sessionId, null, type, toJson(payload)));
-    }
-
-    private void sendAgentError(SseEmitter emitter, String sessionId, Exception exception) {
-        try {
-            Map<String, Object> payload = new LinkedHashMap<String, Object>();
-            payload.put("message", exception.getMessage());
-            AgentEvent event = AgentEvent.of(sessionId, null, "agent_error", toJson(payload));
-            emitter.send(SseEmitter.event()
-                    .id(event.getEventId())
-                    .name(event.getType())
-                    .data(event));
-        } catch (Exception ignored) {
-        }
+        sendEvent(emitter, AgentEvent.of(sessionId, runId, null, type, toJson(payload)));
     }
 
     private String toJson(Map<String, Object> payload) {

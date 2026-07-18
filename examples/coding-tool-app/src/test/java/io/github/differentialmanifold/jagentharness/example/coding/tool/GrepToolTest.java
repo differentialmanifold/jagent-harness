@@ -98,7 +98,7 @@ class GrepToolTest {
     }
 
     private ToolContext toolContext() {
-        return new ToolContext("session", "turn", workspaceRoot);
+        return new ToolContext("session", "run", "turn", workspaceRoot);
     }
 
     private void write(String relativePath, String content) throws Exception {

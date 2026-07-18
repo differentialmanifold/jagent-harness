@@ -8,6 +8,7 @@ import java.util.Map;
 public class AgentContext {
 
     private final String sessionId;
+    private final String runId;
     private final String turnId;
     private final String traceId;
     private final String projectId;
@@ -15,20 +16,22 @@ public class AgentContext {
     private final Path configRoot;
     private final Map<String, Object> attributes;
 
-    public AgentContext(String sessionId, String turnId) {
-        this(sessionId, turnId, null, null, null, Collections.<String, Object>emptyMap());
+    public AgentContext(String sessionId, String runId, String turnId) {
+        this(sessionId, runId, turnId, null, null, null, Collections.<String, Object>emptyMap());
     }
 
     public AgentContext(String sessionId,
+                        String runId,
                         String turnId,
                         String traceId,
                         Path workspaceRoot,
                         Path configRoot,
                         Map<String, Object> attributes) {
-        this(sessionId, turnId, traceId, workspaceRoot, configRoot, attributes, null);
+        this(sessionId, runId, turnId, traceId, workspaceRoot, configRoot, attributes, null);
     }
 
     public AgentContext(String sessionId,
+                        String runId,
                         String turnId,
                         String traceId,
                         Path workspaceRoot,
@@ -36,6 +39,7 @@ public class AgentContext {
                         Map<String, Object> attributes,
                         String projectId) {
         this.sessionId = sessionId;
+        this.runId = runId;
         this.turnId = turnId;
         this.traceId = traceId;
         this.projectId = projectId;
@@ -50,6 +54,10 @@ public class AgentContext {
 
     public String getSessionId() {
         return sessionId;
+    }
+
+    public String getRunId() {
+        return runId;
     }
 
     public String getTurnId() {

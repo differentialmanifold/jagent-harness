@@ -86,8 +86,10 @@ class AgentRunnerCompactionTest {
         assertFalse(containsMessage(normalRequest.getMessages(), "m2"));
         AgentMessage userMessage = store.messages.get(store.messages.size() - 2);
         AgentMessage assistantMessage = store.messages.get(store.messages.size() - 1);
-        assertEquals(result.getTurnId(), userMessage.getTurnId());
-        assertEquals(result.getTurnId(), assistantMessage.getTurnId());
+        assertEquals(result.getRunId(), userMessage.getRunId());
+        assertEquals(result.getRunId(), assistantMessage.getRunId());
+        assertEquals(result.getFirstTurnId(), userMessage.getTurnId());
+        assertEquals(result.getLastTurnId(), assistantMessage.getTurnId());
         assertEquals("m4", userMessage.getParentMessageId());
         assertEquals(userMessage.getMessageId(), assistantMessage.getParentMessageId());
 
@@ -126,10 +128,15 @@ class AgentRunnerCompactionTest {
                 objectMapper);
 
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        runner.run("s1", "hello", AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result = runner.run(
+                "s1",
+                "hello",
+                AgentRunOptions.builder().eventConsumer(events::add).build());
 
         AgentMessage assistant = store.messages.get(store.messages.size() - 1);
         assertEquals(assistant.getMessageId(), usageStore.appended.getMessageId());
+        assertEquals(result.getRunId(), usageStore.appended.getRunId());
+        assertEquals(result.getLastTurnId(), usageStore.appended.getTurnId());
         assertEquals(Integer.valueOf(36), usageStore.appended.getActualContextTokens());
         ModelRequest modelRequest = provider.normalRequests.get(0);
         TokenEstimator estimator = new TokenEstimator();

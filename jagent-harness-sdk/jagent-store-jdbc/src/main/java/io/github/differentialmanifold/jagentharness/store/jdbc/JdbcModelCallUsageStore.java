@@ -15,6 +15,7 @@ public class JdbcModelCallUsageStore implements ModelCallUsageStore {
         ModelCallUsage usage = new ModelCallUsage();
         usage.setUsageId(rs.getString("usage_id"));
         usage.setSessionId(rs.getString("session_id"));
+        usage.setRunId(rs.getString("run_id"));
         usage.setTurnId(rs.getString("turn_id"));
         usage.setMessageId(rs.getString("message_id"));
         usage.setProvider(rs.getString("provider"));
@@ -55,14 +56,15 @@ public class JdbcModelCallUsageStore implements ModelCallUsageStore {
             return;
         }
         jdbcTemplate.update("insert into model_call_usages "
-                        + "(application_id, usage_id, session_id, turn_id, message_id, provider, model, "
+                        + "(application_id, usage_id, session_id, run_id, turn_id, message_id, provider, model, "
                         + "context_window_tokens, threshold_tokens, estimate_source, estimated_tokens, "
                         + "actual_context_tokens, prompt_tokens, completion_tokens, reasoning_tokens, "
                         + "cached_tokens, total_tokens, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 usage.getUsageId(),
                 usage.getSessionId(),
+                usage.getRunId(),
                 usage.getTurnId(),
                 usage.getMessageId(),
                 usage.getProvider(),

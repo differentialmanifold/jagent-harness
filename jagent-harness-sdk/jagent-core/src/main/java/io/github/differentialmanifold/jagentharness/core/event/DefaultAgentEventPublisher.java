@@ -36,9 +36,13 @@ public class DefaultAgentEventPublisher implements AgentEventPublisher {
     }
 
     @Override
-    public AgentEvent publish(String sessionId, String turnId, String type, Object payload) {
+    public AgentEvent publish(String sessionId,
+                              String runId,
+                              String turnId,
+                              String type,
+                              Object payload) {
         String payloadJson = writePayload(payload);
-        AgentEvent event = AgentEvent.of(sessionId, turnId, type, payloadJson);
+        AgentEvent event = AgentEvent.of(sessionId, runId, turnId, type, payloadJson);
         Consumer<AgentEvent> consumer = scopedConsumer.get();
         if (consumer != null) {
             consumer.accept(event);

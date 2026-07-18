@@ -19,6 +19,6 @@ public class WebConfiguration implements WebMvcConfigurer {
                 .allowedOrigins(properties.getAllowedOrigins().toArray(new String[0]))
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders(ChatController.REQUEST_ID_HEADER);
+                .exposedHeaders(ChatController.RUN_ID_HEADER);
     }
 }

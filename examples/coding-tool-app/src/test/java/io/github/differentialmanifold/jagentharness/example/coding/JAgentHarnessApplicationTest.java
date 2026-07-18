@@ -39,13 +39,15 @@ class JAgentHarnessApplicationTest {
 
         String prompt = promptProvider.buildSystemPrompt(new PromptContext(
                 toolRegistry.all(),
-                new AgentContext("session", "turn", null, null, null, null)));
+                new AgentContext("session", "run", "turn", null, null, null, null)));
         assertTrue(prompt.contains("## Application System Instructions"));
         assertTrue(prompt.contains("### Coding Tool Usage"));
         assertTrue(prompt.contains("Prefer dedicated tools over bash when a tool directly covers the operation."));
         assertTrue(prompt.contains("pass read's contentHash as expectedHash"));
 
         AgentMessage message = AgentMessage.assistant("stop-reason-test", "", Collections.emptyList());
+        message.setRunId("run-stop-reason-test");
+        message.setTurnId("turn-stop-reason-test");
         message.setStopReason(AgentMessage.STOP_REASON_ABORTED);
         messageRepository.append(message);
 

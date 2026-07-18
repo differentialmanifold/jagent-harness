@@ -22,7 +22,7 @@ public class AgentConsoleExceptionHandler {
     }
 
     @ExceptionHandler(ActiveRunException.class)
-    public ResponseEntity<ErrorResponse> activeRequest(Exception exception) {
+    public ResponseEntity<ErrorResponse> activeRun(Exception exception) {
         return error(HttpStatus.CONFLICT, exception);
     }
 

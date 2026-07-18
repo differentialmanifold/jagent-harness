@@ -156,6 +156,7 @@ class SkillToolTest {
     private ToolContext toolContext() {
         return new ToolContext(
                 "session",
+                "run",
                 "turn",
                 null,
                 workspaceRoot,

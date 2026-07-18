@@ -13,6 +13,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 public class ConversationContextRequest {
 
     private final String sessionId;
+    private final String runId;
     private final String turnId;
     private final String systemPrompt;
     private final List<AgentMessage> messages;
@@ -21,15 +22,17 @@ public class ConversationContextRequest {
     private final StopSignal stopSignal;
 
     public ConversationContextRequest(String sessionId,
+                                      String runId,
                                       String turnId,
                                       String systemPrompt,
                                       List<AgentMessage> messages,
                                       Collection<ToolDefinition> tools,
                                       ModelProvider provider) {
-        this(sessionId, turnId, systemPrompt, messages, tools, provider, StopSignal.none());
+        this(sessionId, runId, turnId, systemPrompt, messages, tools, provider, StopSignal.none());
     }
 
     public ConversationContextRequest(String sessionId,
+                                      String runId,
                                       String turnId,
                                       String systemPrompt,
                                       List<AgentMessage> messages,
@@ -37,6 +40,7 @@ public class ConversationContextRequest {
                                       ModelProvider provider,
                                       StopSignal stopSignal) {
         this.sessionId = sessionId;
+        this.runId = runId;
         this.turnId = turnId;
         this.systemPrompt = systemPrompt;
         this.messages = messages == null
@@ -51,6 +55,10 @@ public class ConversationContextRequest {
 
     public String getSessionId() {
         return sessionId;
+    }
+
+    public String getRunId() {
+        return runId;
     }
 
     public String getTurnId() {

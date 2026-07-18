@@ -12,6 +12,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.core.support.Ids;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,16 +44,20 @@ public class BusinessAssistantController {
     public SseEmitter stream(@RequestBody BusinessChatRequest request) {
         BusinessChatRequest effectiveRequest = requireRequest(request);
         SessionRecord session = session(effectiveRequest.getSessionId());
+        String runId = Ids.newId("run");
         SseEmitter emitter = new SseEmitter(0L);
         taskExecutor.execute(() -> {
             try {
                 agentHarness.run(
                         session.getSessionId(),
                         effectiveRequest.getMessage(),
-                        AgentRunOptions.builder().eventConsumer(event -> sendEvent(emitter, event)).build());
+                        AgentRunOptions.builder()
+                                .runId(runId)
+                                .eventConsumer(event -> sendEvent(emitter, event))
+                                .build());
                 emitter.complete();
             } catch (Exception e) {
-                sendError(emitter, session.getSessionId(), e);
+                sendError(emitter, session.getSessionId(), runId, e);
                 emitter.complete();
             }
         });
@@ -105,7 +110,10 @@ public class BusinessAssistantController {
         }
     }
 
-    private void sendError(SseEmitter emitter, String sessionId, Exception exception) {
+    private void sendError(SseEmitter emitter,
+                           String sessionId,
+                           String runId,
+                           Exception exception) {
         try {
             Map<String, Object> payload = new LinkedHashMap<String, Object>();
             payload.put("message", exception.getMessage());
@@ -114,6 +122,7 @@ public class BusinessAssistantController {
                     .data(new BusinessAgentEventResponse(
                             null,
                             sessionId,
+                            runId,
                             null,
                             "agent_error",
                             objectMapper.valueToTree(payload),
@@ -126,6 +135,7 @@ public class BusinessAssistantController {
         return new BusinessAgentEventResponse(
                 event.getEventId(),
                 event.getSessionId(),
+                event.getRunId(),
                 event.getTurnId(),
                 event.getType(),
                 payload(event.getPayloadJson()),

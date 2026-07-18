@@ -55,11 +55,14 @@ class PromptServiceTest {
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
                 Collections.emptyList(),
-                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
+                new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
 
         assertTrue(prompt.contains("You are a server-side agent running inside JAgentHarness."));
         assertTrue(prompt.contains("Use available tools and skills to help the user accomplish the task."));
         assertTrue(prompt.contains("Every executable capability is exposed as a registered tool"));
+        assertTrue(prompt.contains("Trailing user messages may be added between turns"));
+        assertTrue(prompt.contains("whether to correct the current approach, extend the task, or change the order"));
+        assertTrue(prompt.contains("prefer newer instructions when they conflict with older ones"));
         assertFalse(prompt.contains("OpenAI-compatible"));
         assertFalse(prompt.contains("Java method"));
         assertFalse(prompt.contains("Global system override."));
@@ -82,7 +85,7 @@ class PromptServiceTest {
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
                 Collections.emptyList(),
-                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
+                new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
 
         assertInOrder(prompt,
                 "You are a server-side agent running inside JAgentHarness.",
@@ -106,7 +109,7 @@ class PromptServiceTest {
 
         String prompt = promptService.buildSystemPrompt(new PromptContext(
                 Collections.emptyList(),
-                new AgentContext("session", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
+                new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
 
         assertInOrder(prompt,
                 "## Agent Rules",

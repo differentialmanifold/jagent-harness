@@ -16,7 +16,7 @@
     <div class="messages" ref="messagesEl" @scroll.passive="handleMessagesScroll">
       <MessageItem
         v-for="message in visibleMessages"
-        :key="message.messageId"
+        :key="message.role === 'assistant' && message.turnId ? `assistant:${message.turnId}` : message.messageId"
         :message="message"
         @resolve-tool-approval="$emit('resolveToolApproval', $event)"
       />
@@ -28,14 +28,28 @@
         type="textarea"
         resize="none"
         :model-value="draft"
-        :disabled="!currentSession || running"
-        placeholder="Ask the agent to inspect, edit, or plan work..."
+        :disabled="!currentSession"
+        :placeholder="composerPlaceholder"
         @update:model-value="$emit('update:draft', $event)"
         @keydown="handleKeydown"
       />
+      <div v-if="pendingInputs.length" class="pending-inputs" aria-live="polite">
+        <div
+          v-for="input in pendingInputs"
+          :key="input.inputId"
+          class="pending-input"
+          :title="input.content"
+        >
+          <el-tag size="small" type="info" effect="plain">
+            {{ input.status === 'submitting' ? 'Sending' : 'Queued' }}
+          </el-tag>
+          <span class="pending-input-content">{{ input.content || 'Pending input' }}</span>
+        </div>
+      </div>
       <div class="composer-footer">
         <div class="composer-left">
           <el-dropdown
+            v-if="!running"
             class="approval-dropdown"
             popper-class="approval-dropdown-menu"
             trigger="click"
@@ -67,7 +81,7 @@
         <div class="composer-right">
           <ContextUsageIndicator :usage="contextUsage" />
           <el-button
-            v-if="running"
+            v-if="showStopAction"
             class="composer-stop"
             :disabled="stopping || !stopReady"
             native-type="button"
@@ -83,7 +97,8 @@
             class="composer-submit"
             type="primary"
             :icon="Top"
-            :disabled="!currentSession || !draft.trim()"
+            :loading="submittingInput"
+            :disabled="!canSubmit"
             native-type="submit"
             aria-label="Send message"
             title="Send message"
@@ -109,12 +124,22 @@ const props = defineProps({
   running: { type: Boolean, required: true },
   stopping: { type: Boolean, required: true },
   stopReady: { type: Boolean, required: true },
+  activeRunId: { type: String, default: '' },
+  pendingInputs: { type: Array, default: () => [] },
+  submittingInput: { type: Boolean, default: false },
+  messageRevision: { type: Number, default: 0 },
   approvalMode: { type: String, required: true },
   contextUsage: { type: Object, default: null },
   draft: { type: String, required: true }
 })
 
-const emit = defineEmits(['update:draft', 'update:approvalMode', 'send', 'stop', 'resolveToolApproval'])
+const emit = defineEmits([
+  'update:draft',
+  'update:approvalMode',
+  'send',
+  'stop',
+  'resolveToolApproval'
+])
 const AUTO_SCROLL_THRESHOLD_PX = 16
 const messagesEl = ref(null)
 const autoFollowMessages = ref(true)
@@ -132,11 +157,23 @@ const visibleMessages = computed(() => props.messages.filter((message) => {
 }))
 
 const approvalModeLabel = computed(() => props.approvalMode === 'full_access' ? 'Full access' : 'Ask')
+const composerPlaceholder = computed(() => {
+  if (!props.running) return 'Ask the agent to inspect, edit, or plan work...'
+  return 'Send another message...'
+})
+const hasDraft = computed(() => Boolean(props.draft.trim()))
+const showStopAction = computed(() => props.running && (props.stopping || !hasDraft.value))
+const canSubmit = computed(() => Boolean(
+  props.currentSession
+  && props.draft.trim()
+  && !props.submittingInput
+  && !props.stopping
+  && (!props.running || (props.stopReady && props.activeRunId))
+))
 
 watch(
-  () => props.messages,
+  () => props.messageRevision,
   () => scrollMessagesToBottom(),
-  { deep: true }
 )
 
 watch(
@@ -148,7 +185,7 @@ watch(
 )
 
 function submit() {
-  if (!props.currentSession || props.running || !props.draft.trim()) return
+  if (!canSubmit.value) return
   autoFollowMessages.value = true
   scrollMessagesToBottom({ force: true })
   emit('send')

@@ -82,6 +82,7 @@ class FileSkillProviderTest {
         FileSkillProvider provider = new FileSkillProvider(globalRoot, "skills");
         List<SkillDescriptor> skills = provider.listSkills(new AgentContext(
                 "session",
+                "run",
                 "turn",
                 null,
                 workspaceRoot,

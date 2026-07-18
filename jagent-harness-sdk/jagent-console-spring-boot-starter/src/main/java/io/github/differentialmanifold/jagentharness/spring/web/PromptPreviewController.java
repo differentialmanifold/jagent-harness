@@ -48,6 +48,7 @@ public class PromptPreviewController {
                 session == null ? null : session.getSessionId(),
                 null,
                 null,
+                null,
                 workspaceRoot,
                 settings.getConfigRoot(),
                 null,
