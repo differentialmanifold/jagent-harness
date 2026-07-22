@@ -17,6 +17,9 @@
         >
           Stopped by user
         </el-tag>
+        <span v-if="durationText" class="message-duration">
+          {{ durationLabel }} {{ durationText }}
+        </span>
       </div>
       <div
         v-if="message.thinking && !message.content && !message.reasoningContent"
@@ -57,13 +60,24 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import ToolMessage from './ToolMessage.vue'
+import { formatDuration } from '../utils/format'
 import { messageClass, summarizeToolArguments } from '../utils/toolDisplay'
 
-defineProps({
+const props = defineProps({
   message: { type: Object, required: true }
 })
 
 defineEmits(['resolveToolApproval'])
+
+const durationText = computed(() => (
+  formatDuration(props.message.runDurationMillis)
+))
+const durationLabel = computed(() => {
+  if (props.message.stopReason === 'aborted') return 'Stopped after'
+  if (props.message.failed) return 'Failed after'
+  return 'Took'
+})
 </script>

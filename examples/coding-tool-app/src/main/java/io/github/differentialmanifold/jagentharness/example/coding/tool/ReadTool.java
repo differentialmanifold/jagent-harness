@@ -102,6 +102,9 @@ public class ReadTool implements ToolDefinition {
             while ((line = reader.readLine()) != null) {
                 context.getStopSignal().throwIfAborted();
                 totalLines++;
+                if (totalLines == 1 && line.startsWith("\uFEFF")) {
+                    line = line.substring(1);
+                }
                 if (line.indexOf('\0') >= 0) {
                     throw unsupportedTextFile(path);
                 }

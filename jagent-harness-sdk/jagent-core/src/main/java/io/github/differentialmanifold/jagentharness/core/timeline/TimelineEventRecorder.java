@@ -10,8 +10,6 @@ import io.github.differentialmanifold.jagentharness.core.event.AgentEventListene
 public class TimelineEventRecorder implements AgentEventListener {
 
     private static final Set<String> TRANSIENT_EVENT_TYPES = new HashSet<String>(Arrays.asList(
-            AgentEvent.AGENT_START,
-            AgentEvent.AGENT_END,
             AgentEvent.MESSAGE_START,
             AgentEvent.MESSAGE_UPDATE,
             AgentEvent.MESSAGE_REASONING_UPDATE,
@@ -28,8 +26,25 @@ public class TimelineEventRecorder implements AgentEventListener {
     @Override
     public void onEvent(AgentEvent event) {
         if (shouldPersist(event)) {
-            timelineEventStore.append(event);
+            timelineEventStore.append(eventForStorage(event));
         }
+    }
+
+    private AgentEvent eventForStorage(AgentEvent event) {
+        if (!AgentEvent.AGENT_START.equals(event.getType())
+                && !AgentEvent.AGENT_END.equals(event.getType())) {
+            return event;
+        }
+        // The lifecycle timestamps are enough to restore run duration. Keep the live payload
+        // out of the timeline so agent_end does not duplicate the complete answer.
+        AgentEvent storedEvent = new AgentEvent();
+        storedEvent.setEventId(event.getEventId());
+        storedEvent.setSessionId(event.getSessionId());
+        storedEvent.setRunId(event.getRunId());
+        storedEvent.setTurnId(event.getTurnId());
+        storedEvent.setType(event.getType());
+        storedEvent.setCreatedAt(event.getCreatedAt());
+        return storedEvent;
     }
 
     private boolean shouldPersist(AgentEvent event) {

@@ -43,3 +43,23 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  coding-tools-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Build coding tool dependencies
+        run: mvn -B -f pom.xml -pl examples/coding-tool-app -am -DskipTests install
+
+      - name: Run coding tool tests
+        run: mvn -B -f examples/coding-tool-app/pom.xml test

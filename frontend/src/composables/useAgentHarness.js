@@ -384,7 +384,7 @@ export function useAgentHarness() {
       await loadSessions()
     } catch (error) {
       if (!(error.name === 'AbortError' && state.stopRequested)) {
-        appendLocalErrorMessage(state, error.message)
+        appendLocalErrorMessage(state, error.message, error.runDurationMillis)
       }
     } finally {
       clearStopFallback(state)
@@ -397,6 +397,7 @@ export function useAgentHarness() {
       state.running = false
       state.finishing = false
       state.activeRunId = null
+      state.runStartTimes.clear()
     }
   }
 
@@ -547,6 +548,7 @@ export function useAgentHarness() {
     state.activeRunId = null
     state.activeTurnId = null
     state.turns.clear()
+    state.runStartTimes.clear()
     state.pendingInputs.splice(0)
     state.replaying = true
     state.messages.splice(0)
@@ -558,6 +560,7 @@ export function useAgentHarness() {
       state.replaying = false
       state.activeRunId = null
       state.activeTurnId = null
+      state.runStartTimes.clear()
       state.running = false
       state.stopReady = false
       state.finishing = false
@@ -614,6 +617,7 @@ export function useAgentHarness() {
     } else if (type === 'agent_end') {
       clearEmptyThinkingMessage(state)
       completePendingTools('completed', state)
+      completeRunTiming(event, payload, state)
       finishRun(event, payload, state)
       if (options.replay) {
         resetTransientRunState(state)
@@ -632,6 +636,7 @@ export function useAgentHarness() {
       cancelRuntimeInputSubmission(state)
       clearEmptyThinkingMessage(state)
       completePendingTools('stopped', state)
+      completeRunTiming(event, payload, state)
       resetTransientRunState(state)
       state.pendingInputs.splice(0)
       state.activeRunId = null
@@ -646,15 +651,18 @@ export function useAgentHarness() {
       cancelRuntimeInputSubmission(state)
       failActiveStreamingMessage(state)
       completePendingTools('failed', state)
+      const runDurationMillis = completeRunTiming(event, payload, state, { attach: false })
       resetTransientRunState(state)
       state.pendingInputs.splice(0)
       state.activeRunId = null
       state.finishing = false
       finishActiveTurn('failed', state)
       if (options.replay) {
-        appendCustomEventMessage(event, type, payload, state)
+        appendCustomEventMessage(event, type, payload, state, runDurationMillis)
       } else {
-        throw new Error(payload.message || payload.error || 'Agent stream failed')
+        const error = new Error(payload.message || payload.error || 'Agent stream failed')
+        error.runDurationMillis = runDurationMillis
+        throw error
       }
     } else {
       appendCustomEventMessage(event, type, payload, state)
@@ -663,6 +671,10 @@ export function useAgentHarness() {
 
   function startRun(event, payload, state) {
     state.activeRunId = eventRunId(event, payload)
+    const startedAt = eventTime(event)
+    if (state.activeRunId && startedAt !== null) {
+      state.runStartTimes.set(state.activeRunId, startedAt)
+    }
     state.running = true
     state.finishing = false
     if (state.activeRunId) {
@@ -676,6 +688,35 @@ export function useAgentHarness() {
       state.activeRunId = null
     }
     finishActiveTurn('completed', state)
+  }
+
+  function completeRunTiming(event, payload, state, options = {}) {
+    const runId = eventRunId(event, payload) || state.activeRunId
+    if (!runId) return null
+    const startedAt = state.runStartTimes.get(runId)
+    state.runStartTimes.delete(runId)
+    const endedAt = eventTime(event)
+    if (startedAt === undefined || endedAt === null) return null
+    const durationMillis = Math.max(0, endedAt - startedAt)
+    if (options.attach === false) return durationMillis
+
+    let message = null
+    for (let index = state.messages.length - 1; index >= 0; index--) {
+      const candidate = state.messages[index]
+      if (candidate.role === 'assistant' && candidate.runId === runId) {
+        message = candidate
+        break
+      }
+    }
+    if (!message) return durationMillis
+    message.runDurationMillis = durationMillis
+    markMessagesChanged(state)
+    return durationMillis
+  }
+
+  function eventTime(event) {
+    const timestamp = Date.parse(event?.createdAt)
+    return Number.isFinite(timestamp) ? timestamp : null
   }
 
   function startTurn(event, payload, state) {
@@ -852,13 +893,18 @@ export function useAgentHarness() {
     }
   }
 
-  function appendLocalErrorMessage(state, message) {
-    state.messages.push({
+  function appendLocalErrorMessage(state, message, runDurationMillis) {
+    const errorMessage = {
       messageId: `local-error:${Date.now()}`,
       sessionId: state.sessionId,
       role: 'assistant',
-      content: `Agent error: ${message || 'Unknown error'}`
-    })
+      content: `Agent error: ${message || 'Unknown error'}`,
+      failed: true
+    }
+    if (Number.isFinite(runDurationMillis)) {
+      errorMessage.runDurationMillis = runDurationMillis
+    }
+    state.messages.push(errorMessage)
     markMessagesChanged(state)
   }
 
@@ -1223,13 +1269,18 @@ export function useAgentHarness() {
     return `Context compacted (${before} -> ${after} estimated tokens)`
   }
 
-  function appendCustomEventMessage(event, type, payload, state) {
-    state.messages.push({
+  function appendCustomEventMessage(event, type, payload, state, runDurationMillis) {
+    const message = {
       messageId: `event:${event.eventId || `${type}:${Date.now()}`}`,
       sessionId: event.sessionId,
       role: 'status',
       content: customEventText(type, payload)
-    })
+    }
+    if (Number.isFinite(runDurationMillis)) {
+      message.runDurationMillis = runDurationMillis
+      message.failed = type === 'agent_error'
+    }
+    state.messages.push(message)
     markMessagesChanged(state)
   }
 
@@ -1392,6 +1443,7 @@ export function useAgentHarness() {
       stopFallbackTimer: null,
       contextUsage: null,
       pendingToolMessages: new Map(),
+      runStartTimes: markRaw(new Map()),
       turns: new Map(),
       turnSequence: 0,
       pendingInputs: [],
