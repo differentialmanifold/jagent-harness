@@ -1404,6 +1404,12 @@ textarea {
   text-transform: none;
 }
 
+.message-duration {
+  color: #667085;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+
 .message pre {
   margin: 0;
   white-space: pre-wrap;
