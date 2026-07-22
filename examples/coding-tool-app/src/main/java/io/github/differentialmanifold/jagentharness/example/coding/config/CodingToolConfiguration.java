@@ -28,8 +28,10 @@ public class CodingToolConfiguration {
                 + "- Use find to locate files or directories by name, glob, type, depth, or exclusions.\n"
                 + "- Use grep to search text file contents.\n"
                 + "- Use read to inspect file contents; use offset and limit to read only the relevant line range.\n"
-                + "- Before edit, read the current file and pass read's contentHash as expectedHash. If edit reports FILE_CHANGED or SEARCH_NOT_FOUND, read the file again and retry with current content.\n"
-                + "- Use edit for localized changes to existing files, including exact replacements, line-range replacements, deletions, and insertions. Make search text unique; when it is not unique, add context or specify occurrence.\n"
+                + "- Before edit, read the current file. Each oldText must come from the current file content and include enough surrounding context to match exactly one location.\n"
+                + "- Use edit for localized changes to existing files. When changing multiple locations in the same file, include all replacements in one edit call's edits array; every oldText is matched against the same original snapshot.\n"
+                + "- Delete text with an empty newText. To insert text, keep a unique anchor in oldText and include that anchor plus the insertion in newText.\n"
+                + "- If edit reports a conflict or that text was not found, read the current file again and retry using its latest content.\n"
                 + "- Use write only when creating a new file or intentionally replacing a whole file.\n"
                 + "- Bash remains available for general shell commands; prefer dedicated tools first when they directly cover the operation.";
     }

@@ -43,6 +43,24 @@ class ReadToolTest {
     }
 
     @Test
+    void hidesUtf8BomFromModelContentButHashesOriginalBytes() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        ReadTool tool = new ReadTool(objectMapper, new WorkspacePathResolver());
+        byte[] content = "first\r\nsecond\r\n".getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = new byte[3 + content.length];
+        bytes[0] = (byte) 0xef;
+        bytes[1] = (byte) 0xbb;
+        bytes[2] = (byte) 0xbf;
+        System.arraycopy(content, 0, bytes, 3, content.length);
+        Files.write(workspaceRoot.resolve("bom.txt"), bytes);
+
+        JsonNode result = execute(objectMapper, tool, arguments(objectMapper, "bom.txt", null, null));
+
+        assertEquals("first\nsecond", result.path("content").asText());
+        assertEquals(ContentHashing.sha256(bytes), result.path("contentHash").asText());
+    }
+
+    @Test
     void readsWorkspaceFileUsingBackslashSeparators() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         ReadTool tool = new ReadTool(objectMapper, new WorkspacePathResolver());
