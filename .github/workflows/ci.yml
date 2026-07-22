@@ -58,5 +58,8 @@ jobs:
           java-version: '8'
           cache: maven
 
+      - name: Build coding tool dependencies
+        run: mvn -B -f pom.xml -pl examples/coding-tool-app -am -DskipTests install
+
       - name: Run coding tool tests
-        run: mvn -B -f pom.xml -pl examples/coding-tool-app -am test
+        run: mvn -B -f examples/coding-tool-app/pom.xml test
