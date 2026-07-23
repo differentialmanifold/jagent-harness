@@ -110,18 +110,19 @@ class RipgrepBinaryResolverTest {
     }
 
     @Test
-    void scansUnixPathInOrderAndSkipsInvalidCandidate() throws Exception {
-        Path first = createExecutable(tempDirectory.resolve("first"), "rg");
-        Path second = createExecutable(tempDirectory.resolve("second"), "rg");
+    void scansPathInOrderAndSkipsInvalidCandidate() throws Exception {
+        RipgrepBinaryResolver.Platform platform = RipgrepBinaryResolver.Platform.current();
+        Path first = createPlatformExecutable(tempDirectory.resolve("first"), platform);
+        Path second = createPlatformExecutable(tempDirectory.resolve("second"), platform);
         Map<String, String> environment = Collections.singletonMap(
                 "PATH",
-                first.getParent() + ":" + second.getParent());
+                first.getParent() + platform.pathSeparator() + second.getParent());
         AtomicInteger probes = new AtomicInteger();
 
         RipgrepBinaryResolver resolver = new RipgrepBinaryResolver(
                 null,
                 environment,
-                RipgrepBinaryResolver.Platform.UNIX,
+                platform,
                 executable -> {
                     probes.incrementAndGet();
                     if (executable.equals(first)) {
@@ -166,7 +167,7 @@ class RipgrepBinaryResolverTest {
         RipgrepBinaryResolver resolver = new RipgrepBinaryResolver(
                 null,
                 Collections.singletonMap("PATH", tempDirectory.toString()),
-                RipgrepBinaryResolver.Platform.UNIX,
+                RipgrepBinaryResolver.Platform.current(),
                 executable -> {
                     probes.incrementAndGet();
                     return "15.1.0";
@@ -182,14 +183,18 @@ class RipgrepBinaryResolverTest {
 
     @Test
     void ignoresEmptyAndInvalidPathEntries() throws Exception {
-        Path executable = createExecutable(tempDirectory.resolve("valid"), "rg");
+        RipgrepBinaryResolver.Platform platform = RipgrepBinaryResolver.Platform.current();
+        Path executable = createPlatformExecutable(tempDirectory.resolve("valid"), platform);
         Map<String, String> environment = new LinkedHashMap<String, String>();
-        environment.put("PATH", "::\u0000invalid:" + executable.getParent());
+        String separator = platform.pathSeparator();
+        environment.put(
+                "PATH",
+                separator + separator + "\u0000invalid" + separator + executable.getParent());
 
         RipgrepBinaryResolver resolver = new RipgrepBinaryResolver(
                 " ",
                 environment,
-                RipgrepBinaryResolver.Platform.UNIX,
+                platform,
                 candidate -> "13.0.0");
 
         Optional<RipgrepExecutable> result = resolver.resolve();
@@ -221,6 +226,14 @@ class RipgrepBinaryResolverTest {
         Path executable = createRegularFile(directory, name);
         assertTrue(executable.toFile().setExecutable(true) || Files.isExecutable(executable));
         return executable;
+    }
+
+    private Path createPlatformExecutable(Path directory,
+                                          RipgrepBinaryResolver.Platform platform) throws IOException {
+        if (platform.isWindows()) {
+            return createRegularFile(directory, platform.executableName());
+        }
+        return createExecutable(directory, platform.executableName());
     }
 
     private Path createRegularFile(Path directory, String name) throws IOException {
