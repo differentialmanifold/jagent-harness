@@ -46,6 +46,9 @@ harness:
   prompt:
     config-root: ${JAGENT_CONFIG_ROOT:~/.jagent-harness}
     skills-dir: ${JAGENT_SKILLS_DIR:skills}
+  coding-tools:
+    search:
+      rg-path: ${JAGENT_RG_PATH:}
   console:
     allowed-origins:
       - ${JAGENT_CORS_ORIGIN:http://localhost:5173}
