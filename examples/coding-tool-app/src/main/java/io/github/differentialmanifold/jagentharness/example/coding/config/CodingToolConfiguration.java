@@ -1,5 +1,7 @@
 package io.github.differentialmanifold.jagentharness.example.coding.config;
 
+import java.util.Optional;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.prompt.SystemPromptContributor;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.BashTool;
@@ -9,12 +11,21 @@ import io.github.differentialmanifold.jagentharness.example.coding.tool.GrepTool
 import io.github.differentialmanifold.jagentharness.example.coding.tool.LsTool;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.ReadTool;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.WriteTool;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepBinaryResolver;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepExecutable;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepProcessRunner;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class CodingToolConfiguration {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CodingToolConfiguration.class);
 
     @Bean
     public WorkspacePathResolver workspacePathResolver() {
@@ -57,13 +68,43 @@ public class CodingToolConfiguration {
     }
 
     @Bean
-    public GrepTool grepTool(ObjectMapper objectMapper, WorkspacePathResolver pathResolver) {
-        return new GrepTool(objectMapper, pathResolver);
+    public RipgrepBinaryResolver ripgrepBinaryResolver(
+            @Value("${harness.coding-tools.search.rg-path:}") String configuredPath) {
+        return new RipgrepBinaryResolver(configuredPath);
     }
 
     @Bean
-    public FindTool findTool(ObjectMapper objectMapper, WorkspacePathResolver pathResolver) {
-        return new FindTool(objectMapper, pathResolver);
+    public RipgrepProcessRunner ripgrepProcessRunner() {
+        return new RipgrepProcessRunner();
+    }
+
+    @Bean
+    public RipgrepSearchEngine ripgrepSearchEngine(RipgrepBinaryResolver binaryResolver,
+                                                   RipgrepProcessRunner processRunner) {
+        Optional<RipgrepExecutable> executable = binaryResolver.resolve();
+        if (executable.isPresent()) {
+            LOGGER.info(
+                    "Search backend selected: ripgrep {} ({})",
+                    executable.get().getVersion(),
+                    executable.get().getPath());
+        } else {
+            LOGGER.info("Search backend selected: Java (ripgrep was not found in the current process PATH)");
+        }
+        return new RipgrepSearchEngine(processRunner, executable);
+    }
+
+    @Bean
+    public GrepTool grepTool(ObjectMapper objectMapper,
+                             WorkspacePathResolver pathResolver,
+                             RipgrepSearchEngine ripgrepSearchEngine) {
+        return new GrepTool(objectMapper, pathResolver, ripgrepSearchEngine);
+    }
+
+    @Bean
+    public FindTool findTool(ObjectMapper objectMapper,
+                             WorkspacePathResolver pathResolver,
+                             RipgrepSearchEngine ripgrepSearchEngine) {
+        return new FindTool(objectMapper, pathResolver, ripgrepSearchEngine);
     }
 
     @Bean

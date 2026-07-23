@@ -310,6 +310,7 @@ Common environment variables used by the example applications:
 | `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |
 | `JAGENT_COMPACTION_ENABLED` | `true` | Enable context compaction. |
 | `JAGENT_CONTEXT_WINDOW_TOKENS` | `128000` | Model context window used for compaction checks. |
+| `JAGENT_RG_PATH` | empty | Optional absolute path to `rg`/`rg.exe`. The coding tools otherwise inspect the process `PATH` and fall back to their Java implementation when ripgrep is unavailable. No binary is downloaded. |
 
 ## Development
 

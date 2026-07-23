@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +23,8 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine.FindResult;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
 
 public class FindTool implements ToolDefinition {
@@ -32,10 +35,18 @@ public class FindTool implements ToolDefinition {
 
     private final ObjectMapper objectMapper;
     private final WorkspacePathResolver pathResolver;
+    private final RipgrepSearchEngine ripgrepSearchEngine;
 
     public FindTool(ObjectMapper objectMapper, WorkspacePathResolver pathResolver) {
+        this(objectMapper, pathResolver, RipgrepSearchEngine.unavailable());
+    }
+
+    public FindTool(ObjectMapper objectMapper,
+                    WorkspacePathResolver pathResolver,
+                    RipgrepSearchEngine ripgrepSearchEngine) {
         this.objectMapper = objectMapper;
         this.pathResolver = pathResolver;
+        this.ripgrepSearchEngine = ripgrepSearchEngine;
     }
 
     @Override
@@ -84,7 +95,34 @@ public class FindTool implements ToolDefinition {
         boolean includeHidden = arguments.path("includeHidden").asBoolean(false);
         PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + glob);
         PathMatcher nameMatcher = isBlank(name) ? null : FileSystems.getDefault().getPathMatcher("glob:" + name);
-        List<PathMatcher> excludeMatchers = excludeMatchers(arguments.path("exclude").asText(DEFAULT_EXCLUDE));
+        List<String> excludePatterns = excludePatterns(arguments.path("exclude").asText(DEFAULT_EXCLUDE));
+        List<PathMatcher> excludeMatchers = excludeMatchers(excludePatterns);
+
+        if ("file".equalsIgnoreCase(type)) {
+            Optional<FindResult> ripgrepResult = ripgrepSearchEngine.findFiles(
+                    root,
+                    glob,
+                    name,
+                    nameMatcher,
+                    maxDepth,
+                    maxResults,
+                    excludePatterns,
+                    includeHidden,
+                    context.getStopSignal());
+            if (ripgrepResult.isPresent()) {
+                return result(
+                        context,
+                        root,
+                        glob,
+                        name,
+                        type,
+                        maxResults,
+                        ripgrepResult.get().getPaths(),
+                        ripgrepResult.get().isTruncated(),
+                        "ripgrep");
+            }
+        }
+
         List<Path> matches = new ArrayList<Path>();
         boolean[] truncated = new boolean[] { false };
 
@@ -125,10 +163,31 @@ public class FindTool implements ToolDefinition {
                 return FileVisitResult.CONTINUE;
             }
         });
-        Collections.sort(matches, Comparator.comparing(path -> pathResolver.relative(context, path)));
+        return result(
+                context,
+                root,
+                glob,
+                name,
+                type,
+                maxResults,
+                matches,
+                truncated[0],
+                "java");
+    }
 
+    private ToolExecutionResult result(ToolContext context,
+                                       Path root,
+                                       String glob,
+                                       String name,
+                                       String type,
+                                       int maxResults,
+                                       List<Path> matches,
+                                       boolean truncated,
+                                       String engine) {
+        List<Path> sortedMatches = new ArrayList<Path>(matches);
+        Collections.sort(sortedMatches, Comparator.comparing(path -> pathResolver.relative(context, path)));
         ArrayNode entries = objectMapper.createArrayNode();
-        for (Path match : matches) {
+        for (Path match : sortedMatches) {
             context.getStopSignal().throwIfAborted();
             ObjectNode entry = objectMapper.createObjectNode();
             entry.put("path", pathResolver.relative(context, match));
@@ -144,7 +203,8 @@ public class FindTool implements ToolDefinition {
         }
         result.put("type", type);
         result.put("maxResults", maxResults);
-        result.put("truncated", truncated[0]);
+        result.put("truncated", truncated);
+        result.put("engine", engine);
         result.set("matches", entries);
         return ToolExecutionResult.of(result.toString());
     }
@@ -170,15 +230,23 @@ public class FindTool implements ToolDefinition {
         return true;
     }
 
-    private List<PathMatcher> excludeMatchers(String exclude) {
+    private List<String> excludePatterns(String exclude) {
         String effectiveExclude = isBlank(exclude) ? DEFAULT_EXCLUDE : exclude;
-        List<PathMatcher> matchers = new ArrayList<PathMatcher>();
+        List<String> patterns = new ArrayList<String>();
         String[] parts = effectiveExclude.split(",");
         for (String part : parts) {
             String pattern = part == null ? "" : pathResolver.normalizePathSeparators(part.trim());
             if (!pattern.isEmpty()) {
-                matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
+                patterns.add(pattern);
             }
+        }
+        return patterns;
+    }
+
+    private List<PathMatcher> excludeMatchers(List<String> excludePatterns) {
+        List<PathMatcher> matchers = new ArrayList<PathMatcher>();
+        for (String pattern : excludePatterns) {
+            matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
         }
         return matchers;
     }

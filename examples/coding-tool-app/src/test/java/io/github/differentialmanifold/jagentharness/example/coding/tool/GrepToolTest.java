@@ -2,17 +2,24 @@ package io.github.differentialmanifold.jagentharness.example.coding.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepBinaryResolver;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepExecutable;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepProcessRunner;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,6 +42,7 @@ class GrepToolTest {
         assertEquals("src/test/java/com/paic/bst/Practice.java", result.path("path").asText());
         assertEquals(1, result.path("matches").size());
         assertEquals(1, result.path("matches").get(0).path("line").asInt());
+        assertEquals("java", result.path("engine").asText());
     }
 
     @Test
@@ -80,6 +88,84 @@ class GrepToolTest {
                         arguments(objectMapper, "needle", "missing\\Practice.java", null)));
 
         assertEquals("Path not found: missing/Practice.java", error.getMessage());
+    }
+
+    @Test
+    void limitsJavaFallbackResultsAndReportsTruncation() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        GrepTool tool = new GrepTool(objectMapper, new WorkspacePathResolver());
+        write("one.txt", "needle\n");
+        write("two.txt", "needle\n");
+        ObjectNode arguments = arguments(objectMapper, "needle", ".", null);
+        arguments.put("maxResults", 1);
+
+        JsonNode result = execute(objectMapper, tool, arguments);
+
+        assertEquals(1, result.path("matches").size());
+        assertEquals(1, result.path("maxResults").asInt());
+        assertEquals("java", result.path("engine").asText());
+        assertTrue(result.path("truncated").asBoolean());
+    }
+
+    @Test
+    void usesDetectedRipgrepWithoutChangingLiteralQuerySemantics() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Optional<RipgrepExecutable> executable = new RipgrepBinaryResolver("").resolve();
+        Assumptions.assumeTrue(executable.isPresent(), "ripgrep is not installed");
+        GrepTool tool = new GrepTool(
+                objectMapper,
+                new WorkspacePathResolver(),
+                new RipgrepSearchEngine(new RipgrepProcessRunner(), executable));
+        write("src/App.java", "a+b\nab\n");
+
+        JsonNode result = execute(
+                objectMapper,
+                tool,
+                arguments(objectMapper, "a+b", ".", "**/*.java"));
+
+        assertEquals("ripgrep", result.path("engine").asText());
+        assertEquals(1, result.path("matches").size());
+        assertEquals("src/App.java", result.path("matches").get(0).path("path").asText());
+    }
+
+    @Test
+    void appliesGlobBeforePassingAnExplicitFileToRipgrep() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Optional<RipgrepExecutable> executable = new RipgrepBinaryResolver("").resolve();
+        Assumptions.assumeTrue(executable.isPresent(), "ripgrep is not installed");
+        GrepTool tool = new GrepTool(
+                objectMapper,
+                new WorkspacePathResolver(),
+                new RipgrepSearchEngine(new RipgrepProcessRunner(), executable));
+        write("src/App.java", "needle\n");
+        ObjectNode arguments = arguments(objectMapper, "needle", "src/App.java", "*.txt");
+
+        JsonNode result = execute(objectMapper, tool, arguments);
+
+        assertEquals("ripgrep", result.path("engine").asText());
+        assertEquals(0, result.path("matches").size());
+    }
+
+    @Test
+    void keepsJavaGlobSemanticsWhenUsingRipgrep() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Optional<RipgrepExecutable> executable = new RipgrepBinaryResolver("").resolve();
+        Assumptions.assumeTrue(executable.isPresent(), "ripgrep is not installed");
+        GrepTool tool = new GrepTool(
+                objectMapper,
+                new WorkspacePathResolver(),
+                new RipgrepSearchEngine(new RipgrepProcessRunner(), executable));
+        write("!foo.txt", "needle\n");
+        write("other.txt", "needle\n");
+
+        JsonNode result = execute(
+                objectMapper,
+                tool,
+                arguments(objectMapper, "needle", ".", "!foo.txt"));
+
+        assertEquals("ripgrep", result.path("engine").asText());
+        assertEquals(1, result.path("matches").size());
+        assertEquals("!foo.txt", result.path("matches").get(0).path("path").asText());
     }
 
     private JsonNode execute(ObjectMapper objectMapper, GrepTool tool, ObjectNode arguments) throws Exception {

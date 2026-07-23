@@ -7,13 +7,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepBinaryResolver;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepExecutable;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepProcessRunner;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,6 +49,7 @@ class FindToolTest {
         assertFalse(content.contains("target/generated/App.java"));
         assertFalse(content.contains(".hidden/App.java"));
         assertFalse(result.path("truncated").asBoolean());
+        assertEquals("java", result.path("engine").asText());
     }
 
     @Test
@@ -81,6 +88,29 @@ class FindToolTest {
         assertEquals("src/main", result.path("path").asText());
         assertEquals(1, result.path("matches").size());
         assertEquals("src/main/app/App.java", result.path("matches").get(0).path("path").asText());
+    }
+
+    @Test
+    void usesDetectedRipgrepForFileOnlySearches() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        Optional<RipgrepExecutable> executable = new RipgrepBinaryResolver("").resolve();
+        Assumptions.assumeTrue(executable.isPresent(), "ripgrep is not installed");
+        FindTool tool = new FindTool(
+                objectMapper,
+                new WorkspacePathResolver(),
+                new RipgrepSearchEngine(new RipgrepProcessRunner(), executable));
+        write("src/App.java");
+        write("src/App.txt");
+
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("glob", "**/*.java");
+        arguments.put("type", "file");
+
+        JsonNode result = execute(objectMapper, tool, arguments);
+
+        assertEquals("ripgrep", result.path("engine").asText());
+        assertEquals(1, result.path("matches").size());
+        assertEquals("src/App.java", result.path("matches").get(0).path("path").asText());
     }
 
     private JsonNode execute(ObjectMapper objectMapper, FindTool tool, ObjectNode arguments) throws Exception {

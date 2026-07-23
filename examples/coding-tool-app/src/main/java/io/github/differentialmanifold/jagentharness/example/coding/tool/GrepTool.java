@@ -1,11 +1,17 @@
 package io.github.differentialmanifold.jagentharness.example.coding.tool;
 
+import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,16 +24,31 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolArguments;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine.GrepMatch;
+import io.github.differentialmanifold.jagentharness.example.coding.tool.support.RipgrepSearchEngine.GrepResult;
 import io.github.differentialmanifold.jagentharness.example.coding.tool.support.WorkspacePathResolver;
 
 public class GrepTool implements ToolDefinition {
 
+    private static final int DEFAULT_MAX_RESULTS = 200;
+    private static final int MAX_RESULTS = 1000;
+    private static final int MAX_PREVIEW_CHARS = 2000;
+
     private final ObjectMapper objectMapper;
     private final WorkspacePathResolver pathResolver;
+    private final RipgrepSearchEngine ripgrepSearchEngine;
 
     public GrepTool(ObjectMapper objectMapper, WorkspacePathResolver pathResolver) {
+        this(objectMapper, pathResolver, RipgrepSearchEngine.unavailable());
+    }
+
+    public GrepTool(ObjectMapper objectMapper,
+                    WorkspacePathResolver pathResolver,
+                    RipgrepSearchEngine ripgrepSearchEngine) {
         this.objectMapper = objectMapper;
         this.pathResolver = pathResolver;
+        this.ripgrepSearchEngine = ripgrepSearchEngine;
     }
 
     @Override
@@ -47,6 +68,7 @@ public class GrepTool implements ToolDefinition {
         properties.set("path", ToolSchemas.stringProperty(objectMapper, "Workspace-relative or absolute file or directory path. Use / as the path separator. Default ."));
         properties.set("glob", ToolSchemas.stringProperty(objectMapper, "Glob applied to paths relative to the searched directory. Default **/*"));
         properties.set("caseSensitive", ToolSchemas.booleanProperty(objectMapper, "Case-sensitive search. Default true."));
+        properties.set("maxResults", ToolSchemas.integerProperty(objectMapper, "Maximum number of matches to return. Default 200, maximum 1000."));
         return ToolSchemas.objectSchema(objectMapper, properties, "query");
     }
 
@@ -66,14 +88,74 @@ public class GrepTool implements ToolDefinition {
 
         String glob = pathResolver.normalizePathSeparators(arguments.path("glob").asText("**/*"));
         boolean caseSensitive = arguments.path("caseSensitive").asBoolean(true);
-        String needle = caseSensitive ? query : query.toLowerCase();
+        int maxResults = arguments.path("maxResults").asInt(DEFAULT_MAX_RESULTS);
+        if (maxResults < 1 || maxResults > MAX_RESULTS) {
+            throw new IllegalArgumentException("maxResults must be between 1 and " + MAX_RESULTS);
+        }
         PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + glob);
-        ArrayNode matches = objectMapper.createArrayNode();
+        if (!searchDirectory) {
+            Path relative = target.getParent().relativize(target.toAbsolutePath().normalize());
+            if (!matchesGlob(relative, matcher, glob)) {
+                return result(
+                        context,
+                        query,
+                        target,
+                        glob,
+                        maxResults,
+                        new GrepResult(Collections.<GrepMatch>emptyList(), false),
+                        ripgrepSearchEngine.isAvailable() ? "ripgrep" : "java");
+            }
+        }
 
-        if (searchDirectory) {
+        if (query.indexOf('\n') < 0 && query.indexOf('\r') < 0) {
+            Optional<GrepResult> ripgrepResult = ripgrepSearchEngine.grep(
+                    target,
+                    query,
+                    glob,
+                    caseSensitive,
+                    maxResults,
+                    context.getStopSignal());
+            if (ripgrepResult.isPresent()) {
+                return result(
+                        context,
+                        query,
+                        target,
+                        glob,
+                        maxResults,
+                        ripgrepResult.get(),
+                        "ripgrep");
+            }
+        }
+
+        GrepResult javaResult = searchWithJava(
+                context,
+                target,
+                query,
+                glob,
+                caseSensitive,
+                maxResults);
+        return result(context, query, target, glob, maxResults, javaResult, "java");
+    }
+
+    private GrepResult searchWithJava(ToolContext context,
+                                      Path target,
+                                      String query,
+                                      String glob,
+                                      boolean caseSensitive,
+                                      int maxResults) {
+        String needle = caseSensitive ? query : query.toLowerCase(Locale.ROOT);
+        PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + glob);
+        List<GrepMatch> matches = new ArrayList<GrepMatch>();
+        boolean[] truncated = new boolean[] { false };
+
+        if (Files.isDirectory(target)) {
             try (Stream<Path> stream = Files.walk(target)) {
-                stream.filter(Files::isRegularFile)
-                        .forEach(path -> searchFile(
+                Iterator<Path> paths = stream.iterator();
+                while (paths.hasNext() && !truncated[0]) {
+                    context.getStopSignal().throwIfAborted();
+                    Path path = paths.next();
+                    if (Files.isRegularFile(path)) {
+                        searchFile(
                                 context,
                                 target,
                                 path,
@@ -81,7 +163,16 @@ public class GrepTool implements ToolDefinition {
                                 glob,
                                 needle,
                                 caseSensitive,
-                                matches));
+                                maxResults,
+                                matches,
+                                truncated);
+                    }
+                }
+            } catch (StopRequestedException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to search path: "
+                        + pathResolver.relative(context, target), e);
             }
         } else {
             searchFile(
@@ -92,13 +183,35 @@ public class GrepTool implements ToolDefinition {
                     glob,
                     needle,
                     caseSensitive,
-                    matches);
+                    maxResults,
+                    matches,
+                    truncated);
         }
+        return new GrepResult(matches, truncated[0]);
+    }
 
+    private ToolExecutionResult result(ToolContext context,
+                                       String query,
+                                       Path target,
+                                       String glob,
+                                       int maxResults,
+                                       GrepResult grepResult,
+                                       String engine) {
+        ArrayNode matches = objectMapper.createArrayNode();
+        for (GrepMatch grepMatch : grepResult.getMatches()) {
+            ObjectNode match = objectMapper.createObjectNode();
+            match.put("path", pathResolver.relative(context, grepMatch.getPath()));
+            match.put("line", grepMatch.getLine());
+            match.put("preview", grepMatch.getPreview());
+            matches.add(match);
+        }
         ObjectNode result = objectMapper.createObjectNode();
         result.put("query", query);
         result.put("path", pathResolver.relative(context, target));
         result.put("glob", glob);
+        result.put("maxResults", maxResults);
+        result.put("truncated", grepResult.isTruncated());
+        result.put("engine", engine);
         result.set("matches", matches);
         return ToolExecutionResult.of(result.toString());
     }
@@ -110,24 +223,27 @@ public class GrepTool implements ToolDefinition {
                             String glob,
                             String needle,
                             boolean caseSensitive,
-                            ArrayNode matches) {
+                            int maxResults,
+                            List<GrepMatch> matches,
+                            boolean[] truncated) {
         context.getStopSignal().throwIfAborted();
         Path relative = root.relativize(path.toAbsolutePath().normalize());
         if (!matchesGlob(relative, matcher, glob)) {
             return;
         }
-        try {
-            List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
-            for (int i = 0; i < lines.size(); i++) {
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            int lineNumber = 0;
+            String line;
+            while ((line = reader.readLine()) != null) {
                 context.getStopSignal().throwIfAborted();
-                String line = lines.get(i);
-                String haystack = caseSensitive ? line : line.toLowerCase();
+                lineNumber++;
+                String haystack = caseSensitive ? line : line.toLowerCase(Locale.ROOT);
                 if (haystack.contains(needle)) {
-                    ObjectNode match = objectMapper.createObjectNode();
-                    match.put("path", pathResolver.relative(context, path));
-                    match.put("line", i + 1);
-                    match.put("preview", line.trim());
-                    matches.add(match);
+                    if (matches.size() >= maxResults) {
+                        truncated[0] = true;
+                        return;
+                    }
+                    matches.add(new GrepMatch(path, lineNumber, truncatePreview(line)));
                 }
             }
         } catch (StopRequestedException e) {
@@ -145,5 +261,13 @@ public class GrepTool implements ToolDefinition {
             return true;
         }
         return relative.getFileName() != null && matcher.matches(relative.getFileName());
+    }
+
+    private String truncatePreview(String line) {
+        String preview = line.trim();
+        if (preview.length() <= MAX_PREVIEW_CHARS) {
+            return preview;
+        }
+        return preview.substring(0, MAX_PREVIEW_CHARS) + "...";
     }
 }
