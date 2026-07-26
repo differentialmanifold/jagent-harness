@@ -52,6 +52,7 @@ export function toolStatusLabel(message) {
 
 export function toolMessageTitle(message) {
   const name = message.toolName || 'tool'
+  if (name === 'grep' || name === 'find') return name
   if (message.running) return runningToolTitle(name)
   if (isStoppedToolMessage(message)) return `${toolDisplayName(name)} stopped`
   const failed = isFailedToolMessage(message)
@@ -60,8 +61,6 @@ export function toolMessageTitle(message) {
   if (name === 'read') return failed ? 'Read failed' : 'Read file'
   if (name === 'write') return failed ? 'Write failed' : 'Wrote file'
   if (name === 'edit') return failed ? 'Edit failed' : `Edited ${editFileName(message)}`
-  if (name === 'grep') return failed ? 'Search failed' : 'Searched files'
-  if (name === 'find') return failed ? 'Find failed' : 'Found files'
   if (name === 'ls') return failed ? 'List failed' : 'Listed directory'
   return failed ? `${name} failed` : `Ran ${name}`
 }
@@ -125,29 +124,51 @@ export function formatDiffLineNumber(value) {
 export function toolMessageSubtitle(message) {
   const result = toolResult(message)
   const parts = []
-  const target = toolPrimaryTarget(message.toolName, result)
+  const target = toolPrimaryTarget(message, result)
   if (target) parts.push(target)
   if (typeof result.exitCode === 'number') parts.push(`exit ${result.exitCode}`)
   if (result.timedOut) parts.push('timeout')
   if (typeof result.bytes === 'number') parts.push(`${result.bytes} bytes`)
   const count = toolResultCount(result)
   if (count) parts.push(count)
+  const engine = searchEngineLabel(result.engine)
+  if (engine) parts.push(engine)
   if (result.error) parts.push(oneLine(result.error, 120))
   return parts.join(' | ') || 'completed'
 }
 
-function toolPrimaryTarget(name, result) {
+function toolPrimaryTarget(message, result) {
   if (!result) return ''
+  const name = message.toolName
+  const args = parseJsonObject(message.argumentsJson || message.arguments || '') || {}
   if (name === 'bash' && result.command) return oneLine(result.command, 120)
-  if (name === 'grep' && result.query) return `"${oneLine(result.query, 60)}" in ${result.path || '.'}`
+  if (name === 'grep' && (result.pattern || args.pattern)) {
+    const parts = [`"${oneLine(result.pattern || args.pattern, 60)}" in ${result.path || args.path || '.'}`]
+    const glob = result.glob || args.glob
+    if (glob) parts.push(glob)
+    if (args.literal) parts.push('literal')
+    if (args.ignoreCase) parts.push('ignore case')
+    return parts.join(' · ')
+  }
+  if (name === 'find' && (result.pattern || args.pattern)) {
+    return `${oneLine(result.pattern || args.pattern, 80)} in ${result.path || args.path || '.'}`
+  }
   if (result.path) return result.path
   if (result.command) return oneLine(result.command, 120)
   return ''
 }
 
 function toolResultCount(result) {
-  if (Array.isArray(result.matches)) return `${result.matches.length} matches`
-  if (Array.isArray(result.entries)) return `${result.entries.length} entries`
+  const more = result.truncated ? '+' : ''
+  if (Array.isArray(result.matches)) return `${result.matches.length}${more} matches`
+  if (Array.isArray(result.files)) return `${result.files.length}${more} files`
+  if (Array.isArray(result.entries)) return `${result.entries.length}${more} entries`
+  return ''
+}
+
+function searchEngineLabel(engine) {
+  if (engine === 'ripgrep') return 'rg'
+  if (engine === 'java') return 'Java fallback'
   return ''
 }
 
@@ -187,20 +208,26 @@ function hasStructuredToolDetails(message, result) {
       || result.stderr
       || result.content
       || Array.isArray(result.matches)
+      || Array.isArray(result.files)
       || Array.isArray(result.entries)
   )
 }
 
 export function toolResultItems(message) {
   const result = toolResult(message)
-  const entries = Array.isArray(result.matches) ? result.matches : result.entries
+  const entries = Array.isArray(result.matches)
+    ? result.matches
+    : (Array.isArray(result.files) ? result.files : result.entries)
   if (!Array.isArray(entries)) return []
 
-  const visible = entries.slice(0, 20).map((entry, index) => ({
-    key: `${index}:${entry.path || entry.name || ''}:${entry.line || ''}`,
-    title: resultItemTitle(entry),
-    detail: resultItemDetail(entry)
-  }))
+  const visible = entries.slice(0, 20).map((rawEntry, index) => {
+    const entry = typeof rawEntry === 'string' ? { path: rawEntry } : rawEntry
+    return {
+      key: `${index}:${entry.path || entry.name || ''}:${entry.line || ''}`,
+      title: resultItemTitle(entry),
+      detail: resultItemDetail(entry)
+    }
+  })
   if (entries.length > visible.length) {
     visible.push({
       key: 'more',
@@ -228,11 +255,17 @@ export function summarizeToolArguments(call) {
   const name = call.name || call.toolName || 'tool'
   const args = parseJsonObject(call.argumentsJson || call.arguments || '') || {}
   if (name === 'bash' && args.command) return oneLine(args.command, 160)
-  if (name === 'grep' && args.query) return `"${oneLine(args.query, 80)}" in ${args.path || '.'}`
+  if (name === 'grep' && args.pattern) {
+    const parts = [`"${oneLine(args.pattern, 80)}" in ${args.path || '.'}`]
+    if (args.glob) parts.push(args.glob)
+    if (args.literal) parts.push('literal')
+    if (args.ignoreCase) parts.push('ignore case')
+    return parts.join(' · ')
+  }
   if (name === 'skill' || name === 'read' || name === 'write' || name === 'edit' || name === 'ls') {
     return args.path || '.'
   }
-  if (name === 'find') return `${args.path || '.'} ${args.glob || '**/*'}`.trim()
+  if (name === 'find') return `${args.pattern || 'files'} in ${args.path || '.'}`
   const summary = Object.entries(args)
     .map(([key, value]) => `${key}: ${oneLine(String(value), 80)}`)
     .join(', ')
@@ -245,8 +278,6 @@ function runningToolTitle(name) {
   if (name === 'read') return 'Reading file'
   if (name === 'write') return 'Writing file'
   if (name === 'edit') return 'Editing file'
-  if (name === 'grep') return 'Searching files'
-  if (name === 'find') return 'Finding files'
   if (name === 'ls') return 'Listing directory'
   return `Running ${name}`
 }
@@ -257,8 +288,6 @@ function toolDisplayName(name) {
   if (name === 'read') return 'Read'
   if (name === 'write') return 'Write'
   if (name === 'edit') return 'Edit'
-  if (name === 'grep') return 'Search'
-  if (name === 'find') return 'Find'
   if (name === 'ls') return 'Directory listing'
   return name
 }

@@ -8,13 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,25 +26,48 @@ class RipgrepSearchEngineTest {
     Path workspaceRoot;
 
     @Test
-    void grepUsesLiteralMatchingAndDoesNotApplyIgnoreFiles() throws Exception {
+    void portableGlobMatcherCoversTheDocumentedSubset() {
+        SearchFileMatcher basename = new SearchFileMatcher("*.java");
+        SearchFileMatcher recursive = new SearchFileMatcher("**/*.{java,kt}");
+        SearchFileMatcher underSource = new SearchFileMatcher("src/**/*.java");
+        SearchFileMatcher characterClass = new SearchFileMatcher("src/App[0-9].java");
+
+        assertTrue(basename.matches(workspaceRoot.getFileSystem().getPath("App.java")));
+        assertTrue(basename.matches(workspaceRoot.getFileSystem().getPath("src", "App.java")));
+        assertTrue(recursive.matches(workspaceRoot.getFileSystem().getPath("App.kt")));
+        assertTrue(recursive.matches(workspaceRoot.getFileSystem().getPath("src", "App.java")));
+        assertTrue(underSource.matches(workspaceRoot.getFileSystem().getPath("src", "App.java")));
+        assertTrue(underSource.matches(workspaceRoot.getFileSystem().getPath("src", "main", "App.java")));
+        assertFalse(underSource.matches(workspaceRoot.getFileSystem().getPath("other", "App.java")));
+        assertTrue(characterClass.matches(workspaceRoot.getFileSystem().getPath("src", "App7.java")));
+        assertFalse(characterClass.matches(workspaceRoot.getFileSystem().getPath("src", "AppX.java")));
+    }
+
+    @Test
+    void grepUsesRegexAndRespectsIgnoreFiles() throws Exception {
         RipgrepSearchEngine engine = availableEngine();
+        Files.createDirectories(workspaceRoot.resolve(".git"));
         write(".gitignore", "ignored.txt\n");
-        write("ignored.txt", "a+b\nab\n");
+        write("ignored.txt", "ab\n");
+        write("visible.txt", "aab\n");
+        write(".git/internal.txt", "ab\n");
+        write("target/generated.txt", "ab\n");
 
         Optional<RipgrepSearchEngine.GrepResult> result = engine.grep(
                 workspaceRoot,
                 "a+b",
-                "**/*",
-                true,
+                "",
+                false,
+                false,
                 10,
                 StopSignal.none());
 
         assertTrue(result.isPresent());
         assertEquals(1, result.get().getMatches().size());
         assertEquals(
-                workspaceRoot.resolve("ignored.txt"),
+                workspaceRoot.resolve("visible.txt"),
                 result.get().getMatches().get(0).getPath());
-        assertEquals("a+b", result.get().getMatches().get(0).getPreview());
+        assertEquals("aab", result.get().getMatches().get(0).getPreview());
         assertFalse(result.get().isTruncated());
     }
 
@@ -60,7 +80,8 @@ class RipgrepSearchEngineTest {
         Optional<RipgrepSearchEngine.GrepResult> result = engine.grep(
                 workspaceRoot,
                 "needle",
-                "**/*",
+                "",
+                false,
                 true,
                 1,
                 StopSignal.none());
@@ -88,7 +109,8 @@ class RipgrepSearchEngineTest {
         Optional<RipgrepSearchEngine.GrepResult> result = engine.grep(
                 workspaceRoot,
                 "needle",
-                "**/*",
+                "",
+                false,
                 true,
                 10,
                 StopSignal.none());
@@ -111,7 +133,8 @@ class RipgrepSearchEngineTest {
         Optional<RipgrepSearchEngine.GrepResult> result = engine.grep(
                 workspaceRoot,
                 "needle",
-                "**/*",
+                "",
+                false,
                 true,
                 10,
                 StopSignal.none());
@@ -124,34 +147,27 @@ class RipgrepSearchEngineTest {
     }
 
     @Test
-    void findUsesNullDelimitedPathsAndExistingFilters() throws Exception {
+    void findUsesNullDelimitedPathsAndPushesThePattern() throws Exception {
         Assumptions.assumeFalse(System.getProperty("os.name", "").toLowerCase().startsWith("windows"));
         RipgrepSearchEngine engine = availableEngine();
         write("src/line\nbreak.java", "content\n");
         write("src/other.txt", "content\n");
-        write("target/generated.java", "content\n");
-        PathMatcher javaName = FileSystems.getDefault().getPathMatcher("glob:*.java");
 
         Optional<RipgrepSearchEngine.FindResult> result = engine.findFiles(
                 workspaceRoot,
-                "**/*",
                 "*.java",
-                javaName,
-                Integer.MAX_VALUE,
                 10,
-                Arrays.asList(".git/**", "target/**"),
-                false,
                 StopSignal.none());
 
         assertTrue(result.isPresent());
         assertEquals(
-                Collections.singletonList(workspaceRoot.resolve("src/line\nbreak.java")),
+                Arrays.asList(workspaceRoot.resolve("src/line\nbreak.java")),
                 result.get().getPaths());
         assertFalse(result.get().isTruncated());
     }
 
     @Test
-    void findAlwaysRequestsHiddenPathsAndFiltersThemInJava() throws Exception {
+    void findRequestsHiddenPathsAndLetsRipgrepApplyIgnoreRules() throws Exception {
         List<String> capturedArguments = new ArrayList<String>();
         RipgrepProcessRunner runner = new RipgrepProcessRunner() {
             @Override
@@ -175,20 +191,138 @@ class RipgrepSearchEngineTest {
 
         Optional<RipgrepSearchEngine.FindResult> result = engine.findFiles(
                 workspaceRoot,
-                "**/*",
-                null,
-                null,
-                Integer.MAX_VALUE,
+                "*.java",
                 10,
-                Collections.<String>emptyList(),
-                false,
                 StopSignal.none());
 
         assertTrue(capturedArguments.contains("--hidden"));
+        assertFalse(capturedArguments.contains("--no-ignore"));
+        assertDirectoryExclusions(capturedArguments);
+        assertEquals("jagent:*.java", capturedArguments.get(capturedArguments.indexOf("--type-add") + 1));
+        assertEquals("jagent", capturedArguments.get(capturedArguments.indexOf("--type") + 1));
+        assertTrue(result.isPresent());
+        assertEquals(2, result.get().getPaths().size());
+    }
+
+    @Test
+    void grepPushesModelFacingOptionsToRipgrep() throws Exception {
+        List<String> capturedArguments = new ArrayList<String>();
+        RipgrepProcessRunner runner = new RipgrepProcessRunner() {
+            @Override
+            public <T> RipgrepProcessRunner.Result<T> run(
+                    Path executable,
+                    List<String> arguments,
+                    Path workingDirectory,
+                    StopSignal stopSignal,
+                    RipgrepProcessRunner.OutputParser<T> outputParser) throws Exception {
+                capturedArguments.addAll(arguments);
+                T output = outputParser.parse(new ByteArrayInputStream(new byte[0]), () -> { });
+                return new RipgrepProcessRunner.Result<T>(output, "", 1, false);
+            }
+        };
+        RipgrepSearchEngine engine = new RipgrepSearchEngine(
+                runner,
+                Optional.of(new RipgrepExecutable(workspaceRoot.resolve("rg"), "15.1.0")));
+
+        engine.grep(
+                workspaceRoot,
+                "Needle",
+                "*.java",
+                true,
+                true,
+                10,
+                StopSignal.none());
+
+        assertTrue(capturedArguments.contains("--hidden"));
+        assertTrue(capturedArguments.contains("--ignore-case"));
+        assertTrue(capturedArguments.contains("--fixed-strings"));
+        assertTrue(capturedArguments.contains("--text"));
+        assertTrue(capturedArguments.contains("--crlf"));
+        assertFalse(capturedArguments.contains("--no-ignore"));
+        assertDirectoryExclusions(capturedArguments);
+        assertEquals("jagent:*.java", capturedArguments.get(capturedArguments.indexOf("--type-add") + 1));
+        assertEquals("jagent", capturedArguments.get(capturedArguments.indexOf("--type") + 1));
+    }
+
+    @Test
+    void findPostFiltersPathAwareGlobsWithoutUnsafeRipgrepIncludes() throws Exception {
+        List<String> capturedArguments = new ArrayList<String>();
+        RipgrepProcessRunner runner = new RipgrepProcessRunner() {
+            @Override
+            public <T> RipgrepProcessRunner.Result<T> run(
+                    Path executable,
+                    List<String> arguments,
+                    Path workingDirectory,
+                    StopSignal stopSignal,
+                    RipgrepProcessRunner.OutputParser<T> outputParser) throws Exception {
+                capturedArguments.addAll(arguments);
+                T output = outputParser.parse(
+                        new ByteArrayInputStream(
+                                ("src/App.java\0"
+                                        + "src/main/App.java\0"
+                                        + "other/App.java\0").getBytes(StandardCharsets.UTF_8)),
+                        () -> { });
+                return new RipgrepProcessRunner.Result<T>(output, "", 0, false);
+            }
+        };
+        RipgrepSearchEngine engine = new RipgrepSearchEngine(
+                runner,
+                Optional.of(new RipgrepExecutable(workspaceRoot.resolve("rg"), "15.1.0")));
+
+        Optional<RipgrepSearchEngine.FindResult> result = engine.findFiles(
+                workspaceRoot,
+                "src/**/*.java",
+                10,
+                StopSignal.none());
+
+        assertFalse(capturedArguments.contains("--type-add"));
         assertTrue(result.isPresent());
         assertEquals(
-                Collections.singletonList(workspaceRoot.resolve("visible.java")),
+                Arrays.asList(
+                        workspaceRoot.resolve("src/App.java"),
+                        workspaceRoot.resolve("src/main/App.java")),
                 result.get().getPaths());
+    }
+
+    @Test
+    void grepPostFiltersPathAwareGlobsWithoutUnsafeRipgrepIncludes() throws Exception {
+        write("src/App.java", "needle\n");
+        write("other/App.java", "needle\n");
+        List<String> capturedArguments = new ArrayList<String>();
+        RipgrepProcessRunner runner = new RipgrepProcessRunner() {
+            @Override
+            public <T> RipgrepProcessRunner.Result<T> run(
+                    Path executable,
+                    List<String> arguments,
+                    Path workingDirectory,
+                    StopSignal stopSignal,
+                    RipgrepProcessRunner.OutputParser<T> outputParser) throws Exception {
+                capturedArguments.addAll(arguments);
+                T output = outputParser.parse(
+                        new ByteArrayInputStream(
+                                ("src/App.java\0" + "1:\n"
+                                        + "other/App.java\0" + "1:\n").getBytes(StandardCharsets.UTF_8)),
+                        () -> { });
+                return new RipgrepProcessRunner.Result<T>(output, "", 0, false);
+            }
+        };
+        RipgrepSearchEngine engine = new RipgrepSearchEngine(
+                runner,
+                Optional.of(new RipgrepExecutable(workspaceRoot.resolve("rg"), "15.1.0")));
+
+        Optional<RipgrepSearchEngine.GrepResult> result = engine.grep(
+                workspaceRoot,
+                "needle",
+                "src/**/*.java",
+                false,
+                true,
+                10,
+                StopSignal.none());
+
+        assertFalse(capturedArguments.contains("--type-add"));
+        assertTrue(result.isPresent());
+        assertEquals(1, result.get().getMatches().size());
+        assertEquals(workspaceRoot.resolve("src/App.java"), result.get().getMatches().get(0).getPath());
     }
 
     @Test
@@ -202,7 +336,8 @@ class RipgrepSearchEngineTest {
         Optional<RipgrepSearchEngine.GrepResult> result = engine.grep(
                 workspaceRoot,
                 "needle",
-                "**/*",
+                "",
+                false,
                 true,
                 10,
                 StopSignal.none());
@@ -238,7 +373,8 @@ class RipgrepSearchEngineTest {
                 () -> engine.grep(
                         workspaceRoot,
                         "content",
-                        "**/*",
+                        "",
+                        false,
                         true,
                         10,
                         StopSignal.none()));
@@ -253,9 +389,20 @@ class RipgrepSearchEngineTest {
                 executable);
     }
 
+    private void assertDirectoryExclusions(List<String> arguments) {
+        assertTrue(arguments.contains("!.git/**"));
+        assertTrue(arguments.contains("!**/.git/**"));
+        assertTrue(arguments.contains("!target/**"));
+        assertTrue(arguments.contains("!**/target/**"));
+        assertTrue(arguments.contains("!node_modules/**"));
+        assertTrue(arguments.contains("!**/node_modules/**"));
+    }
+
     private void write(String relativePath, String content) throws Exception {
         Path path = workspaceRoot.resolve(relativePath);
-        Files.createDirectories(path.getParent());
+        if (path.getParent() != null) {
+            Files.createDirectories(path.getParent());
+        }
         Files.write(path, content.getBytes(StandardCharsets.UTF_8));
     }
 }

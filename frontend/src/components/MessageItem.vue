@@ -48,13 +48,6 @@
         class="stream-cursor"
         aria-hidden="true"
       ></span></pre>
-
-      <div v-if="message.toolCalls && message.toolCalls.length > 0" class="tool-call-list">
-        <div v-for="call in message.toolCalls" :key="call.toolCallId || call.id || call.name" class="tool-call-card">
-          <strong>{{ call.name }}</strong>
-          <code>{{ summarizeToolArguments(call) }}</code>
-        </div>
-      </div>
     </template>
   </article>
 </template>
@@ -64,7 +57,7 @@ import { computed } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import ToolMessage from './ToolMessage.vue'
 import { formatDuration } from '../utils/format'
-import { messageClass, summarizeToolArguments } from '../utils/toolDisplay'
+import { messageClass } from '../utils/toolDisplay'
 
 const props = defineProps({
   message: { type: Object, required: true }

@@ -36,8 +36,8 @@ public class CodingToolConfiguration {
     public SystemPromptContributor codingToolSystemPromptContributor() {
         return context -> "### Coding Tool Usage\n"
                 + "- Prefer dedicated tools over bash when a tool directly covers the operation.\n"
-                + "- Use find to locate files or directories by name, glob, type, depth, or exclusions.\n"
-                + "- Use grep to search text file contents.\n"
+                + "- Use find with a glob pattern to locate files; use ls to inspect a directory.\n"
+                + "- Use grep with a regular expression to search file contents; set literal when searching exact text.\n"
                 + "- Use read to inspect file contents; use offset and limit to read only the relevant line range.\n"
                 + "- Before edit, read the current file. Each oldText must come from the current file content and include enough surrounding context to match exactly one location.\n"
                 + "- Use edit for localized changes to existing files. When changing multiple locations in the same file, include all replacements in one edit call's edits array; every oldText is matched against the same original snapshot.\n"

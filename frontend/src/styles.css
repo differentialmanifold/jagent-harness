@@ -1844,31 +1844,6 @@ textarea {
   color: #667085;
 }
 
-.tool-call-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  border-left: 3px solid #d9b985;
-  padding-left: 10px;
-}
-
-.tool-call-card {
-  display: grid;
-  gap: 4px;
-}
-
-.tool-call-card strong {
-  font-size: 12px;
-}
-
-.tool-call-card code {
-  color: #667085;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .composer {
   display: grid;
   gap: 10px;

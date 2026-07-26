@@ -532,12 +532,9 @@ export function useAgentHarness() {
     if (data.length === 0) return
     const event = JSON.parse(data.join('\n'))
     if (event.sessionId && event.sessionId !== state.sessionId) return
-    const payload = parsePayload(event.payloadJson)
     const type = event.type || eventName
     handleAgentEvent(eventName, event, state)
-    if (currentSession.value?.sessionId === state.sessionId
-        && (type === 'tool_execution_start'
-          || (type === 'message_end' && payload.message?.role === 'assistant' && payload.message.toolCalls?.length))) {
+    if (currentSession.value?.sessionId === state.sessionId && type === 'tool_execution_start') {
       await waitForBrowserPaint()
     }
   }
@@ -1200,7 +1197,11 @@ export function useAgentHarness() {
     if (!pendingMessageId) return false
     const index = state.messages.findIndex((item) => item.messageId === pendingMessageId)
     if (index >= 0) {
-      state.messages.splice(index, 1, message)
+      const pendingMessage = state.messages[index]
+      state.messages.splice(index, 1, {
+        ...message,
+        argumentsJson: message.argumentsJson || pendingMessage.argumentsJson || ''
+      })
     } else {
       state.messages.push(message)
     }
