@@ -8,10 +8,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,6 +29,7 @@ public class RipgrepSearchEngine {
     private static final int MAX_RECORD_BYTES = 1024 * 1024;
     private static final int MAX_GREP_METADATA_BYTES = 256;
     private static final int MAX_PREVIEW_CHARS = 2000;
+    private static final String INCLUDE_FILE_TYPE = "jagent";
 
     private final RipgrepProcessRunner processRunner;
     private final AtomicReference<RipgrepExecutable> executable;
@@ -56,10 +55,11 @@ public class RipgrepSearchEngine {
     }
 
     public Optional<GrepResult> grep(Path target,
-                                     String query,
+                                     String pattern,
                                      String glob,
-                                     boolean caseSensitive,
-                                     int maxResults,
+                                     boolean ignoreCase,
+                                     boolean literal,
+                                     int limit,
                                      StopSignal stopSignal) throws Exception {
         RipgrepExecutable selected = executable.get();
         if (selected == null) {
@@ -67,25 +67,39 @@ public class RipgrepSearchEngine {
         }
 
         Path workingDirectory = Files.isDirectory(target) ? target : target.getParent();
-        String searchPath = Files.isDirectory(target) ? "." : target.getFileName().toString();
+        boolean directorySearch = Files.isDirectory(target);
+        String searchPath = directorySearch ? "." : target.getFileName().toString();
+        SearchFileMatcher fileMatcher = directorySearch && !isBlank(glob)
+                ? new SearchFileMatcher(glob)
+                : null;
         List<String> arguments = new ArrayList<String>();
         arguments.add("--no-config");
         arguments.add("--null");
         arguments.add("--with-filename");
         arguments.add("--line-number");
         arguments.add("--color=never");
+        // Keep every match in the NUL-delimited protocol and align line anchors
+        // with BufferedReader's CRLF handling in the Java fallback.
+        arguments.add("--text");
+        arguments.add("--crlf");
         // Keep output bounded even when a legal source line is arbitrarily long.
         // The parser only uses the NUL-safe path and line number, then streams the
         // preview from disk.
         arguments.add("--max-columns=1");
-        arguments.add("--hidden");
-        arguments.add("--no-ignore");
-        arguments.add("--fixed-strings");
-        if (!caseSensitive) {
+        if (directorySearch) {
+            addDirectoryPolicy(arguments);
+        }
+        if (literal) {
+            arguments.add("--fixed-strings");
+        }
+        if (ignoreCase) {
             arguments.add("--ignore-case");
         }
+        if (fileMatcher != null) {
+            addSafeIncludeFileType(arguments, glob);
+        }
         arguments.add("-e");
-        arguments.add(query);
+        arguments.add(pattern);
         arguments.add("--");
         arguments.add(searchPath);
 
@@ -95,7 +109,7 @@ public class RipgrepSearchEngine {
                     arguments,
                     workingDirectory,
                     stopSignal,
-                    new GrepOutputParser(workingDirectory, glob, maxResults));
+                    new GrepOutputParser(workingDirectory, fileMatcher, directorySearch, limit));
             requireSuccessfulExit(processResult);
             return Optional.of(readGrepPreviews(processResult.getOutput(), stopSignal));
         } catch (ProcessStartException e) {
@@ -123,13 +137,8 @@ public class RipgrepSearchEngine {
     }
 
     public Optional<FindResult> findFiles(Path root,
-                                          String glob,
-                                          String name,
-                                          PathMatcher nameMatcher,
-                                          int maxDepth,
-                                          int maxResults,
-                                          List<String> excludePatterns,
-                                          boolean includeHidden,
+                                          String pattern,
+                                          int limit,
                                           StopSignal stopSignal) throws Exception {
         RipgrepExecutable selected = executable.get();
         if (selected == null) {
@@ -137,21 +146,13 @@ public class RipgrepSearchEngine {
         }
 
         List<String> arguments = new ArrayList<String>();
+        SearchFileMatcher fileMatcher = new SearchFileMatcher(pattern);
         arguments.add("--no-config");
         arguments.add("--files");
         arguments.add("--null");
         arguments.add("--path-separator=/");
-        arguments.add("--no-ignore");
-        // Always enumerate dot-prefixed paths. Java applies includeHidden below so
-        // behavior remains consistent on Windows, where Files.isHidden is not
-        // equivalent to a leading dot.
-        arguments.add("--hidden");
-        if (maxDepth != Integer.MAX_VALUE) {
-            arguments.add("--max-depth=" + maxDepth);
-        }
-        // Java PathMatcher remains the source of truth for glob/name/exclude
-        // semantics. ripgrep's glob dialect is similar but not identical and
-        // could otherwise discard valid candidates before Java sees them.
+        addDirectoryPolicy(arguments);
+        addSafeIncludeFileType(arguments, pattern);
         arguments.add("--");
         arguments.add(".");
 
@@ -161,13 +162,7 @@ public class RipgrepSearchEngine {
                     arguments,
                     root,
                     stopSignal,
-                    new FindOutputParser(
-                            root,
-                            glob,
-                            nameMatcher,
-                            maxResults,
-                            excludePatterns,
-                            includeHidden));
+                    new FindOutputParser(root, fileMatcher, limit));
             requireSuccessfulExit(processResult);
             return Optional.of(processResult.getOutput());
         } catch (ProcessStartException e) {
@@ -199,15 +194,18 @@ public class RipgrepSearchEngine {
     private static class GrepOutputParser implements RipgrepProcessRunner.OutputParser<GrepLocationResult> {
 
         private final Path workingDirectory;
-        private final String glob;
-        private final PathMatcher globMatcher;
-        private final int maxResults;
+        private final SearchFileMatcher fileMatcher;
+        private final boolean directorySearch;
+        private final int limit;
 
-        private GrepOutputParser(Path workingDirectory, String glob, int maxResults) {
+        private GrepOutputParser(Path workingDirectory,
+                                 SearchFileMatcher fileMatcher,
+                                 boolean directorySearch,
+                                 int limit) {
             this.workingDirectory = workingDirectory.toAbsolutePath().normalize();
-            this.glob = glob;
-            this.globMatcher = FileSystems.getDefault().getPathMatcher("glob:" + glob);
-            this.maxResults = maxResults;
+            this.fileMatcher = fileMatcher;
+            this.directorySearch = directorySearch;
+            this.limit = limit;
         }
 
         @Override
@@ -221,10 +219,12 @@ public class RipgrepSearchEngine {
                 }
                 path = path.toAbsolutePath().normalize();
                 Path relative = workingDirectory.relativize(path);
-                if (!matchesGlob(relative, globMatcher, glob)) {
+                if (directorySearch
+                        && (SearchFileMatcher.containsExcludedDirectory(relative)
+                        || (fileMatcher != null && !fileMatcher.matches(relative)))) {
                     return true;
                 }
-                if (locations.size() >= maxResults) {
+                if (locations.size() >= limit) {
                     truncated[0] = true;
                     terminateForLimit.run();
                     return false;
@@ -239,30 +239,13 @@ public class RipgrepSearchEngine {
     private static class FindOutputParser implements RipgrepProcessRunner.OutputParser<FindResult> {
 
         private final Path root;
-        private final String glob;
-        private final PathMatcher globMatcher;
-        private final PathMatcher nameMatcher;
-        private final int maxResults;
-        private final List<PathMatcher> excludeMatchers;
-        private final boolean includeHidden;
+        private final SearchFileMatcher fileMatcher;
+        private final int limit;
 
-        private FindOutputParser(Path root,
-                                 String glob,
-                                 PathMatcher nameMatcher,
-                                 int maxResults,
-                                 List<String> excludePatterns,
-                                 boolean includeHidden) {
-            this.root = root;
-            this.glob = glob;
-            this.globMatcher = FileSystems.getDefault().getPathMatcher("glob:" + glob);
-            this.nameMatcher = nameMatcher;
-            this.maxResults = maxResults;
-            this.excludeMatchers = new ArrayList<PathMatcher>();
-            for (String excludePattern : excludePatterns) {
-                this.excludeMatchers.add(
-                        FileSystems.getDefault().getPathMatcher("glob:" + excludePattern));
-            }
-            this.includeHidden = includeHidden;
+        private FindOutputParser(Path root, SearchFileMatcher fileMatcher, int limit) {
+            this.root = root.toAbsolutePath().normalize();
+            this.fileMatcher = fileMatcher;
+            this.limit = limit;
         }
 
         @Override
@@ -275,16 +258,11 @@ public class RipgrepSearchEngine {
                 }
                 String rawPath = new String(record, StandardCharsets.UTF_8);
                 Path relative = Paths.get(rawPath).normalize();
-                if ((!includeHidden && hasHiddenSegment(relative))
-                        || isExcluded(relative, excludeMatchers)
-                        || !matchesGlob(relative, globMatcher, glob)) {
+                if (SearchFileMatcher.containsExcludedDirectory(relative)
+                        || !fileMatcher.matches(relative)) {
                     return true;
                 }
-                if (nameMatcher != null
-                        && (relative.getFileName() == null || !nameMatcher.matches(relative.getFileName()))) {
-                    return true;
-                }
-                if (paths.size() >= maxResults) {
+                if (paths.size() >= limit) {
                     truncated[0] = true;
                     terminateForLimit.run();
                     return false;
@@ -528,36 +506,28 @@ public class RipgrepSearchEngine {
         return value == null || value.trim().isEmpty();
     }
 
-    private static boolean matchesGlob(Path relative, PathMatcher matcher, String glob) {
-        if (isBlank(glob) || "**/*".equals(glob)) {
-            return true;
+    private static void addDirectoryPolicy(List<String> arguments) {
+        arguments.add("--hidden");
+        for (String directoryName : SearchFileMatcher.excludedDirectoryNames()) {
+            arguments.add("--glob");
+            arguments.add("!" + directoryName + "/**");
+            arguments.add("--glob");
+            arguments.add("!**/" + directoryName + "/**");
         }
-        if (matcher.matches(relative)) {
-            return true;
-        }
-        return relative.getFileName() != null && matcher.matches(relative.getFileName());
     }
 
-    private static boolean isExcluded(Path relative, List<PathMatcher> matchers) {
-        for (PathMatcher matcher : matchers) {
-            if (matcher.matches(relative)) {
-                return true;
-            }
-            if (relative.getFileName() != null && matcher.matches(relative.getFileName())) {
-                return true;
-            }
+    private static void addSafeIncludeFileType(List<String> arguments, String glob) {
+        // A positive --glob overrides matching .gitignore rules in ripgrep.
+        // A basename-only temporary file type preserves ignore precedence. More
+        // expressive path globs are filtered by the streaming output parser.
+        Optional<String> fileTypeGlob = SearchFileMatcher.ripgrepFileTypeGlob(glob);
+        if (!fileTypeGlob.isPresent()) {
+            return;
         }
-        return false;
-    }
-
-    private static boolean hasHiddenSegment(Path relative) {
-        for (Path part : relative) {
-            String name = part.toString();
-            if (name.startsWith(".") && name.length() > 1) {
-                return true;
-            }
-        }
-        return false;
+        arguments.add("--type-add");
+        arguments.add(INCLUDE_FILE_TYPE + ":" + fileTypeGlob.get());
+        arguments.add("--type");
+        arguments.add(INCLUDE_FILE_TYPE);
     }
 
     private interface RecordConsumer {

@@ -60,7 +60,7 @@ Short version:
 ```bash
 export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.7.0.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.7.1.jar
 ```
 
 In another terminal:
@@ -130,7 +130,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.7.0</jagent-harness.version>
+    <jagent-harness.version>0.7.1</jagent-harness.version>
 </properties>
 
 <dependencies>
@@ -280,7 +280,11 @@ storage remain application responsibilities.
 The SDK provides the built-in `skill` tool for loading `SKILL.md` instructions and files referenced
 by a skill. The coding-tool example registers workspace-specific tools as Spring beans:
 `bash`, `read`, `edit`, `write`, `grep`, `find`, and `ls`. Its `read` tool only accesses the
-workspace and supports one-based `offset` and line-count `limit` arguments.
+workspace and supports one-based `offset` and line-count `limit` arguments. `find` locates files
+with a required glob `pattern`; directory browsing remains the responsibility of `ls`. `grep`
+uses a required regular-expression `pattern` by default and accepts `literal`, `ignoreCase`,
+`glob`, and `limit` options. Search results expose `engine` as `ripgrep` or `java`; ripgrep honors
+ignore files, while the Java implementation is the automatic no-download fallback.
 
 JAgentHarness uses a built-in general system prompt that cannot be replaced by `SYSTEM.md`.
 It appends the global and current project `AGENTS.md` stored in the database. Skills use normal
