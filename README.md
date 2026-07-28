@@ -49,7 +49,7 @@ JAgentHarness/
 
 - Java 8
 - Maven 3.x
-- Node.js and npm, only for the Vue example UI
+- Node.js `^20.19.0` or `>=22.12.0` and npm, only for the Vue example UI
 
 ## Quick Start
 
@@ -57,21 +57,29 @@ See [QUICK_START.md](./QUICK_START.md).
 
 Short version:
 
-```bash
-export JAGENT_OPENAI_API_KEY=your_api_key
-mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.7.1.jar
-```
-
-In another terminal:
+macOS:
 
 ```bash
-cd frontend
-npm install
-npm run dev:coding
+cp examples/coding-tool-app/launcher/.env.coding.example \
+  examples/coding-tool-app/launcher/.env.coding.local
+# Edit .env.coding.local, then:
+./examples/coding-tool-app/launcher/start-coding.command
 ```
 
-Open `http://localhost:5173`.
+Windows Command Prompt:
+
+```bat
+copy examples\coding-tool-app\launcher\.env.coding.example examples\coding-tool-app\launcher\.env.coding.local
+rem Edit .env.coding.local, then:
+examples\coding-tool-app\launcher\start-coding.cmd
+```
+
+The coding-app-specific launchers and configuration template live together under
+`examples/coding-tool-app/launcher`. The local `.env.coding.local` file is ignored by Git. The
+launcher checks the required tools, prepares dependencies, builds and starts the separate Java and
+Vite processes, and opens `http://127.0.0.1:5173`. The Windows launcher does not require
+PowerShell. See [QUICK_START.md](./QUICK_START.md) for configuration precedence and manual
+development.
 
 ### Runtime input and stopping
 
@@ -296,6 +304,10 @@ then global scope. Runtime prompt, skill, and MCP loading does not scan the exte
 
 Common environment variables used by the example applications:
 
+The coding-tool launcher reads `examples/coding-tool-app/launcher/.env.coding.local`. Existing
+operating-system environment variables override values from that file, and application defaults
+apply when neither source defines a value.
+
 | Variable | Example Default | Description |
 | --- | --- | --- |
 | `JAGENT_OPENAI_API_KEY` | empty | Optional API key for the OpenAI-compatible provider. When set, it is sent as a Bearer token. |
@@ -304,6 +316,7 @@ Common environment variables used by the example applications:
 | `JAGENT_MODEL_STREAM_ENABLED` | `true` | Set to `false` for OpenAI-compatible endpoints that do not support SSE streaming. |
 | `JAGENT_TEMPERATURE` | empty | Optional. If empty, `temperature` is not sent. |
 | `SERVER_PORT` | `18080` | HTTP port used by the example applications. |
+| `JAGENT_OPEN_BROWSER` | `true` | Set to `false` to keep the coding-tool launcher from opening a browser. |
 | `JAGENT_DATASOURCE_URL` | `jdbc:sqlite:jagent-harness.db` | JDBC URL used by the examples. |
 | `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
 | `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |

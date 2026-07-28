@@ -8,7 +8,7 @@ The HTTP API used by the UI is provided by the optional `jagent-console-spring-b
 
 - Java 8
 - Maven 3.x
-- Node.js and npm
+- Node.js `^20.19.0` or `>=22.12.0` and npm
 
 Check your tools:
 
@@ -23,49 +23,102 @@ npm -v
 
 The example uses an OpenAI-compatible chat completions provider. The default model is `glm-5.2`.
 
-```bash
-export JAGENT_OPENAI_API_KEY=your_api_key
-```
+Create a local launcher configuration from the repository root.
 
-Optional overrides:
+macOS:
 
 ```bash
-export JAGENT_OPENAI_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4
-export JAGENT_MODEL=glm-5.2
-export JAGENT_MODEL_STREAM_ENABLED=true
+cp examples/coding-tool-app/launcher/.env.coding.example \
+  examples/coding-tool-app/launcher/.env.coding.local
 ```
+
+Windows Command Prompt:
+
+```bat
+copy examples\coding-tool-app\launcher\.env.coding.example examples\coding-tool-app\launcher\.env.coding.local
+```
+
+Edit `examples/coding-tool-app/launcher/.env.coding.local` and set at least the provider values
+needed by your model:
+
+```dotenv
+JAGENT_OPENAI_API_KEY=your_api_key
+JAGENT_OPENAI_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4
+JAGENT_MODEL=glm-5.2
+JAGENT_MODEL_STREAM_ENABLED=true
+```
+
+The local file supports normal `.env` comments and quoted values and is ignored by Git. Existing
+operating-system environment variables take precedence, so a value can still be overridden for one
+launch without editing the file. Application defaults are used when neither source defines a value.
 
 `JAGENT_TEMPERATURE` is optional. If it is not set, the backend does not send `temperature` to the model provider.
 Set `JAGENT_MODEL_STREAM_ENABLED=false` when the OpenAI-compatible model endpoint does not support SSE streaming.
 
-## 2. Start the Backend
+## 2. Start Coding
 
 From the repository root:
+
+macOS:
+
+```bash
+./examples/coding-tool-app/launcher/start-coding.command
+```
+
+Windows:
+
+```bat
+examples\coding-tool-app\launcher\start-coding.cmd
+```
+
+The Windows launcher uses `cmd.exe` and Node.js. It does not invoke or require PowerShell.
+
+Both platform wrappers run the same `start-coding.mjs` implementation. The launcher:
+
+- validates the Node.js version, URLs, backend port, Java, JDK, Maven, and npm;
+- checks the configured backend port and port `5173` before preparation and again before startup;
+- runs `npm ci` only when dependencies are missing or their manifests changed;
+- builds the Spring Boot backend with Maven;
+- starts Java and the separate Vite development server on `127.0.0.1`;
+- waits for both services and opens `http://127.0.0.1:5173`;
+- monitors both services and stops the other process tree if either one exits;
+- stops active install, build, backend, and frontend processes on Control-C.
+
+Use Control-C in the launcher window to stop coding. Set `JAGENT_OPEN_BROWSER=false` if the browser
+should not open automatically.
+
+The backend listens on `http://127.0.0.1:18080`, and Vite listens on `http://127.0.0.1:5173`.
+
+Health check:
+
+```bash
+curl http://127.0.0.1:18080/api/health
+```
+
+The example uses Spring Boot `spring.datasource.*` configuration. By default it points to
+`jdbc:sqlite:jagent-harness.db`. The launcher starts Java from the repository root, so the default
+database file remains at `<repository>/jagent-harness.db`.
+The JDBC schema is also available in `jagent-store-jdbc` at `db/jagent-harness/schema.sql`.
+
+## 3. Manual Development Mode
+
+The launcher keeps the backend and frontend separate, but developers can still run them in
+different terminals for independent restarts and normal Vite output.
+
+Backend, from the repository root:
 
 ```bash
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
 java -jar examples/coding-tool-app/target/coding-tool-app-0.7.1.jar
 ```
 
-The backend listens on `http://localhost:18080`.
-
-Health check:
-
-```bash
-curl http://localhost:18080/api/health
-```
-
-The example uses Spring Boot `spring.datasource.*` configuration. By default it points to
-`jdbc:sqlite:jagent-harness.db`, relative to the directory where the backend is started.
-The JDBC schema is also available in `jagent-store-jdbc` at `db/jagent-harness/schema.sql`.
-
-## 3. Start the Frontend
+Frontend:
 
 In another terminal:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev:coding
 ```
 
@@ -82,17 +135,21 @@ The example backend validates the path, creates a session, and runs file tools r
 
 ## 5. Useful Configuration
 
-```bash
-export SERVER_PORT=18080
-export JAGENT_DATASOURCE_URL=jdbc:sqlite:jagent-harness.db
-export JAGENT_DATASOURCE_DRIVER=org.sqlite.JDBC
-export JAGENT_STOP_POLL_INTERVAL_MS=1000
-export JAGENT_CONFIG_ROOT=~/.jagent-harness
-export JAGENT_COMPACTION_ENABLED=true
-export JAGENT_CONTEXT_WINDOW_TOKENS=128000
+These values can be maintained in `.env.coding.local` when using the launcher:
+
+```dotenv
+SERVER_PORT=18080
+JAGENT_DATASOURCE_URL=jdbc:sqlite:jagent-harness.db
+JAGENT_DATASOURCE_DRIVER=org.sqlite.JDBC
+JAGENT_STOP_POLL_INTERVAL_MS=1000
+JAGENT_CONFIG_ROOT=~/.jagent-harness
+JAGENT_COMPACTION_ENABLED=true
+JAGENT_CONTEXT_WINDOW_TOKENS=128000
 ```
 
-If you change `SERVER_PORT`, also update the proxy target in `frontend/vite.config.js`.
+When using the launcher, `JAGENT_API_TARGET` automatically follows `SERVER_PORT`. In manual
+development mode, the launcher configuration file is not loaded; export the required variables in
+each terminal and set `JAGENT_API_TARGET` explicitly when the backend does not use port `18080`.
 
 ## 6. Build and Test
 
