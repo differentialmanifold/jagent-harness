@@ -3,6 +3,9 @@
   "version": "0.7.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "npm run dev:coding",
     "dev:coding": "vite --host 0.0.0.0 --port 5173 --strictPort --mode coding",

@@ -33,6 +33,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Validate coding launcher syntax
+        run: |
+          bash -n examples/coding-tool-app/launcher/start-coding.command
+          node --check examples/coding-tool-app/launcher/start-coding.mjs
+
       - name: Run backend tests
         run: mvn -f pom.xml test
 
@@ -57,6 +62,15 @@ jobs:
           distribution: temurin
           java-version: '8'
           cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate Windows launcher syntax
+        shell: cmd
+        run: node --check examples\coding-tool-app\launcher\start-coding.mjs
 
       - name: Build coding tool dependencies
         run: mvn -B -f pom.xml -pl examples/coding-tool-app -am -DskipTests install
