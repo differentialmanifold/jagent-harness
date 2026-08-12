@@ -396,7 +396,6 @@ async function buildBackend() {
   const outcome = await runCommand(
     MAVEN_COMMAND,
     [
-      "--no-transfer-progress",
       "-f",
       "pom.xml",
       "-pl",
