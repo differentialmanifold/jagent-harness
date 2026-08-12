@@ -138,7 +138,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.7.1</jagent-harness.version>
+    <jagent-harness.version>0.7.2</jagent-harness.version>
 </properties>
 
 <dependencies>

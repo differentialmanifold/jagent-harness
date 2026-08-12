@@ -109,7 +109,7 @@ Backend, from the repository root:
 
 ```bash
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.7.1.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.7.2.jar
 ```
 
 Frontend:
