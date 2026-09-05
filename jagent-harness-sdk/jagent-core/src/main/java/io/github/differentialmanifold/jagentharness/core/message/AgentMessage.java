@@ -26,6 +26,7 @@ public class AgentMessage {
     private String toolCallId;
     private String toolName;
     private List<ToolCall> toolCalls = new ArrayList<ToolCall>();
+    private List<MessageImage> images = new ArrayList<MessageImage>();
     private String stopReason;
     private String metadataJson;
     private Instant createdAt;
@@ -146,6 +147,16 @@ public class AgentMessage {
 
     public void setToolCalls(List<ToolCall> toolCalls) {
         this.toolCalls = toolCalls;
+    }
+
+    public List<MessageImage> getImages() {
+        return images;
+    }
+
+    public void setImages(List<MessageImage> images) {
+        this.images = images == null
+                ? new ArrayList<MessageImage>()
+                : new ArrayList<MessageImage>(images);
     }
 
     public String getStopReason() {

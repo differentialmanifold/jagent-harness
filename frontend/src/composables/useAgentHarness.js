@@ -2,6 +2,13 @@ import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from 'vu
 import { request } from '../api/http'
 import { loadJson, saveJson } from '../utils/storage'
 import { projectName, projectPathLabel } from '../utils/workspace'
+import {
+  MAX_IMAGE_COUNT,
+  MAX_TOTAL_IMAGE_BYTES,
+  readImageAttachment,
+  toImageRequest,
+  validateImageFiles
+} from '../utils/images'
 
 const DEFAULT_PROJECT_NAME = 'Default Project'
 
@@ -49,6 +56,9 @@ export function useAgentHarness() {
       currentRuntimeState.value.draft = value
     }
   })
+  const draftImages = computed(() => currentRuntimeState.value.draftImages)
+  const addingImages = computed(() => currentRuntimeState.value.addingImages)
+  const imageError = computed(() => currentRuntimeState.value.imageError)
   const running = computed(() => currentRuntimeState.value.running)
   const stopping = computed(() => currentRuntimeState.value.stopping)
   const stopReady = computed(() => currentRuntimeState.value.stopReady)
@@ -351,22 +361,63 @@ export function useAgentHarness() {
     if (!state.running) {
       replayTimelineEvents(details.events || [], state)
     }
+    releaseInactiveMessageHistory(id)
     await loadAgentContext(id)
   }
 
+  async function addDraftImages(files) {
+    const state = currentRuntimeState.value
+    if (!state.sessionId || state.addingImages || state.stopping) return
+
+    const selection = validateImageFiles(files, state.draftImages)
+    const errors = [...selection.errors]
+    state.imageError = ''
+    if (selection.accepted.length === 0) {
+      state.imageError = errors.join(' ')
+      return
+    }
+
+    state.addingImages = true
+    try {
+      for (const file of selection.accepted) {
+        try {
+          state.draftImages.push(await readImageAttachment(file))
+        } catch (error) {
+          errors.push(error.message || `Unable to read ${file?.name || 'image'}.`)
+        }
+      }
+    } finally {
+      state.addingImages = false
+      state.imageError = errors.join(' ')
+    }
+  }
+
+  function removeDraftImage(imageId) {
+    const state = currentRuntimeState.value
+    const index = state.draftImages.findIndex((image) => image.imageId === imageId)
+    if (index >= 0) {
+      state.draftImages.splice(index, 1)
+    }
+    state.imageError = ''
+  }
+
   async function sendMessage() {
-    if (!currentSession.value || !draft.value.trim()) return
-    const content = draft.value
+    if (!currentSession.value) return
     const sessionId = currentSession.value.sessionId
     const state = runtimeState(sessionId)
+    const content = state.draft
+    const images = state.draftImages.slice()
+    if (!content.trim() && images.length === 0) return
     if (state.running) {
-      await submitRuntimeInput(content, state)
+      await submitRuntimeInput(content, images, state)
       return
     }
     if (shouldAutoNameChat(currentSession.value, state.messages)) {
-      await renameChatFromPrompt(sessionId, content)
+      await renameChatFromPrompt(sessionId, content, images)
     }
-    draft.value = ''
+    state.draft = ''
+    state.draftImages.splice(0)
+    state.imageError = ''
     state.running = true
     state.stopping = false
     state.stopReady = false
@@ -375,15 +426,25 @@ export function useAgentHarness() {
     resetTransientRunState(state)
     state.activeRunId = null
     state.streamController = markRaw(new AbortController())
+    let requestAccepted = false
     try {
       await streamRequest(
         '/api/chat/stream',
-        { sessionId, content, approvalMode: approvalMode.value },
-        state
+        {
+          sessionId,
+          content,
+          images: toImageRequest(images),
+          approvalMode: approvalMode.value
+        },
+        state,
+        () => { requestAccepted = true }
       )
       await loadSessions()
     } catch (error) {
       if (!(error.name === 'AbortError' && state.stopRequested)) {
+        if (!requestAccepted) {
+          restoreDraft(state, content, images)
+        }
         appendLocalErrorMessage(state, error.message, error.runDurationMillis)
       }
     } finally {
@@ -398,22 +459,28 @@ export function useAgentHarness() {
       state.finishing = false
       state.activeRunId = null
       state.runStartTimes.clear()
+      if (currentSession.value?.sessionId !== state.sessionId) {
+        releaseMessageHistory(state)
+      }
     }
   }
 
-  async function submitRuntimeInput(content, state) {
+  async function submitRuntimeInput(content, images, state) {
     if (!state.running
         || state.submittingInput
         || state.stopping
         || !state.stopReady
         || !state.activeRunId) return
+    if (!String(content || '').trim() && images.length === 0) return
     const runId = state.activeRunId
     const controller = markRaw(new AbortController())
+    const requestImages = toImageRequest(images)
 
     const inputId = createInputId()
     const input = {
       inputId,
       content,
+      images,
       status: 'submitting',
       createdAt: new Date().toISOString(),
       sequence: ++state.inputSequence
@@ -423,11 +490,13 @@ export function useAgentHarness() {
     state.runtimeInputController = controller
     state.runtimeInputId = inputId
     state.draft = ''
+    state.draftImages.splice(0)
+    state.imageError = ''
 
     try {
       const receipt = await request(`/api/chat/runs/${encodeURIComponent(runId)}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content, inputId }),
+        body: JSON.stringify({ content, images: requestImages, inputId }),
         signal: controller.signal
       })
       if (state.runtimeInputController !== controller || state.activeRunId !== runId) return
@@ -439,9 +508,7 @@ export function useAgentHarness() {
       if (state.appliedRuntimeInputId === inputId) return
       if (error.name === 'AbortError' || state.runtimeInputController !== controller) return
       removePendingInputs(state, [inputId])
-      if (!state.draft.trim()) {
-        state.draft = content
-      }
+      restoreDraft(state, content, images)
       appendLocalErrorMessage(state, `Failed to submit message: ${error.message}`)
     } finally {
       if (state.runtimeInputController === controller) {
@@ -481,7 +548,7 @@ export function useAgentHarness() {
     }
   }
 
-  async function streamRequest(url, body, state) {
+  async function streamRequest(url, body, state, onAccepted = () => {}) {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -492,6 +559,7 @@ export function useAgentHarness() {
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || response.statusText)
     }
+    onAccepted()
     state.activeRunId = response.headers.get('X-Run-Id')
     if (!state.activeRunId) {
       throw new Error('Chat stream response is missing X-Run-Id')
@@ -786,6 +854,7 @@ export function useAgentHarness() {
     return {
       inputId: value.inputId || defaults.inputId || '',
       content: value.content ?? defaults.content ?? '',
+      images: value.images ?? defaults.images ?? [],
       status: String(value.status || defaults.status || 'pending').toLowerCase(),
       sequence: Number(value.sequence ?? defaults.sequence) || 0,
       createdAt: value.createdAt || defaults.createdAt || new Date().toISOString()
@@ -800,6 +869,42 @@ export function useAgentHarness() {
         state.pendingInputs.splice(index, 1)
       }
     }
+  }
+
+  function restoreDraft(state, content, images) {
+    if (!state.draft.trim()) {
+      state.draft = content
+    }
+
+    const existingKeys = new Set(state.draftImages.map((image) => image.imageId || image.url))
+    let totalBytes = state.draftImages.reduce(
+      (total, image) => total + (Number(image.size) || 0),
+      0
+    )
+    for (const image of images) {
+      const key = image.imageId || image.url
+      const size = Number(image.size) || 0
+      if (existingKeys.has(key)
+          || state.draftImages.length >= MAX_IMAGE_COUNT
+          || totalBytes + size > MAX_TOTAL_IMAGE_BYTES) continue
+      state.draftImages.push(image)
+      existingKeys.add(key)
+      totalBytes += size
+    }
+  }
+
+  function releaseInactiveMessageHistory(activeSessionId) {
+    for (const [sessionId, state] of sessionRuntimeStates.entries()) {
+      if (sessionId !== activeSessionId && !state.running) {
+        releaseMessageHistory(state)
+      }
+    }
+  }
+
+  function releaseMessageHistory(state) {
+    state.messages.splice(0)
+    state.turns.clear()
+    state.runStartTimes.clear()
   }
 
   function eventRunId(event, payload) {
@@ -1398,8 +1503,8 @@ export function useAgentHarness() {
     return title === 'New Session' || title.startsWith('New Chat')
   }
 
-  async function renameChatFromPrompt(sessionId, prompt) {
-    const title = chatTitleFromPrompt(prompt)
+  async function renameChatFromPrompt(sessionId, prompt, images = []) {
+    const title = chatTitleFromPrompt(prompt, images)
     if (!title) return
     try {
       const updated = await request('/api/sessions/rename', {
@@ -1415,12 +1520,15 @@ export function useAgentHarness() {
     }
   }
 
-  function chatTitleFromPrompt(prompt) {
+  function chatTitleFromPrompt(prompt, images = []) {
     const firstLine = String(prompt || '')
       .split(/\r?\n/)
       .map((line) => line.trim())
       .find(Boolean) || ''
-    const title = firstLine.replace(/\s+/g, ' ').trim()
+    const imageTitle = images.length > 0
+      ? `Image: ${String(images[0].name || 'attachment')}`
+      : ''
+    const title = (firstLine || imageTitle).replace(/\s+/g, ' ').trim()
     return title.length > 36 ? `${title.slice(0, 36)}...` : title
   }
 
@@ -1429,6 +1537,9 @@ export function useAgentHarness() {
       sessionId,
       messages: [],
       draft: '',
+      draftImages: [],
+      addingImages: false,
+      imageError: '',
       running: false,
       stopping: false,
       stopReady: false,
@@ -1491,6 +1602,9 @@ export function useAgentHarness() {
     agentContext,
     provider,
     draft,
+    draftImages,
+    addingImages,
+    imageError,
     projectNameDraft,
     projectWorkspaceDraft,
     projectError,
@@ -1531,6 +1645,8 @@ export function useAgentHarness() {
     submitRenameDialog,
     selectProject,
     selectSession,
+    addDraftImages,
+    removeDraftImage,
     sendMessage,
     stopMessage,
     setApprovalMode,

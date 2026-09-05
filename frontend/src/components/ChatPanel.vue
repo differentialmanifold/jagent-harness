@@ -7,9 +7,9 @@
       </div>
       <el-tag
         round
-        :type="provider && provider.apiKeyConfigured ? 'success' : 'warning'"
+        :type="modelConfigured ? 'success' : 'warning'"
       >
-        {{ provider && provider.apiKeyConfigured ? 'API key ready' : 'API key missing' }}
+        {{ modelConfigured ? 'Model configured' : 'Model configuration missing' }}
       </el-tag>
     </header>
 
@@ -23,6 +23,33 @@
     </div>
 
     <form class="composer" @submit.prevent="submit">
+      <input
+        ref="imageInputEl"
+        class="visually-hidden"
+        type="file"
+        :accept="IMAGE_FILE_ACCEPT"
+        multiple
+        tabindex="-1"
+        @change="handleImageSelection"
+      />
+      <div v-if="draftImages.length" class="composer-images" aria-label="Attached images">
+        <div
+          v-for="(image, index) in draftImages"
+          :key="image.imageId || `${image.name}:${index}`"
+          class="composer-image"
+        >
+          <img :src="image.url" :alt="image.name || `Attached image ${index + 1}`" />
+          <button
+            class="composer-image-remove"
+            type="button"
+            :aria-label="`Remove ${image.name || `image ${index + 1}`}`"
+            :title="`Remove ${image.name || 'image'}`"
+            @click="$emit('removeImage', image.imageId)"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+      </div>
       <el-input
         class="composer-input"
         type="textarea"
@@ -32,22 +59,37 @@
         :placeholder="composerPlaceholder"
         @update:model-value="$emit('update:draft', $event)"
         @keydown="handleKeydown"
+        @paste="handlePaste"
       />
+      <p v-if="imageError" class="composer-image-error" role="alert">{{ imageError }}</p>
       <div v-if="pendingInputs.length" class="pending-inputs" aria-live="polite">
         <div
           v-for="input in pendingInputs"
           :key="input.inputId"
           class="pending-input"
-          :title="input.content"
+          :title="pendingInputTitle(input)"
         >
           <el-tag size="small" type="info" effect="plain">
             {{ input.status === 'submitting' ? 'Sending' : 'Queued' }}
           </el-tag>
-          <span class="pending-input-content">{{ input.content || 'Pending input' }}</span>
+          <span class="pending-input-content">{{ input.content || 'Image message' }}</span>
+          <span v-if="pendingImageCount(input)" class="pending-input-image-count">
+            {{ imageCountLabel(pendingImageCount(input)) }}
+          </span>
         </div>
       </div>
       <div class="composer-footer">
         <div class="composer-left">
+          <button
+            class="composer-image-trigger"
+            type="button"
+            :disabled="!currentSession || addingImages || stopping"
+            :aria-label="addingImages ? 'Adding images' : 'Add images'"
+            :title="addingImages ? 'Adding images' : 'Add images'"
+            @click="openImagePicker"
+          >
+            <el-icon :class="{ 'is-loading': addingImages }"><Picture /></el-icon>
+          </button>
           <el-dropdown
             v-if="!running"
             class="approval-dropdown"
@@ -112,9 +154,10 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { CaretBottom, Lock, Top, Unlock } from '@element-plus/icons-vue'
+import { CaretBottom, Close, Lock, Picture, Top, Unlock } from '@element-plus/icons-vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import MessageItem from './MessageItem.vue'
+import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
   currentSession: { type: Object, default: null },
@@ -130,18 +173,24 @@ const props = defineProps({
   messageRevision: { type: Number, default: 0 },
   approvalMode: { type: String, required: true },
   contextUsage: { type: Object, default: null },
-  draft: { type: String, required: true }
+  draft: { type: String, required: true },
+  draftImages: { type: Array, default: () => [] },
+  addingImages: { type: Boolean, default: false },
+  imageError: { type: String, default: '' }
 })
 
 const emit = defineEmits([
   'update:draft',
   'update:approvalMode',
+  'addImages',
+  'removeImage',
   'send',
   'stop',
   'resolveToolApproval'
 ])
 const AUTO_SCROLL_THRESHOLD_PX = 16
 const messagesEl = ref(null)
+const imageInputEl = ref(null)
 const autoFollowMessages = ref(true)
 let scrollFrame = null
 let lastScrollTop = 0
@@ -152,20 +201,26 @@ const visibleMessages = computed(() => props.messages.filter((message) => {
     && message.toolCalls.length > 0
     && !String(message.content || '').trim()
     && !String(message.reasoningContent || '').trim()
+    && !(Array.isArray(message.images) && message.images.length > 0)
     && message.stopReason !== 'aborted'
   return !isToolOnlyAssistant
 }))
 
+const modelConfigured = computed(() => Boolean(
+  String(props.provider?.model || '').trim()
+  && String(props.provider?.baseUrl || '').trim()
+))
 const approvalModeLabel = computed(() => props.approvalMode === 'full_access' ? 'Full access' : 'Ask')
 const composerPlaceholder = computed(() => {
   if (!props.running) return 'Ask the agent to inspect, edit, or plan work...'
   return 'Send another message...'
 })
-const hasDraft = computed(() => Boolean(props.draft.trim()))
-const showStopAction = computed(() => props.running && (props.stopping || !hasDraft.value))
+const hasMessage = computed(() => Boolean(props.draft.trim() || props.draftImages.length))
+const showStopAction = computed(() => props.running && (props.stopping || !hasMessage.value))
 const canSubmit = computed(() => Boolean(
   props.currentSession
-  && props.draft.trim()
+  && hasMessage.value
+  && !props.addingImages
   && !props.submittingInput
   && !props.stopping
   && (!props.running || (props.stopReady && props.activeRunId))
@@ -201,6 +256,39 @@ function handleKeydown(event) {
   if (event.shiftKey || event.isComposing) return
   event.preventDefault()
   submit()
+}
+
+function openImagePicker() {
+  if (!props.currentSession || props.addingImages || props.stopping) return
+  imageInputEl.value?.click()
+}
+
+function handleImageSelection(event) {
+  const files = Array.from(event.target?.files || [])
+  if (files.length > 0) {
+    emit('addImages', files)
+  }
+  if (event.target) {
+    event.target.value = ''
+  }
+}
+
+function handlePaste(event) {
+  const files = Array.from(event.clipboardData?.files || [])
+    .filter((file) => String(file.type || '').startsWith('image/'))
+  if (files.length === 0) return
+  if (!props.currentSession || props.addingImages || props.stopping) return
+  event.preventDefault()
+  emit('addImages', files)
+}
+
+function pendingImageCount(input) {
+  return Array.isArray(input?.images) ? input.images.length : 0
+}
+
+function pendingInputTitle(input) {
+  const content = String(input?.content || '').trim()
+  return content || imageCountLabel(pendingImageCount(input))
 }
 
 function handleMessagesScroll() {

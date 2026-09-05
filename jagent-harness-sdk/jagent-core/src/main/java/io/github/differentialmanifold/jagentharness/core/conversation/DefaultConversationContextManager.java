@@ -15,6 +15,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
@@ -442,6 +443,13 @@ public class DefaultConversationContextManager implements ConversationContextMan
                         : message.getContent();
                 rendered.append(content).append("\n");
             }
+            if (message.getImages() != null) {
+                for (MessageImage image : message.getImages()) {
+                    rendered.append("[image attached: ")
+                            .append(imageLabel(image))
+                            .append("]\n");
+                }
+            }
             if (isAbortedAssistant(message)) {
                 rendered.append("The user interrupted this assistant response before completion.\n");
             }
@@ -457,6 +465,19 @@ public class DefaultConversationContextManager implements ConversationContextMan
             rendered.append("\n");
         }
         return rendered.toString();
+    }
+
+    private String imageLabel(MessageImage image) {
+        if (image == null) {
+            return "image";
+        }
+        if (image.getName() != null && !image.getName().trim().isEmpty()) {
+            return image.getName().trim();
+        }
+        if (image.getMediaType() != null && !image.getMediaType().trim().isEmpty()) {
+            return image.getMediaType().trim();
+        }
+        return "image";
     }
 
     private List<AgentMessage> messagesForModel(List<AgentMessage> messages) {

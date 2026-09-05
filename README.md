@@ -138,7 +138,7 @@ Add the modules your application needs:
 
 ```xml
 <properties>
-    <jagent-harness.version>0.7.2</jagent-harness.version>
+    <jagent-harness.version>0.8.0</jagent-harness.version>
 </properties>
 
 <dependencies>
@@ -166,8 +166,9 @@ The Spring Boot starter includes the default OpenAI-compatible provider; add a c
 The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
 When multiple host applications share one database, set a distinct `harness.store.jdbc.application-id` for each application so sessions, messages, prompt files, skills, approvals, and stop requests stay isolated.
 Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
-The initializer creates missing objects but does not alter existing tables. Existing databases must
-be migrated or recreated for the required `run_id` columns and runtime-input queue tables.
+The initializer creates missing objects but does not alter existing tables. Existing databases
+must be migrated explicitly or recreated when the schema changes, including the multimodal
+`messages.images_json` and `agent_run_inputs.images_json` columns.
 The schema includes the virtual knowledge filesystem, skill manifest, and active
 agent run tables. Multi-instance deployments must point every instance at the same database;
 the default SQLite configuration is intended for local single-host development.
@@ -271,8 +272,9 @@ Reusable extension modules should expose those beans through Spring Boot auto-co
 The default OpenAI-compatible provider uses an OkHttp-backed `ModelHttpClient`; applications can
 override it by registering their own `ModelHttpClient` bean.
 
-By default, the provider reads its Bearer token from `harness.model.api-key`, which the examples
-bind to `JAGENT_OPENAI_API_KEY`. Applications that obtain tokens dynamically can replace that
+When configured, the provider reads its Bearer token from `harness.model.api-key`, which the
+examples bind to `JAGENT_OPENAI_API_KEY`. The value may remain empty for local or remote endpoints
+that do not require authentication. Applications that obtain tokens dynamically can replace that
 behavior with a thread-safe `ModelAccessTokenProvider` bean:
 
 ```java
@@ -284,6 +286,60 @@ public ModelAccessTokenProvider modelAccessTokenProvider(MyTokenService tokenSer
 
 The provider calls this bean before every model request. OAuth login, refresh, caching, and token
 storage remain application responsibilities.
+
+Vision-capable models receive images through the standard OpenAI-compatible message shape. The
+provider sends text and image attachments as separate content parts, with browser-selected files
+encoded as base64 data URLs:
+
+```json
+{
+  "role": "user",
+  "content": [
+    { "type": "text", "text": "Describe this image" },
+    {
+      "type": "image_url",
+      "image_url": { "url": "data:image/png;base64,..." }
+    }
+  ]
+}
+```
+
+The configured endpoint and model must implement multimodal Chat Completions; text-only compatible
+models continue to receive ordinary string content when no image is attached.
+
+SDK callers can attach either an HTTP(S) image URL or a base64 data URL with the multimodal
+`AgentHarness` overload:
+
+```java
+MessageImage image = new MessageImage(
+        "screenshot.png",
+        "image/png",
+        "data:image/png;base64,...");
+agentHarness.run(sessionId, "Describe this screenshot", Collections.singletonList(image));
+```
+
+The console API deliberately accepts only base64 data URLs and limits each message to four images,
+10 MB per image, and 20 MB in total. This keeps browser uploads bounded and avoids making the model
+server fetch arbitrary remote URLs. The console also caps the encoded chat request body at 32 MB
+before JSON deserialization, including requests sent without a `Content-Length` header.
+
+For the initial `/api/chat/stream` request and runtime `/api/chat/runs/{runId}/messages` requests,
+the console-facing request shape is:
+
+```json
+{
+  "content": "Describe this image",
+  "images": [
+    {
+      "name": "screenshot.png",
+      "mediaType": "image/png",
+      "url": "data:image/png;base64,..."
+    }
+  ]
+}
+```
+
+The initial stream request also includes `sessionId` and may include `approvalMode`.
 
 The SDK provides the built-in `skill` tool for loading `SKILL.md` instructions and files referenced
 by a skill. The coding-tool example registers workspace-specific tools as Spring beans:
@@ -311,9 +367,11 @@ apply when neither source defines a value.
 | Variable | Example Default | Description |
 | --- | --- | --- |
 | `JAGENT_OPENAI_API_KEY` | empty | Optional API key for the OpenAI-compatible provider. When set, it is sent as a Bearer token. |
-| `JAGENT_OPENAI_BASE_URL` | `https://open.bigmodel.cn/api/coding/paas/v4` | Provider base URL configured by the example `application.yml`. |
-| `JAGENT_MODEL` | `glm-5.2` | Model name configured by the example `application.yml`. |
+| `JAGENT_OPENAI_BASE_URL` | empty | Required OpenAI-compatible API base URL, normally ending in `/v1`. |
+| `JAGENT_MODEL` | empty | Required model identifier accepted by the configured endpoint. It may be a local model path. |
 | `JAGENT_MODEL_STREAM_ENABLED` | `true` | Set to `false` for OpenAI-compatible endpoints that do not support SSE streaming. |
+| `JAGENT_MODEL_INCLUDE_USAGE` | `true` | Set to `false` when a compatible endpoint rejects `stream_options.include_usage`. |
+| `JAGENT_MAX_CHAT_REQUEST_BODY_SIZE` | `32MB` | Encoded body limit for chat requests that can contain base64 images. Keep it above the decoded-image total. |
 | `JAGENT_TEMPERATURE` | empty | Optional. If empty, `temperature` is not sent. |
 | `SERVER_PORT` | `18080` | HTTP port used by the example applications. |
 | `JAGENT_OPEN_BROWSER` | `true` | Set to `false` to keep the coding-tool launcher from opening a browser. |

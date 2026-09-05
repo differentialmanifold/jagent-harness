@@ -1,11 +1,14 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -14,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextRequest;
@@ -103,26 +107,33 @@ public class AgentRunner implements AgentHarness {
 
     @Override
     public AgentRunResult run(String sessionId, String userText) {
-        return run(sessionId, userText, AgentRunOptions.empty());
+        return run(sessionId, userText, Collections.<MessageImage>emptyList(), AgentRunOptions.empty());
     }
 
     @Override
     public AgentRunResult run(String sessionId, String userText, AgentRunOptions options) {
+        return run(sessionId, userText, Collections.<MessageImage>emptyList(), options);
+    }
+
+    @Override
+    public AgentRunResult run(String sessionId,
+                              String userText,
+                              List<MessageImage> images,
+                              AgentRunOptions options) {
         AgentRunOptions effectiveOptions = options == null ? AgentRunOptions.empty() : options;
         return eventPublisher.withEventConsumer(
                 effectiveOptions.getEventConsumer(),
-                () -> runInternal(sessionId, userText, effectiveOptions));
+                () -> runInternal(sessionId, userText, images, effectiveOptions));
     }
 
     private AgentRunResult runInternal(String sessionId,
                                        String userText,
+                                       List<MessageImage> images,
                                        AgentRunOptions effectiveOptions) {
         SessionRecord session = sessionStore.requireSession(sessionId);
         String runId = valueOrNewRunId(effectiveOptions.getRunId());
         String parentMessageId = lastMessageId(sessionStore.findMessages(sessionId));
-        List<String> pendingUserContents = userText == null
-                ? Collections.<String>emptyList()
-                : Collections.singletonList(userText);
+        List<AgentMessage> pendingUserMessages = initialUserMessages(sessionId, userText, images);
         String answer = "";
         int turnCount = 0;
         String firstTurnId = null;
@@ -155,9 +166,8 @@ public class AgentRunner implements AgentHarness {
                 publish(sessionId, runId, turnId, AgentEvent.TURN_START,
                         turnPayload(sessionId, runId, turnId, turnCount, toolContext));
 
-                if (!pendingUserContents.isEmpty()) {
-                    for (String pendingUserContent : pendingUserContents) {
-                        AgentMessage userMessage = AgentMessage.user(sessionId, pendingUserContent);
+                if (!pendingUserMessages.isEmpty()) {
+                    for (AgentMessage userMessage : pendingUserMessages) {
                         userMessage.setRunId(runId);
                         userMessage.setTurnId(turnId);
                         userMessage.setParentMessageId(parentMessageId);
@@ -166,7 +176,7 @@ public class AgentRunner implements AgentHarness {
                         publish(sessionId, runId, turnId, AgentEvent.MESSAGE_END,
                                 eventPayload("message", userMessage));
                     }
-                    pendingUserContents = Collections.emptyList();
+                    pendingUserMessages = Collections.emptyList();
                 }
 
                 stopSignal.throwIfAborted();
@@ -283,7 +293,7 @@ public class AgentRunner implements AgentHarness {
                         runId,
                         turnId);
                 if (!pendingInputs.isEmpty()) {
-                    pendingUserContents = runInputContents(pendingInputs);
+                    pendingUserMessages = runInputMessages(sessionId, pendingInputs);
                     publishRunInputsApplied(sessionId, runId, turnId, pendingInputs);
                     continue;
                 }
@@ -470,19 +480,232 @@ public class AgentRunner implements AgentHarness {
             return Collections.emptyList();
         }
         for (RunInput input : claimed) {
-            if (input == null || input.getContent() == null || input.getContent().trim().isEmpty()) {
-                throw new IllegalStateException("A claimed run input must contain non-blank content");
+            if (input == null || (!hasText(input.getContent()) && !hasImages(input.getImages()))) {
+                throw new IllegalStateException("A claimed run input must contain text or an image");
             }
         }
         return new ArrayList<RunInput>(claimed);
     }
 
-    private List<String> runInputContents(List<RunInput> inputs) {
-        List<String> contents = new ArrayList<String>(inputs.size());
-        for (RunInput input : inputs) {
-            contents.add(input.getContent());
+    private List<AgentMessage> initialUserMessages(String sessionId,
+                                                   String content,
+                                                   List<MessageImage> images) {
+        if (content == null && !hasImages(images)) {
+            return Collections.emptyList();
         }
-        return contents;
+        return Collections.singletonList(userMessage(sessionId, content, images));
+    }
+
+    private List<AgentMessage> runInputMessages(String sessionId, List<RunInput> inputs) {
+        List<AgentMessage> messages = new ArrayList<AgentMessage>(inputs.size());
+        for (RunInput input : inputs) {
+            messages.add(userMessage(sessionId, input.getContent(), input.getImages()));
+        }
+        return messages;
+    }
+
+    private AgentMessage userMessage(String sessionId,
+                                     String content,
+                                     List<MessageImage> images) {
+        AgentMessage message = AgentMessage.user(sessionId, content);
+        message.setImages(normalizedImages(images));
+        return message;
+    }
+
+    private List<MessageImage> normalizedImages(List<MessageImage> images) {
+        if (images == null || images.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<MessageImage> normalized = new ArrayList<MessageImage>(images.size());
+        for (int index = 0; index < images.size(); index++) {
+            MessageImage image = images.get(index);
+            if (image == null) {
+                throw new IllegalArgumentException("Image " + (index + 1) + " is missing");
+            }
+            normalized.add(normalizedImage(image, index));
+        }
+        return normalized;
+    }
+
+    private MessageImage normalizedImage(MessageImage image, int index) {
+        String url = image.getUrl() == null ? "" : image.getUrl().trim();
+        if (url.isEmpty()) {
+            throw new IllegalArgumentException("Image " + (index + 1) + " URL is required");
+        }
+
+        String dataMediaType = null;
+        if (startsWithIgnoreCase(url, "data:")) {
+            dataMediaType = requireDataImageMediaType(url, index);
+        } else {
+            requireHttpImageUrl(url, index);
+        }
+
+        String mediaType = normalizedImageMediaType(image.getMediaType(), index);
+        if (dataMediaType != null) {
+            if (mediaType != null && !dataMediaType.equals(mediaType)) {
+                throw new IllegalArgumentException(
+                        "Image " + (index + 1) + " mediaType does not match its data URL");
+            }
+            mediaType = dataMediaType;
+        }
+
+        return new MessageImage(
+                normalizedImageName(image.getName(), index),
+                mediaType,
+                url,
+                normalizedImageDetail(image.getDetail(), index));
+    }
+
+    private String requireDataImageMediaType(String url, int index) {
+        int comma = url.indexOf(',');
+        if (comma < 0 || comma > 256) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " must use a base64 image data URL");
+        }
+        String header = url.substring("data:".length(), comma);
+        String base64Suffix = ";base64";
+        if (header.length() <= base64Suffix.length()
+                || !header.regionMatches(
+                        true,
+                        header.length() - base64Suffix.length(),
+                        base64Suffix,
+                        0,
+                        base64Suffix.length())) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " must use a base64 image data URL");
+        }
+        String mediaType = normalizedImageMediaType(
+                header.substring(0, header.length() - base64Suffix.length()),
+                index);
+        if (mediaType == null) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " data URL media type is required");
+        }
+        requireBase64Payload(url, comma + 1, index);
+        return mediaType;
+    }
+
+    private void requireBase64Payload(String url, int payloadStart, int index) {
+        int length = url.length() - payloadStart;
+        if (length <= 0 || length % 4 == 1) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " data URL contains invalid base64");
+        }
+        int padding = 0;
+        for (int offset = payloadStart; offset < url.length(); offset++) {
+            char value = url.charAt(offset);
+            if (value == '=') {
+                padding++;
+                if (padding > 2) {
+                    throw new IllegalArgumentException(
+                            "Image " + (index + 1) + " data URL contains invalid base64");
+                }
+            } else if (padding > 0 || !isBase64Character(value)) {
+                throw new IllegalArgumentException(
+                        "Image " + (index + 1) + " data URL contains invalid base64");
+            }
+        }
+        if (padding > 0 && length % 4 != 0) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " data URL contains invalid base64");
+        }
+    }
+
+    private boolean isBase64Character(char value) {
+        return value >= 'A' && value <= 'Z'
+                || value >= 'a' && value <= 'z'
+                || value >= '0' && value <= '9'
+                || value == '+'
+                || value == '/';
+    }
+
+    private void requireHttpImageUrl(String url, int index) {
+        try {
+            URI uri = new URI(url).parseServerAuthority();
+            String scheme = uri.getScheme();
+            if (scheme == null
+                    || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    || uri.getHost() == null
+                    || uri.getHost().trim().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Image " + (index + 1) + " URL must use data, http, or https");
+            }
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " URL must be a valid data, http, or https URL",
+                    e);
+        }
+    }
+
+    private String normalizedImageMediaType(String mediaType, int index) {
+        String value = mediaType == null ? "" : mediaType.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (!value.startsWith("image/") || value.length() == "image/".length()) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " mediaType must be an image media type");
+        }
+        for (int offset = "image/".length(); offset < value.length(); offset++) {
+            char character = value.charAt(offset);
+            if (!(Character.isLetterOrDigit(character)
+                    || character == '!'
+                    || character == '#'
+                    || character == '$'
+                    || character == '&'
+                    || character == '^'
+                    || character == '_'
+                    || character == '.'
+                    || character == '+'
+                    || character == '-')) {
+                throw new IllegalArgumentException(
+                        "Image " + (index + 1) + " mediaType is invalid");
+            }
+        }
+        return value;
+    }
+
+    private String normalizedImageName(String name, int index) {
+        String value = name == null ? "" : name.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (value.length() > 255) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " name must contain at most 255 characters");
+        }
+        for (int offset = 0; offset < value.length(); offset++) {
+            if (Character.isISOControl(value.charAt(offset))) {
+                throw new IllegalArgumentException(
+                        "Image " + (index + 1) + " name must not contain control characters");
+            }
+        }
+        return value;
+    }
+
+    private String normalizedImageDetail(String detail, int index) {
+        String value = detail == null ? "" : detail.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (!"auto".equals(value) && !"low".equals(value) && !"high".equals(value)) {
+            throw new IllegalArgumentException(
+                    "Image " + (index + 1) + " detail must be auto, low, or high");
+        }
+        return value;
+    }
+
+    private boolean startsWithIgnoreCase(String value, String prefix) {
+        return value.length() >= prefix.length()
+                && value.regionMatches(true, 0, prefix, 0, prefix.length());
+    }
+
+    private boolean hasText(String content) {
+        return content != null && !content.trim().isEmpty();
+    }
+
+    private boolean hasImages(List<MessageImage> images) {
+        return images != null && !images.isEmpty();
     }
 
     private void publishRunInputsApplied(String sessionId,

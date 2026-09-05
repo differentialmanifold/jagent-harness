@@ -1,11 +1,13 @@
 package io.github.differentialmanifold.jagentharness.spring.web.dto;
 
+import java.util.List;
 import java.util.Map;
 
 public class ChatRunRequest {
 
     private String sessionId;
     private String content;
+    private List<ChatImageRequest> images;
     private String traceId;
     private String approvalMode;
     private Map<String, Object> attributes;
@@ -24,6 +26,14 @@ public class ChatRunRequest {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public List<ChatImageRequest> getImages() {
+        return images;
+    }
+
+    public void setImages(List<ChatImageRequest> images) {
+        this.images = images;
     }
 
     public String getTraceId() {

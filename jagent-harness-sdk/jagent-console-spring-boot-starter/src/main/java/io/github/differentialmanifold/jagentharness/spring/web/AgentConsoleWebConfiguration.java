@@ -1,5 +1,9 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import java.util.EnumSet;
+
+import javax.servlet.DispatcherType;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
@@ -24,10 +28,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.Ordered;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.web.servlet.DispatcherServlet;
 
@@ -37,6 +43,23 @@ import org.springframework.web.servlet.DispatcherServlet;
 @EnableConfigurationProperties(ConsoleProperties.class)
 @Import({AgentExecutionConfiguration.class, WebConfiguration.class})
 public class AgentConsoleWebConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(name = "chatRequestBodyLimitFilterRegistration")
+    public FilterRegistrationBean<ChatRequestBodyLimitFilter> chatRequestBodyLimitFilterRegistration(
+            ConsoleProperties properties,
+            ObjectMapper objectMapper) {
+        ChatRequestBodyLimitFilter filter = new ChatRequestBodyLimitFilter(
+                properties.getMaxChatRequestBodySize().toBytes(),
+                objectMapper);
+        FilterRegistrationBean<ChatRequestBodyLimitFilter> registration =
+                new FilterRegistrationBean<ChatRequestBodyLimitFilter>(filter);
+        registration.setName("chatRequestBodyLimitFilter");
+        registration.addUrlPatterns("/api/chat/*");
+        registration.setDispatcherTypes(EnumSet.of(DispatcherType.REQUEST));
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
+        return registration;
+    }
 
     @Bean
     @ConditionalOnMissingBean

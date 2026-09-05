@@ -50,7 +50,7 @@ public class McpClient implements AutoCloseable {
         params.set("capabilities", objectMapper.createObjectNode());
         ObjectNode clientInfo = params.putObject("clientInfo");
         clientInfo.put("name", "JAgentHarness");
-        clientInfo.put("version", "0.7.2");
+        clientInfo.put("version", "0.8.0");
 
         JsonNode response = requestOnce("initialize", params, StopSignal.none());
         JsonNode result = requireResult(response, "initialize");
