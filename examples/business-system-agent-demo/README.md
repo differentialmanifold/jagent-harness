@@ -14,10 +14,14 @@ It intentionally does not depend on `jagent-console-spring-boot-starter`. The ho
 
 ## Run
 
-Set the model API key before starting the Spring Boot process. The local demo endpoint does not require an `Authorization` header, but the backend model provider does.
+Configure an OpenAI-compatible endpoint and the model identifier it accepts before starting the
+Spring Boot process. The API key is optional when the endpoint does not require Bearer
+authentication.
 
 ```bash
-export JAGENT_OPENAI_API_KEY=your_api_key
+export JAGENT_OPENAI_BASE_URL=http://127.0.0.1:10200/v1
+export JAGENT_MODEL=your-model-id
+# export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -pl examples/business-system-agent-demo -am spring-boot:run
 ```
 

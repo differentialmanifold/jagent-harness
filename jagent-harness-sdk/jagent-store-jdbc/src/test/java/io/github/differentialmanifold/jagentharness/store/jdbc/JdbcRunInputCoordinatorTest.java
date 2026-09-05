@@ -15,9 +15,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInput;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputReceipt;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputStatus;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.sqlite.SQLiteDataSource;
@@ -90,6 +92,40 @@ class JdbcRunInputCoordinatorTest {
         inputs.claimPendingInputs("session-1", "run-1", "turn-1");
         RunInputReceipt claimedRetry = inputs.submitInput("run-1", "same", "input-1");
         assertEquals(RunInputStatus.CLAIMED, claimedRetry.getStatus());
+    }
+
+    @Test
+    void persistsImagesForClaimedInputsAndIncludesThemInIdempotency() {
+        JdbcTemplate jdbcTemplate = createDatabase("image-input.db");
+        JdbcRunInputCoordinator inputs = inputCoordinator(jdbcTemplate);
+        inputs.activateRun("session-1", "run-1");
+        List<MessageImage> images = java.util.Collections.singletonList(
+                image("screen.png", "image/png", "data:image/png;base64,c2NyZWVu", "high"));
+
+        inputs.submitInput("run-1", "", images, "input-1");
+        RunInputReceipt retry = inputs.submitInput(
+                "run-1",
+                "",
+                java.util.Collections.singletonList(
+                        image("screen.png", "image/png", "data:image/png;base64,c2NyZWVu", "high")),
+                "input-1");
+
+        assertEquals(RunInputStatus.ACCEPTED, retry.getStatus());
+        List<RunInput> claimed = inputs.claimPendingInputs(
+                "session-1", "run-1", "turn-1");
+        assertEquals(1, claimed.size());
+        assertEquals("", claimed.get(0).getContent());
+        assertEquals(1, claimed.get(0).getImages().size());
+        assertImage(claimed.get(0).getImages().get(0), images.get(0));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> inputs.submitInput(
+                        "run-1",
+                        "",
+                        java.util.Collections.singletonList(
+                                image("other.png", "image/png", "data:image/png;base64,b3RoZXI=", "high")),
+                        "input-1"));
     }
 
     @Test
@@ -238,7 +274,23 @@ class JdbcRunInputCoordinatorTest {
     }
 
     private JdbcRunInputCoordinator inputCoordinator(JdbcTemplate jdbcTemplate) {
-        return new JdbcRunInputCoordinator(jdbcTemplate, storeProperties());
+        return new JdbcRunInputCoordinator(jdbcTemplate, new ObjectMapper(), storeProperties());
+    }
+
+    private MessageImage image(String name, String mediaType, String url, String detail) {
+        MessageImage image = new MessageImage();
+        image.setName(name);
+        image.setMediaType(mediaType);
+        image.setUrl(url);
+        image.setDetail(detail);
+        return image;
+    }
+
+    private void assertImage(MessageImage actual, MessageImage expected) {
+        assertEquals(expected.getName(), actual.getName());
+        assertEquals(expected.getMediaType(), actual.getMediaType());
+        assertEquals(expected.getUrl(), actual.getUrl());
+        assertEquals(expected.getDetail(), actual.getDetail());
     }
 
     private JdbcStoreProperties storeProperties() {

@@ -20,10 +20,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.github.differentialmanifold.jagentharness.core.agent.MutableStopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
@@ -35,6 +38,64 @@ import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttp
 import org.junit.jupiter.api.Test;
 
 class OpenAiCompatibleProviderTest {
+
+    @Test
+    void serializesTextMessagesAsStringsAndImageMessagesAsOpenAiContentParts() throws Exception {
+        RecordingHttpClient httpClient = new RecordingHttpClient();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
+                config(false), objectMapper, httpClient);
+
+        ModelRequest textRequest = request();
+        textRequest.setMessages(Collections.singletonList(AgentMessage.user("s1", "plain text")));
+        provider.chat(textRequest);
+
+        AgentMessage multimodal = AgentMessage.user("s1", "describe this");
+        multimodal.setImages(Collections.singletonList(new MessageImage(
+                "screen.png",
+                "image/png",
+                "data:image/png;base64,aGVsbG8=",
+                "high")));
+        ModelRequest imageRequest = request();
+        imageRequest.setMessages(Collections.singletonList(multimodal));
+        provider.chat(imageRequest);
+
+        JsonNode plainContent = objectMapper.readTree(httpClient.requestBodies.get(0))
+                .path("messages").path(0).path("content");
+        assertTrue(plainContent.isTextual());
+        assertEquals("plain text", plainContent.asText());
+
+        JsonNode parts = objectMapper.readTree(httpClient.requestBodies.get(1))
+                .path("messages").path(0).path("content");
+        assertTrue(parts.isArray());
+        assertEquals(2, parts.size());
+        assertEquals("text", parts.path(0).path("type").asText());
+        assertEquals("describe this", parts.path(0).path("text").asText());
+        assertEquals("image_url", parts.path(1).path("type").asText());
+        assertEquals("data:image/png;base64,aGVsbG8=",
+                parts.path(1).path("image_url").path("url").asText());
+        assertEquals("high", parts.path(1).path("image_url").path("detail").asText());
+    }
+
+    @Test
+    void supportsImageOnlyUserMessages() throws Exception {
+        RecordingHttpClient httpClient = new RecordingHttpClient();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
+                config(false), objectMapper, httpClient);
+        AgentMessage message = AgentMessage.user("s1", "");
+        message.setImages(Collections.singletonList(new MessageImage(
+                "photo.jpg", "image/jpeg", "data:image/jpeg;base64,aGVsbG8=")));
+        ModelRequest request = request();
+        request.setMessages(Collections.singletonList(message));
+
+        provider.chat(request);
+
+        JsonNode parts = objectMapper.readTree(httpClient.requestBodies.get(0))
+                .path("messages").path(0).path("content");
+        assertEquals(1, parts.size());
+        assertEquals("image_url", parts.path(0).path("type").asText());
+    }
 
     @Test
     void existingConstructorUsesConfiguredApiKey() {
@@ -68,6 +129,30 @@ class OpenAiCompatibleProviderTest {
         assertEquals("Bearer first-token", httpClient.authorizationHeaders.get(0));
         assertEquals("Bearer second-token", httpClient.authorizationHeaders.get(1));
         assertEquals(null, httpClient.authorizationHeaders.get(2));
+    }
+
+    @Test
+    void appendsChatCompletionsBeforeBaseUrlQueryAndPreservesFullEndpointQuery() {
+        RecordingHttpClient httpClient = new RecordingHttpClient();
+        OpenAiCompatibleProviderConfig baseConfig = config(false);
+        baseConfig.setBaseUrl("http://model.example/v1/?api-version=2026-08-01");
+        OpenAiCompatibleProvider baseProvider = new OpenAiCompatibleProvider(
+                baseConfig, new ObjectMapper(), httpClient);
+        OpenAiCompatibleProviderConfig endpointConfig = config(false);
+        endpointConfig.setBaseUrl(
+                "http://model.example/v1/chat/completions?api-version=2026-08-01");
+        OpenAiCompatibleProvider endpointProvider = new OpenAiCompatibleProvider(
+                endpointConfig, new ObjectMapper(), httpClient);
+
+        baseProvider.chat(request());
+        endpointProvider.chat(request());
+
+        assertEquals(
+                "http://model.example/v1/chat/completions?api-version=2026-08-01",
+                httpClient.requestUrls.get(0));
+        assertEquals(
+                "http://model.example/v1/chat/completions?api-version=2026-08-01",
+                httpClient.requestUrls.get(1));
     }
 
     @Test
@@ -331,10 +416,14 @@ class OpenAiCompatibleProviderTest {
     private static class RecordingHttpClient implements ModelHttpClient {
 
         private final List<String> authorizationHeaders = new ArrayList<String>();
+        private final List<String> requestBodies = new ArrayList<String>();
+        private final List<String> requestUrls = new ArrayList<String>();
 
         @Override
         public ModelHttpResponse postJson(ModelHttpRequest request) {
             authorizationHeaders.add(request.getHeaders().get("Authorization"));
+            requestBodies.add(request.getBody());
+            requestUrls.add(request.getUrl());
             return new ModelHttpResponse(
                     200,
                     "{\"choices\":[{\"message\":{\"content\":\"ok\",\"tool_calls\":[]}}]}");

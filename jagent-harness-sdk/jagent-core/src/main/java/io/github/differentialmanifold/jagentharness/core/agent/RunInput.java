@@ -1,11 +1,17 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+
 public class RunInput {
 
     private String inputId;
     private String sessionId;
     private String runId;
     private String content;
+    private List<MessageImage> images = new ArrayList<MessageImage>();
     private RunInputStatus status;
 
     public RunInput() {
@@ -16,10 +22,20 @@ public class RunInput {
                     String runId,
                     String content,
                     RunInputStatus status) {
+        this(inputId, sessionId, runId, content, null, status);
+    }
+
+    public RunInput(String inputId,
+                    String sessionId,
+                    String runId,
+                    String content,
+                    List<MessageImage> images,
+                    RunInputStatus status) {
         this.inputId = inputId;
         this.sessionId = sessionId;
         this.runId = runId;
         this.content = content;
+        setImages(images);
         this.status = status;
     }
 
@@ -53,6 +69,16 @@ public class RunInput {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public List<MessageImage> getImages() {
+        return images;
+    }
+
+    public void setImages(List<MessageImage> images) {
+        this.images = images == null
+                ? new ArrayList<MessageImage>()
+                : new ArrayList<MessageImage>(images);
     }
 
     public RunInputStatus getStatus() {

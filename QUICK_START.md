@@ -21,7 +21,8 @@ npm -v
 
 ## 1. Configure the Model
 
-The example uses an OpenAI-compatible chat completions provider. The default model is `glm-5.2`.
+The example uses a generic OpenAI-compatible Chat Completions provider. It does not select a
+provider endpoint or model for you; both values are required when the launcher starts.
 
 Create a local launcher configuration from the repository root.
 
@@ -42,18 +43,32 @@ Edit `examples/coding-tool-app/launcher/.env.coding.local` and set at least the 
 needed by your model:
 
 ```dotenv
-JAGENT_OPENAI_API_KEY=your_api_key
-JAGENT_OPENAI_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4
-JAGENT_MODEL=glm-5.2
+JAGENT_OPENAI_BASE_URL=http://127.0.0.1:10200/v1
+JAGENT_MODEL=your-model-id
+JAGENT_OPENAI_API_KEY=
 JAGENT_MODEL_STREAM_ENABLED=true
+JAGENT_MODEL_INCLUDE_USAGE=true
 ```
+
+`JAGENT_MODEL` is the identifier accepted by the endpoint and may be a local model path. The API
+key is optional; leave it empty for endpoints without Bearer authentication, or set the placeholder
+or real token required by the service.
 
 The local file supports normal `.env` comments and quoted values and is ignored by Git. Existing
 operating-system environment variables take precedence, so a value can still be overridden for one
-launch without editing the file. Application defaults are used when neither source defines a value.
+launch without editing the file. The launcher reports a configuration error before building when
+`JAGENT_OPENAI_BASE_URL` or `JAGENT_MODEL` is missing.
 
 `JAGENT_TEMPERATURE` is optional. If it is not set, the backend does not send `temperature` to the model provider.
 Set `JAGENT_MODEL_STREAM_ENABLED=false` when the OpenAI-compatible model endpoint does not support SSE streaming.
+Set `JAGENT_MODEL_INCLUDE_USAGE=false` if it rejects the optional
+`stream_options.include_usage` field.
+
+For a vision-capable model, the web chat also accepts images. Images are sent to the compatible
+endpoint as standard `image_url` content parts with a base64 `data:image/...` URL, so the selected
+model and server must support multimodal Chat Completions. Each message accepts up to four images,
+10 MB per image, and 20 MB total; `JAGENT_MAX_CHAT_REQUEST_BODY_SIZE` defaults to 32 MB for the
+encoded JSON request.
 
 ## 2. Start Coding
 
@@ -109,7 +124,7 @@ Backend, from the repository root:
 
 ```bash
 mvn -f pom.xml -pl examples/coding-tool-app -am package -DskipTests
-java -jar examples/coding-tool-app/target/coding-tool-app-0.7.2.jar
+java -jar examples/coding-tool-app/target/coding-tool-app-0.8.0.jar
 ```
 
 Frontend:

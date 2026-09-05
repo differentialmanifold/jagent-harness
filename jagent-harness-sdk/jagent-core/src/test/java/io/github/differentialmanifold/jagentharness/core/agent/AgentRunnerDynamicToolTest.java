@@ -3,7 +3,9 @@ package io.github.differentialmanifold.jagentharness.core.agent;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -20,6 +22,7 @@ import io.github.differentialmanifold.jagentharness.core.conversation.Conversati
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
@@ -199,6 +202,167 @@ class AgentRunnerDynamicToolTest {
         assertBatchBetweenTurns(events, appliedEvents.get(1), turnEnds.get(1), turnStarts.get(2));
     }
 
+    @Test
+    void preservesImagesOnInitialAndRunningUserMessages() {
+        FakeSessionStore store = new FakeSessionStore();
+        RuntimeInputModelProvider provider = new RuntimeInputModelProvider();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        MessageImage firstImage = new MessageImage(
+                " first.png ",
+                " IMAGE/PNG ",
+                " data:image/png;base64,Zmlyc3Q= ",
+                " HIGH ");
+        MessageImage secondImage = new MessageImage(
+                " second.jpg ",
+                " IMAGE/JPEG ",
+                " HTTPS://example.com/second.jpg ",
+                " LOW ");
+        RecordingRunInputSource runInputSource = new RecordingRunInputSource(Arrays.asList(
+                Collections.singletonList(new RunInput(
+                        "input-image",
+                        "s1",
+                        "run-images",
+                        "",
+                        Collections.singletonList(secondImage),
+                        RunInputStatus.CLAIMED))));
+        AgentSettings settings = new AgentSettings();
+        settings.setProvider("runtime-input-test");
+        settings.setModel("test-model");
+
+        AgentRunResult result = new AgentRunner(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(new ObjectMapper()),
+                context -> "System prompt.",
+                new ToolRegistry(),
+                providers,
+                new DefaultToolContextFactory(),
+                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
+                new ObjectMapper())
+                .run("s1", "describe", Collections.singletonList(firstImage), AgentRunOptions.builder()
+                        .runId("run-images")
+                        .runInputSource(runInputSource)
+                        .build());
+
+        assertEquals(2, result.getTurnCount());
+        MessageImage storedFirstImage = store.messages.get(0).getImages().get(0);
+        MessageImage storedSecondImage = store.messages.get(2).getImages().get(0);
+        assertNotSame(firstImage, storedFirstImage);
+        assertNotSame(secondImage, storedSecondImage);
+        assertEquals("first.png", storedFirstImage.getName());
+        assertEquals("image/png", storedFirstImage.getMediaType());
+        assertEquals("data:image/png;base64,Zmlyc3Q=", storedFirstImage.getUrl());
+        assertEquals("high", storedFirstImage.getDetail());
+        assertEquals("", store.messages.get(2).getContent());
+        assertEquals("second.jpg", storedSecondImage.getName());
+        assertEquals("image/jpeg", storedSecondImage.getMediaType());
+        assertEquals("HTTPS://example.com/second.jpg", storedSecondImage.getUrl());
+        assertEquals("low", storedSecondImage.getDetail());
+        firstImage.setName("changed.png");
+        secondImage.setName("changed.jpg");
+        assertEquals("first.png", storedFirstImage.getName());
+        assertEquals("second.jpg", storedSecondImage.getName());
+        assertEquals(1, provider.requests.get(0).getMessages().get(0).getImages().size());
+        assertEquals(1, provider.requests.get(1).getMessages().get(2).getImages().size());
+    }
+
+    @Test
+    void rejectsInvalidInitialImagesBeforePersistingTheUserMessage() {
+        List<MessageImage> invalidImages = Arrays.asList(
+                null,
+                new MessageImage("blank.png", "image/png", " "),
+                new MessageImage("remote.png", "image/png", "ftp://example.com/image.png"),
+                new MessageImage(
+                        "detail.png",
+                        "image/png",
+                        "data:image/png;base64,aGVsbG8=",
+                        "original"),
+                new MessageImage("media.png", "text/plain", "https://example.com/image.png"),
+                new MessageImage("bad\nname.png", "image/png", "https://example.com/image.png"),
+                new MessageImage(
+                        "mismatch.png",
+                        "image/jpeg",
+                        "data:image/png;base64,aGVsbG8="),
+                new MessageImage(
+                        "malformed.png",
+                        "image/png",
+                        "data:image/png;base64,not-base64"));
+
+        for (MessageImage invalidImage : invalidImages) {
+            FakeSessionStore store = new FakeSessionStore();
+            RuntimeInputModelProvider provider = new RuntimeInputModelProvider();
+            ModelProviderRegistry providers = new ModelProviderRegistry();
+            providers.register(provider);
+            AgentSettings settings = new AgentSettings();
+            settings.setProvider("runtime-input-test");
+            settings.setModel("test-model");
+            AgentRunner runner = new AgentRunner(
+                    settings,
+                    store,
+                    new DefaultAgentEventPublisher(new ObjectMapper()),
+                    context -> "System prompt.",
+                    new ToolRegistry(),
+                    providers,
+                    new DefaultToolContextFactory(),
+                    request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
+                    new ObjectMapper());
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> runner.run(
+                            "s1",
+                            "describe",
+                            Collections.singletonList(invalidImage),
+                            AgentRunOptions.empty()));
+            assertTrue(store.messages.isEmpty());
+            assertEquals(0, provider.calls);
+        }
+    }
+
+    @Test
+    void rejectsInvalidRunningImagesWithoutPersistingThemAsMessages() {
+        FakeSessionStore store = new FakeSessionStore();
+        RuntimeInputModelProvider provider = new RuntimeInputModelProvider();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        MessageImage invalidImage = new MessageImage(
+                "remote.png", "image/png", "ftp://example.com/image.png");
+        RecordingRunInputSource runInputSource = new RecordingRunInputSource(Collections.singletonList(
+                Collections.singletonList(new RunInput(
+                        "invalid-image",
+                        "s1",
+                        "run-invalid-image",
+                        "",
+                        Collections.singletonList(invalidImage),
+                        RunInputStatus.CLAIMED))));
+        AgentSettings settings = new AgentSettings();
+        settings.setProvider("runtime-input-test");
+        settings.setModel("test-model");
+        AgentRunner runner = new AgentRunner(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(new ObjectMapper()),
+                context -> "System prompt.",
+                new ToolRegistry(),
+                providers,
+                new DefaultToolContextFactory(),
+                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
+                new ObjectMapper());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> runner.run("s1", "start", AgentRunOptions.builder()
+                        .runId("run-invalid-image")
+                        .runInputSource(runInputSource)
+                        .build()));
+
+        assertEquals(2, store.messages.size());
+        assertTrue(store.messages.get(0).getImages().isEmpty());
+        assertTrue(store.messages.get(1).getImages().isEmpty());
+        assertEquals(1, provider.calls);
+    }
+
     private AgentSettings settings() {
         AgentSettings settings = new AgentSettings();
         settings.setProvider("dynamic-tool-test");
@@ -263,6 +427,7 @@ class AgentRunnerDynamicToolTest {
 
     private static class RuntimeInputModelProvider implements ModelProvider {
         private int calls;
+        private final List<ModelRequest> requests = new ArrayList<ModelRequest>();
 
         @Override
         public String getName() {
@@ -272,6 +437,7 @@ class AgentRunnerDynamicToolTest {
         @Override
         public ModelResponse chat(ModelRequest request) {
             calls++;
+            requests.add(request);
             ModelResponse response = new ModelResponse();
             response.setContent(calls == 1
                     ? "first answer"

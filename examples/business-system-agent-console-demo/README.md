@@ -15,10 +15,14 @@ The host application owns the business prompt, tools, and demo skills. The conso
 
 ## Run
 
-Set the model API key before starting the Spring Boot process.
+Configure an OpenAI-compatible endpoint and the model identifier it accepts before starting the
+Spring Boot process. The API key is optional when the endpoint does not require Bearer
+authentication.
 
 ```bash
-export JAGENT_OPENAI_API_KEY=your_api_key
+export JAGENT_OPENAI_BASE_URL=http://127.0.0.1:10200/v1
+export JAGENT_MODEL=your-model-id
+# export JAGENT_OPENAI_API_KEY=your_api_key
 mvn -pl examples/business-system-agent-console-demo -am spring-boot:run
 ```
 
@@ -52,6 +56,7 @@ export SERVER_PORT=18082
 export JAGENT_DATASOURCE_URL=jdbc:sqlite:jagent-harness.db
 export JAGENT_APPLICATION_ID=business-system-agent-console-demo
 export JAGENT_BUSINESS_CORS_ORIGIN=http://localhost:5174
-export JAGENT_MODEL=glm-5.2
+export JAGENT_OPENAI_BASE_URL=http://127.0.0.1:10200/v1
+export JAGENT_MODEL=your-model-id
 export JAGENT_MODEL_STREAM_ENABLED=true
 ```

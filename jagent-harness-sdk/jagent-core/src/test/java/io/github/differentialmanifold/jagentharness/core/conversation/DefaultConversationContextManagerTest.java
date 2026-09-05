@@ -18,6 +18,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
@@ -109,6 +110,33 @@ class DefaultConversationContextManagerTest {
         assertTrue(provider.compactionPrompt.contains("interrupted this assistant response"));
         assertEquals(1, context.getMessages().size());
         assertEquals(followUp, context.getMessages().get(0));
+    }
+
+    @Test
+    void compactionDescribesImagesWithoutEmbeddingTheirDataUrls() {
+        AgentSettings settings = compactingSettings();
+        FakeCompactionStore store = new FakeCompactionStore();
+        CapturingModelProvider provider = new CapturingModelProvider();
+        ObjectMapper objectMapper = new ObjectMapper();
+        DefaultConversationContextManager manager = new DefaultConversationContextManager(
+                settings,
+                store,
+                new DefaultAgentEventPublisher(objectMapper),
+                objectMapper);
+        AgentMessage oldUser = turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, "inspect this");
+        oldUser.setImages(Collections.singletonList(new MessageImage(
+                "screenshot.png",
+                "image/png",
+                "data:image/png;base64,do-not-copy-this-data")));
+        AgentMessage oldAssistant = turnMessage(
+                "m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "It is a screenshot");
+        AgentMessage recentUser = turnMessage(
+                "m3", "turn-2", AgentMessage.ROLE_USER, "continue");
+
+        manager.prepare(request(Arrays.asList(oldUser, oldAssistant, recentUser), provider));
+
+        assertTrue(provider.compactionPrompt.contains("[image attached: screenshot.png]"));
+        assertFalse(provider.compactionPrompt.contains("do-not-copy-this-data"));
     }
 
     @Test

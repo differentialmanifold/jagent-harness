@@ -98,6 +98,17 @@ function validateHttpUrl(value, name) {
   }
 }
 
+function requireEnvironmentValue(name) {
+  const value = (process.env[name] || "").trim();
+  if (!value) {
+    throw new Error(
+      `${name} is required. Set it in ${LOCAL_ENV_FILE} or in the operating-system environment.`
+    );
+  }
+  process.env[name] = value;
+  return value;
+}
+
 function commandInvocation(command, args) {
   if (!IS_WINDOWS || !command.toLowerCase().endsWith(".cmd")) {
     return { command, args };
@@ -521,6 +532,8 @@ function reportServiceExit(outcome) {
 async function main() {
   validateNodeVersion();
   const loadedLocalEnvironment = loadLocalEnvironment();
+  requireEnvironmentValue("JAGENT_MODEL");
+  const modelBaseUrl = requireEnvironmentValue("JAGENT_OPENAI_BASE_URL");
   const backendPort = parsePort(process.env.SERVER_PORT || "18080");
   const localBackendUrl = `http://127.0.0.1:${backendPort}`;
   const localFrontendUrl = `http://127.0.0.1:${FRONTEND_PORT}`;
@@ -536,6 +549,7 @@ async function main() {
 
   validateHttpUrl(apiTarget, "JAGENT_API_TARGET");
   validateHttpUrl(frontendUrl, "JAGENT_FRONTEND_URL");
+  validateHttpUrl(modelBaseUrl, "JAGENT_OPENAI_BASE_URL");
 
   await requireCommand(
     JAVA_COMMAND,
@@ -557,12 +571,6 @@ async function main() {
   }
   console.log(`Backend API: ${apiTarget}`);
   console.log(`Frontend:    ${frontendUrl}\n`);
-
-  if (!process.env.JAGENT_OPENAI_API_KEY) {
-    console.warn(
-      "Warning: JAGENT_OPENAI_API_KEY is not set; model calls will be unavailable.\n"
-    );
-  }
 
   const viteEntry = await ensureFrontendDependencies();
   await buildBackend();

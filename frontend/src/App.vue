@@ -47,7 +47,12 @@
           :message-revision="messageRevision"
           :approval-mode="approvalMode"
           :context-usage="contextUsage"
+          :draft-images="draftImages"
+          :adding-images="addingImages"
+          :image-error="imageError"
           @update:approval-mode="setApprovalMode"
+          @add-images="addDraftImages"
+          @remove-image="removeDraftImage"
           @send="sendMessage"
           @stop="stopMessage"
           @resolve-tool-approval="resolveToolApproval"
@@ -128,6 +133,9 @@ const {
   agentContext,
   provider,
   draft,
+  draftImages,
+  addingImages,
+  imageError,
   projectNameDraft,
   projectWorkspaceDraft,
   projectError,
@@ -167,6 +175,8 @@ const {
   submitRenameDialog,
   selectProject,
   selectSession,
+  addDraftImages,
+  removeDraftImage,
   sendMessage,
   stopMessage,
   setApprovalMode,

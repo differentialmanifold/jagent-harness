@@ -1,6 +1,6 @@
 {
   "name": "jagent-harness-ui",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
     "dev:business": "vite --host 0.0.0.0 --port 5174 --strictPort --mode business",
     "build": "vite build --mode coding",
     "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort --mode coding",
-    "test": "node --test src/utils/toolDisplay.test.js"
+    "test": "node --test"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

@@ -1,5 +1,6 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
+import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -7,10 +8,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInput;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputReceipt;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputStatus;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -30,6 +34,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     private static final String STATUS_CANCELLED = RunInputStatus.CANCELLED.name();
 
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
     private final String applicationId;
     private final RowMapper<StoredInput> inputMapper = new RowMapper<StoredInput>() {
         @Override
@@ -40,14 +45,23 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
             stored.sessionId = rs.getString("session_id");
             stored.runId = rs.getString("run_id");
             stored.content = rs.getString("content");
+            stored.images = readImages(rs.getString("images_json"));
             stored.status = RunInputStatus.valueOf(rs.getString("status"));
             return stored;
         }
     };
 
-    public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
+    public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate,
+                                   ObjectMapper objectMapper,
+                                   JdbcStoreProperties properties) {
         this.jdbcTemplate = requireJdbcTemplate(jdbcTemplate);
+        this.objectMapper = requireObjectMapper(objectMapper);
         this.applicationId = properties.requireApplicationId();
+    }
+
+    public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate,
+                                   JdbcStoreProperties properties) {
+        this(jdbcTemplate, new ObjectMapper(), properties);
     }
 
     @Override
@@ -85,24 +99,37 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
 
     @Override
     public RunInputReceipt submitInput(String runId, String content, String inputId) {
+        return submitInput(runId, content, Collections.<MessageImage>emptyList(), inputId);
+    }
+
+    @Override
+    public RunInputReceipt submitInput(String runId,
+                                       String content,
+                                       List<MessageImage> images,
+                                       String inputId) {
         requireText(runId, "runId");
-        requireText(content, "content");
         requireText(inputId, "inputId");
+        String normalizedContent = requireInputContent(content, images);
+        List<MessageImage> normalizedImages = images == null
+                ? Collections.<MessageImage>emptyList()
+                : new ArrayList<MessageImage>(images);
+        String imagesJson = writeImages(normalizedImages);
 
         long now = System.currentTimeMillis();
         int inserted;
         try {
             inserted = jdbcTemplate.update(
                     "insert into agent_run_inputs "
-                            + "(application_id, input_id, session_id, run_id, content, "
+                            + "(application_id, input_id, session_id, run_id, content, images_json, "
                             + "status, created_at, updated_at) "
-                            + "select ?, ?, active.session_id, active.run_id, ?, ?, ?, ? "
+                            + "select ?, ?, active.session_id, active.run_id, ?, ?, ?, ?, ? "
                             + "from agent_active_runs active "
                             + "where active.application_id = ? and active.run_id = ? "
                             + "and active.accepting_inputs = 1",
                     applicationId,
                     inputId,
-                    content,
+                    normalizedContent,
+                    imagesJson,
                     STATUS_ACCEPTED,
                     now,
                     now,
@@ -111,7 +138,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         } catch (DataAccessException e) {
             StoredInput concurrent = findByInputId(inputId);
             if (concurrent != null) {
-                return receiptForIdempotentSubmit(concurrent, runId, content);
+                return receiptForIdempotentSubmit(concurrent, runId, normalizedContent, normalizedImages);
             }
             throw e;
         }
@@ -119,7 +146,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         if (inserted == 0) {
             StoredInput existing = findByInputId(inputId);
             if (existing != null) {
-                return receiptForIdempotentSubmit(existing, runId, content);
+                return receiptForIdempotentSubmit(existing, runId, normalizedContent, normalizedImages);
             }
         }
 
@@ -229,13 +256,44 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
 
     private RunInputReceipt receiptForIdempotentSubmit(StoredInput existing,
                                                         String expectedRunId,
-                                                        String expectedContent) {
+                                                        String expectedContent,
+                                                        List<MessageImage> expectedImages) {
         if (!Objects.equals(expectedRunId, existing.runId)
-                || !Objects.equals(expectedContent, existing.content)) {
+                || !Objects.equals(expectedContent, existing.content)
+                || !sameImages(expectedImages, existing.images)) {
             throw new IllegalArgumentException(
                     "inputId is already used with different input: " + existing.inputId);
         }
         return new RunInputReceipt(existing.inputId, existing.status);
+    }
+
+    private boolean sameImages(List<MessageImage> left, List<MessageImage> right) {
+        List<MessageImage> normalizedLeft = left == null
+                ? Collections.<MessageImage>emptyList()
+                : left;
+        List<MessageImage> normalizedRight = right == null
+                ? Collections.<MessageImage>emptyList()
+                : right;
+        if (normalizedLeft.size() != normalizedRight.size()) {
+            return false;
+        }
+        for (int index = 0; index < normalizedLeft.size(); index++) {
+            MessageImage leftImage = normalizedLeft.get(index);
+            MessageImage rightImage = normalizedRight.get(index);
+            if (leftImage == null || rightImage == null) {
+                if (leftImage != rightImage) {
+                    return false;
+                }
+                continue;
+            }
+            if (!Objects.equals(leftImage.getName(), rightImage.getName())
+                    || !Objects.equals(leftImage.getMediaType(), rightImage.getMediaType())
+                    || !Objects.equals(leftImage.getUrl(), rightImage.getUrl())
+                    || !Objects.equals(leftImage.getDetail(), rightImage.getDetail())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static <T> T first(List<T> rows) {
@@ -249,9 +307,47 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         return jdbcTemplate;
     }
 
+    private static ObjectMapper requireObjectMapper(ObjectMapper objectMapper) {
+        if (objectMapper == null) {
+            throw new IllegalArgumentException("objectMapper must not be null");
+        }
+        return objectMapper;
+    }
+
+    private String writeImages(List<MessageImage> images) {
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(images);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to serialize run input images", e);
+        }
+    }
+
+    private List<MessageImage> readImages(String json) {
+        if (json == null || json.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<MessageImage>>() {
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to deserialize run input images", e);
+        }
+    }
+
     private static String requireText(String value, String name) {
         if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException(name + " must not be blank");
+        }
+        return value;
+    }
+
+    private static String requireInputContent(String content, List<MessageImage> images) {
+        String value = content == null ? "" : content;
+        if (value.trim().isEmpty() && (images == null || images.isEmpty())) {
+            throw new IllegalArgumentException("content or images must not be empty");
         }
         return value;
     }
@@ -270,10 +366,13 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         private String sessionId;
         private String runId;
         private String content;
+        private List<MessageImage> images;
         private RunInputStatus status;
 
         private RunInput toRunInput() {
-            return new RunInput(inputId, sessionId, runId, content, status);
+            RunInput input = new RunInput(inputId, sessionId, runId, content, status);
+            input.setImages(images);
+            return input;
         }
     }
 }

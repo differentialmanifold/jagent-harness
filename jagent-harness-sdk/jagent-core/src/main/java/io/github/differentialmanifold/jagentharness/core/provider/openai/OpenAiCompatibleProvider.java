@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
@@ -234,12 +235,42 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                     calls.add(callNode);
                 }
                 node.set("tool_calls", calls);
+            } else if (AgentMessage.ROLE_USER.equals(message.getRole())
+                    && message.getImages() != null
+                    && !message.getImages().isEmpty()) {
+                node.set("content", buildMultimodalContent(message));
             } else {
                 node.put("content", valueOrEmpty(message.getContent()));
             }
             messages.add(node);
         }
         return messages;
+    }
+
+    private ArrayNode buildMultimodalContent(AgentMessage message) {
+        ArrayNode content = objectMapper.createArrayNode();
+        if (message.getContent() != null && !message.getContent().trim().isEmpty()) {
+            ObjectNode text = objectMapper.createObjectNode();
+            text.put("type", "text");
+            text.put("text", message.getContent());
+            content.add(text);
+        }
+        for (MessageImage image : message.getImages()) {
+            if (image == null || trimToEmpty(image.getUrl()).isEmpty()) {
+                throw new ModelProviderException("Every message image must have a URL");
+            }
+            ObjectNode imagePart = objectMapper.createObjectNode();
+            imagePart.put("type", "image_url");
+            ObjectNode imageUrl = objectMapper.createObjectNode();
+            imageUrl.put("url", image.getUrl());
+            String detail = trimToEmpty(image.getDetail());
+            if (!detail.isEmpty()) {
+                imageUrl.put("detail", detail);
+            }
+            imagePart.set("image_url", imageUrl);
+            content.add(imagePart);
+        }
+        return content;
     }
 
     private ArrayNode buildTools(ModelRequest request) {
@@ -420,13 +451,26 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         if (base.isEmpty()) {
             throw new ModelProviderException("Model provider base URL is required. Configure harness.model.base-url.");
         }
-        if (base.endsWith("/chat/completions")) {
-            return base;
+
+        int queryIndex = base.indexOf('?');
+        int fragmentIndex = base.indexOf('#');
+        int suffixIndex = base.length();
+        if (queryIndex >= 0) {
+            suffixIndex = queryIndex;
         }
-        if (base.endsWith("/")) {
-            return base + "chat/completions";
+        if (fragmentIndex >= 0 && fragmentIndex < suffixIndex) {
+            suffixIndex = fragmentIndex;
         }
-        return base + "/chat/completions";
+
+        String endpoint = base.substring(0, suffixIndex);
+        String suffix = base.substring(suffixIndex);
+        while (endpoint.endsWith("/")) {
+            endpoint = endpoint.substring(0, endpoint.length() - 1);
+        }
+        if (!endpoint.endsWith("/chat/completions")) {
+            endpoint += "/chat/completions";
+        }
+        return endpoint + suffix;
     }
 
     private Map<String, String> headers() {

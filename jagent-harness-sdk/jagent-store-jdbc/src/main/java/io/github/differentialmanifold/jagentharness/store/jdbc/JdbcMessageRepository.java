@@ -7,6 +7,7 @@ import java.util.List;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -30,10 +31,10 @@ public class JdbcMessageRepository implements MessageRepository {
     public void append(AgentMessage message) {
         jdbcTemplate.update("insert into messages "
                         + "(application_id, message_id, session_id, run_id, turn_id, parent_message_id, role, content, "
-                        + "reasoning_content, "
+                        + "images_json, reasoning_content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
                         + "stop_reason, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 message.getMessageId(),
                 message.getSessionId(),
@@ -42,6 +43,7 @@ public class JdbcMessageRepository implements MessageRepository {
                 message.getParentMessageId(),
                 message.getRole(),
                 message.getContent(),
+                writeImages(message.getImages()),
                 message.getReasoningContent(),
                 message.getToolCallId(),
                 message.getToolName(),
@@ -70,6 +72,7 @@ public class JdbcMessageRepository implements MessageRepository {
             message.setParentMessageId(rs.getString("parent_message_id"));
             message.setRole(rs.getString("role"));
             message.setContent(rs.getString("content"));
+            message.setImages(readImages(rs.getString("images_json")));
             message.setReasoningContent(rs.getString("reasoning_content"));
             message.setToolCallId(rs.getString("tool_call_id"));
             message.setToolName(rs.getString("tool_name"));
@@ -100,6 +103,29 @@ public class JdbcMessageRepository implements MessageRepository {
             });
         } catch (IOException e) {
             throw new IllegalStateException("Failed to deserialize tool calls", e);
+        }
+    }
+
+    private String writeImages(List<MessageImage> images) {
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(images);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to serialize message images", e);
+        }
+    }
+
+    private List<MessageImage> readImages(String json) {
+        if (json == null || json.trim().isEmpty()) {
+            return new ArrayList<MessageImage>();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<MessageImage>>() {
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to deserialize message images", e);
         }
     }
 }

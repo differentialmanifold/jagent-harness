@@ -1,7 +1,12 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,6 +21,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalDecision;
@@ -25,6 +31,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalReques
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatApprovalRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatInputRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatInputResponse;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatImageRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ChatRunRequest;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.MediaType;
@@ -41,6 +48,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class ChatController {
 
     static final String RUN_ID_HEADER = "X-Run-Id";
+    static final int MAX_IMAGES = 4;
+    static final int MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    static final int MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_IMAGE_NAME_LENGTH = 255;
 
     private final SessionManager sessionManager;
     private final AgentHarness agentHarness;
@@ -114,6 +125,7 @@ public class ChatController {
         RunInputReceipt receipt = runInputCoordinator.submitInput(
                 requireId(runId, "runId"),
                 effectiveRequest.getContent(),
+                toMessageImages(effectiveRequest.getImages()),
                 inputId(effectiveRequest));
         return ResponseEntity.accepted().body(toResponse(receipt));
     }
@@ -144,23 +156,177 @@ public class ChatController {
 
     private ChatRunRequest requireRunRequest(ChatRunRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException("sessionId and content are required");
+            throw new IllegalArgumentException("sessionId and message content are required");
         }
         request.setSessionId(requireSessionId(request.getSessionId()));
-        if (request.getContent() == null || request.getContent().trim().isEmpty()) {
-            throw new IllegalArgumentException("content is required");
+        request.setImages(requireImages(request.getImages()));
+        String content = request.getContent() == null ? "" : request.getContent();
+        if (content.trim().isEmpty()) {
+            content = "";
+        }
+        request.setContent(content);
+        if (content.isEmpty() && request.getImages().isEmpty()) {
+            throw new IllegalArgumentException("text or at least one image is required");
         }
         sessionManager.requireSession(request.getSessionId());
         return request;
     }
 
     private ChatInputRequest requireInputRequest(ChatInputRequest request) {
-        if (request == null || request.getContent() == null
-                || request.getContent().trim().isEmpty()) {
-            throw new IllegalArgumentException("content is required");
+        if (request == null) {
+            throw new IllegalArgumentException("text or at least one image is required");
         }
-        request.setContent(request.getContent().trim());
+        request.setImages(requireImages(request.getImages()));
+        request.setContent(request.getContent() == null ? "" : request.getContent().trim());
+        if (request.getContent().isEmpty() && request.getImages().isEmpty()) {
+            throw new IllegalArgumentException("text or at least one image is required");
+        }
         return request;
+    }
+
+    private List<ChatImageRequest> requireImages(List<ChatImageRequest> images) {
+        if (images == null || images.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (images.size() > MAX_IMAGES) {
+            throw new IllegalArgumentException("A message can contain at most " + MAX_IMAGES + " images");
+        }
+
+        long totalBytes = 0L;
+        List<ChatImageRequest> normalized = new ArrayList<ChatImageRequest>(images.size());
+        for (int index = 0; index < images.size(); index++) {
+            ChatImageRequest image = images.get(index);
+            if (image == null) {
+                throw new IllegalArgumentException("Image " + (index + 1) + " is missing");
+            }
+            String url = image.getUrl() == null ? "" : image.getUrl().trim();
+            String mediaType = dataUrlMediaType(url);
+            if (mediaType == null) {
+                throw new IllegalArgumentException(
+                        "Images must be PNG, JPEG, WebP, or GIF base64 data URLs");
+            }
+            String declaredMediaType = image.getMediaType() == null
+                    ? ""
+                    : image.getMediaType().trim().toLowerCase(Locale.ROOT);
+            if (!declaredMediaType.isEmpty() && !mediaType.equals(declaredMediaType)) {
+                throw new IllegalArgumentException("Image mediaType does not match its data URL");
+            }
+            int comma = url.indexOf(',');
+            String encoded = url.substring(comma + 1);
+            int maxEncodedLength = ((MAX_IMAGE_BYTES + 2) / 3) * 4;
+            if (encoded.isEmpty() || encoded.length() > maxEncodedLength) {
+                throw new IllegalArgumentException("Each image must be at most 10 MB");
+            }
+            byte[] decoded;
+            try {
+                decoded = Base64.getDecoder().decode(encoded);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Image data is not valid base64");
+            }
+            int decodedBytes = decoded.length;
+            if (decodedBytes == 0 || decodedBytes > MAX_IMAGE_BYTES) {
+                throw new IllegalArgumentException("Each image must be at most 10 MB");
+            }
+            if (!hasImageSignature(mediaType, decoded)) {
+                throw new IllegalArgumentException(
+                        "Image data does not match its declared PNG, JPEG, WebP, or GIF format");
+            }
+            totalBytes += decodedBytes;
+            if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
+                throw new IllegalArgumentException("Images in one message must total at most 20 MB");
+            }
+
+            ChatImageRequest accepted = new ChatImageRequest();
+            accepted.setName(normalizedImageName(image.getName(), mediaType, index));
+            accepted.setMediaType(mediaType);
+            accepted.setUrl(url);
+            accepted.setDetail(normalizedImageDetail(image.getDetail()));
+            normalized.add(accepted);
+        }
+        return normalized;
+    }
+
+    private String dataUrlMediaType(String url) {
+        String value = url == null ? "" : url;
+        String[] supported = new String[]{"image/png", "image/jpeg", "image/webp", "image/gif"};
+        for (String mediaType : supported) {
+            String prefix = "data:" + mediaType + ";base64,";
+            if (value.length() >= prefix.length()
+                    && value.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                return mediaType;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasImageSignature(String mediaType, byte[] data) {
+        if ("image/png".equals(mediaType)) {
+            return startsWith(data, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+        }
+        if ("image/jpeg".equals(mediaType)) {
+            return startsWith(data, 0xff, 0xd8, 0xff);
+        }
+        if ("image/gif".equals(mediaType)) {
+            return startsWith(data, 0x47, 0x49, 0x46, 0x38, 0x37, 0x61)
+                    || startsWith(data, 0x47, 0x49, 0x46, 0x38, 0x39, 0x61);
+        }
+        return "image/webp".equals(mediaType)
+                && startsWith(data, 0x52, 0x49, 0x46, 0x46)
+                && startsWithAt(data, 8, 0x57, 0x45, 0x42, 0x50);
+    }
+
+    private boolean startsWith(byte[] data, int... signature) {
+        return startsWithAt(data, 0, signature);
+    }
+
+    private boolean startsWithAt(byte[] data, int offset, int... signature) {
+        if (data == null || offset < 0 || data.length - offset < signature.length) {
+            return false;
+        }
+        for (int index = 0; index < signature.length; index++) {
+            if ((data[offset + index] & 0xff) != signature[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String normalizedImageName(String name, String mediaType, int index) {
+        String value = name == null ? "" : name.trim();
+        if (value.length() > MAX_IMAGE_NAME_LENGTH) {
+            throw new IllegalArgumentException("Image names must contain at most 255 characters");
+        }
+        if (!value.isEmpty()) {
+            return value;
+        }
+        String extension = "image/jpeg".equals(mediaType) ? "jpg" : mediaType.substring("image/".length());
+        return "image-" + (index + 1) + "." + extension;
+    }
+
+    private String normalizedImageDetail(String detail) {
+        String value = detail == null ? "" : detail.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (!"auto".equals(value) && !"low".equals(value) && !"high".equals(value)) {
+            throw new IllegalArgumentException("Image detail must be auto, low, or high");
+        }
+        return value;
+    }
+
+    private List<MessageImage> toMessageImages(List<ChatImageRequest> images) {
+        if (images == null || images.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<MessageImage> result = new ArrayList<MessageImage>(images.size());
+        for (ChatImageRequest image : images) {
+            result.add(new MessageImage(
+                    image.getName(),
+                    image.getMediaType(),
+                    image.getUrl(),
+                    image.getDetail()));
+        }
+        return result;
     }
 
     private String requireSessionId(String sessionId) {
@@ -231,7 +397,11 @@ public class ChatController {
                             runId,
                             emitter))
                     .build();
-            agentHarness.run(sessionId, request.getContent(), options);
+            agentHarness.run(
+                    sessionId,
+                    request.getContent(),
+                    toMessageImages(request.getImages()),
+                    options);
             stopHandle.throwIfAborted();
         } finally {
             runInputCoordinator.closeRun(sessionId, runId);

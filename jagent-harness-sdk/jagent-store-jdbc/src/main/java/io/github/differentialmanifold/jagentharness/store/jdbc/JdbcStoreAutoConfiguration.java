@@ -85,8 +85,9 @@ public class JdbcStoreAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(RunInputCoordinator.class)
     public JdbcRunInputCoordinator jdbcRunInputCoordinator(JdbcTemplate jdbcTemplate,
+                                                           ObjectMapper objectMapper,
                                                            JdbcStoreProperties storeProperties) {
-        return new JdbcRunInputCoordinator(jdbcTemplate, storeProperties);
+        return new JdbcRunInputCoordinator(jdbcTemplate, objectMapper, storeProperties);
     }
 
     @Bean

@@ -5,11 +5,24 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderE
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class AgentConsoleExceptionHandler {
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> unreadableRequest(HttpMessageNotReadableException exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof ChatRequestBodyLimitFilter.RequestBodyTooLargeException) {
+                return error(HttpStatus.PAYLOAD_TOO_LARGE, (Exception) current);
+            }
+            current = current.getCause();
+        }
+        return serverError(exception);
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> badRequest(Exception exception) {

@@ -9,6 +9,9 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 
 public class TokenEstimator {
 
+    /** Conservative placeholder used before a provider reports actual image token usage. */
+    static final int ESTIMATED_TOKENS_PER_IMAGE = 1024;
+
     public int estimateText(String text) {
         if (text == null || text.isEmpty()) {
             return 0;
@@ -63,6 +66,9 @@ public class TokenEstimator {
         total += estimateText(message.getContent());
         total += estimateText(message.getToolCallId());
         total += estimateText(message.getToolName());
+        if (message.getImages() != null) {
+            total += message.getImages().size() * ESTIMATED_TOKENS_PER_IMAGE;
+        }
         if (message.getToolCalls() != null) {
             for (ToolCall call : message.getToolCalls()) {
                 total += estimateText(call.getToolCallId());
