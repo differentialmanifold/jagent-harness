@@ -1,0 +1,15 @@
+server:
+  address: 127.0.0.1
+  port: ${CODING_CLIENT_PORT:18180}
+spring:
+  servlet:
+    multipart:
+      enabled: false
+  application:
+    name: jagent-coding-client
+coding:
+  server-url: ${JAGENT_SERVER_URL:http://127.0.0.1:18181}
+  token: ${JAGENT_CLIENT_TOKEN:}
+  tools:
+    search:
+      rg-path: ${JAGENT_RG_PATH:}

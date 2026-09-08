@@ -5,13 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
@@ -28,6 +21,12 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class DefaultConversationContextManagerTest {
@@ -36,15 +35,13 @@ class DefaultConversationContextManagerTest {
     void convertsAbortedAssistantMessageIntoModelContext() {
         DefaultConversationContextManager manager = manager();
         AgentMessage originalUser = AgentMessage.user("s1", "Start a long answer");
-        AgentMessage interrupted = AgentMessage.assistant(
-                "s1",
-                "Partial answer",
-                Collections.emptyList());
+        AgentMessage interrupted =
+                AgentMessage.assistant("s1", "Partial answer", Collections.emptyList());
         interrupted.setStopReason(AgentMessage.STOP_REASON_ABORTED);
         AgentMessage followUp = AgentMessage.user("s1", "Now answer something else");
 
-        ConversationContext context = manager.prepare(request(
-                Arrays.asList(originalUser, interrupted, followUp)));
+        ConversationContext context =
+                manager.prepare(request(Arrays.asList(originalUser, interrupted, followUp)));
 
         List<AgentMessage> messages = context.getMessages();
         assertEquals(4, messages.size());
@@ -64,8 +61,8 @@ class DefaultConversationContextManagerTest {
         interrupted.setStopReason(AgentMessage.STOP_REASON_ABORTED);
         AgentMessage followUp = AgentMessage.user("s1", "Continue with another task");
 
-        ConversationContext context = manager.prepare(request(
-                Arrays.asList(originalUser, interrupted, followUp)));
+        ConversationContext context =
+                manager.prepare(request(Arrays.asList(originalUser, interrupted, followUp)));
 
         List<AgentMessage> messages = context.getMessages();
         assertEquals(3, messages.size());
@@ -85,25 +82,29 @@ class DefaultConversationContextManagerTest {
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
 
         AgentMessage originalUser = AgentMessage.user("s1", "Start a long answer");
-        AgentMessage interrupted = AgentMessage.assistant("s1", "Partial answer", Collections.emptyList());
+        AgentMessage interrupted =
+                AgentMessage.assistant("s1", "Partial answer", Collections.emptyList());
         interrupted.setStopReason(AgentMessage.STOP_REASON_ABORTED);
         AgentMessage followUp = AgentMessage.user("s1", "Start another task");
 
-        ConversationContext context = manager.prepare(new ConversationContextRequest(
-                "s1",
-                "r1",
-                "t1",
-                "System prompt",
-                Arrays.asList(originalUser, interrupted, followUp),
-                Collections.<ToolDefinition>emptyList(),
-                provider));
+        ConversationContext context =
+                manager.prepare(
+                        new ConversationContextRequest(
+                                "s1",
+                                "r1",
+                                "t1",
+                                "System prompt",
+                                Arrays.asList(originalUser, interrupted, followUp),
+                                Collections.<ToolDefinition>emptyList(),
+                                provider));
 
         assertEquals(interrupted.getMessageId(), store.cursorMessageId);
         assertTrue(provider.compactionPrompt.contains("stopReason=aborted"));
@@ -118,20 +119,22 @@ class DefaultConversationContextManagerTest {
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
         AgentMessage oldUser = turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, "inspect this");
-        oldUser.setImages(Collections.singletonList(new MessageImage(
-                "screenshot.png",
-                "image/png",
-                "data:image/png;base64,do-not-copy-this-data")));
-        AgentMessage oldAssistant = turnMessage(
-                "m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "It is a screenshot");
-        AgentMessage recentUser = turnMessage(
-                "m3", "turn-2", AgentMessage.ROLE_USER, "continue");
+        oldUser.setImages(
+                Collections.singletonList(
+                        new MessageImage(
+                                "screenshot.png",
+                                "image/png",
+                                "data:image/png;base64,do-not-copy-this-data")));
+        AgentMessage oldAssistant =
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "It is a screenshot");
+        AgentMessage recentUser = turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "continue");
 
         manager.prepare(request(Arrays.asList(oldUser, oldAssistant, recentUser), provider));
 
@@ -146,20 +149,27 @@ class DefaultConversationContextManagerTest {
         CapturingModelProvider provider = new CapturingModelProvider();
         provider.summary = "  ";
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
 
-        List<AgentMessage> messages = Arrays.asList(
-                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("old context ", 100)),
-                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "old response"),
-                turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "current request"));
+        List<AgentMessage> messages =
+                Arrays.asList(
+                        turnMessage(
+                                "m1",
+                                "turn-1",
+                                AgentMessage.ROLE_USER,
+                                repeated("old context ", 100)),
+                        turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "old response"),
+                        turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "current request"));
 
-        ModelProviderException error = assertThrows(
-                ModelProviderException.class,
-                () -> manager.prepare(request(messages, provider)));
+        ModelProviderException error =
+                assertThrows(
+                        ModelProviderException.class,
+                        () -> manager.prepare(request(messages, provider)));
 
         assertTrue(error.getMessage().contains("empty summary"));
         assertEquals(0, store.saveCount);
@@ -173,34 +183,41 @@ class DefaultConversationContextManagerTest {
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
 
-        AgentMessage firstUser = turnMessage(
-                "m1", "turn-1", AgentMessage.ROLE_USER, repeated("first turn ", 100));
-        AgentMessage firstAssistant = turnMessage(
-                "m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "first answer");
-        AgentMessage largeUser = turnMessage(
-                "m3", "turn-2", AgentMessage.ROLE_USER, repeated("large middle turn ", 100));
-        AgentMessage largeAssistant = turnMessage(
-                "m4", "turn-2", AgentMessage.ROLE_ASSISTANT, "middle answer");
-        AgentMessage recentUser = turnMessage(
-                "m5", "turn-3", AgentMessage.ROLE_USER, "recent question");
-        AgentMessage recentAssistant = turnMessage(
-                "m6", "turn-3", AgentMessage.ROLE_ASSISTANT, "recent answer");
+        AgentMessage firstUser =
+                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("first turn ", 100));
+        AgentMessage firstAssistant =
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "first answer");
+        AgentMessage largeUser =
+                turnMessage(
+                        "m3",
+                        "turn-2",
+                        AgentMessage.ROLE_USER,
+                        repeated("large middle turn ", 100));
+        AgentMessage largeAssistant =
+                turnMessage("m4", "turn-2", AgentMessage.ROLE_ASSISTANT, "middle answer");
+        AgentMessage recentUser =
+                turnMessage("m5", "turn-3", AgentMessage.ROLE_USER, "recent question");
+        AgentMessage recentAssistant =
+                turnMessage("m6", "turn-3", AgentMessage.ROLE_ASSISTANT, "recent answer");
 
-        ConversationContext context = manager.prepare(request(
-                Arrays.asList(
-                        firstUser,
-                        firstAssistant,
-                        largeUser,
-                        largeAssistant,
-                        recentUser,
-                        recentAssistant),
-                provider));
+        ConversationContext context =
+                manager.prepare(
+                        request(
+                                Arrays.asList(
+                                        firstUser,
+                                        firstAssistant,
+                                        largeUser,
+                                        largeAssistant,
+                                        recentUser,
+                                        recentAssistant),
+                                provider));
 
         assertEquals("m4", store.cursorMessageId);
         assertTrue(provider.compactionPrompt.contains("first turn"));
@@ -216,15 +233,25 @@ class DefaultConversationContextManagerTest {
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
 
-        List<AgentMessage> messages = Arrays.asList(
-                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("large request ", 100)),
-                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, repeated("large answer ", 100)));
+        List<AgentMessage> messages =
+                Arrays.asList(
+                        turnMessage(
+                                "m1",
+                                "turn-1",
+                                AgentMessage.ROLE_USER,
+                                repeated("large request ", 100)),
+                        turnMessage(
+                                "m2",
+                                "turn-1",
+                                AgentMessage.ROLE_ASSISTANT,
+                                repeated("large answer ", 100)));
 
         ConversationContext context = manager.prepare(request(messages, provider));
 
@@ -238,17 +265,19 @@ class DefaultConversationContextManagerTest {
         AgentSettings settings = new AgentSettings();
         settings.setCompactionEnabled(false);
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                new NoopCompactionStore(),
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
-        AgentMessage toolResult = turnMessage(
-                "m2", "turn-1", AgentMessage.ROLE_TOOL, repeated("x", 2500));
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        new NoopCompactionStore(),
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
+        AgentMessage toolResult =
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_TOOL, repeated("x", 2500));
         toolResult.setToolName("read");
         toolResult.setToolCallId("call-1");
 
-        ConversationContext context = manager.prepare(request(Collections.singletonList(toolResult)));
+        ConversationContext context =
+                manager.prepare(request(Collections.singletonList(toolResult)));
 
         AgentMessage modelToolResult = context.getMessages().get(0);
         assertEquals(2500, modelToolResult.getContent().length());
@@ -262,19 +291,19 @@ class DefaultConversationContextManagerTest {
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
         ObjectMapper objectMapper = new ObjectMapper();
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper);
-        AgentMessage oldUser = turnMessage(
-                "m1", "turn-1", AgentMessage.ROLE_USER, "Read the large result");
-        AgentMessage toolResult = turnMessage(
-                "m2", "turn-1", AgentMessage.ROLE_TOOL, repeated("x", 2500));
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper);
+        AgentMessage oldUser =
+                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, "Read the large result");
+        AgentMessage toolResult =
+                turnMessage("m2", "turn-1", AgentMessage.ROLE_TOOL, repeated("x", 2500));
         toolResult.setToolName("read");
         toolResult.setToolCallId("call-1");
-        AgentMessage currentUser = turnMessage(
-                "m3", "turn-2", AgentMessage.ROLE_USER, "Continue");
+        AgentMessage currentUser = turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "Continue");
 
         manager.prepare(request(Arrays.asList(oldUser, toolResult, currentUser), provider));
 
@@ -297,26 +326,30 @@ class DefaultConversationContextManagerTest {
         RetryOnceCompactionProvider provider = new RetryOnceCompactionProvider();
         ObjectMapper objectMapper = new ObjectMapper();
         DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                store,
-                eventPublisher,
-                objectMapper);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings, store, eventPublisher, objectMapper);
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        List<AgentMessage> messages = Arrays.asList(
-                turnMessage("m1", "turn-1", AgentMessage.ROLE_USER, repeated("old context ", 100)),
-                turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "old answer"),
-                turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "current request"));
+        List<AgentMessage> messages =
+                Arrays.asList(
+                        turnMessage(
+                                "m1",
+                                "turn-1",
+                                AgentMessage.ROLE_USER,
+                                repeated("old context ", 100)),
+                        turnMessage("m2", "turn-1", AgentMessage.ROLE_ASSISTANT, "old answer"),
+                        turnMessage("m3", "turn-2", AgentMessage.ROLE_USER, "current request"));
 
-        ConversationContext context = eventPublisher.withEventConsumer(
-                events::add,
-                () -> manager.prepare(request(messages, provider)));
+        ConversationContext context =
+                eventPublisher.withEventConsumer(
+                        events::add, () -> manager.prepare(request(messages, provider)));
 
         assertEquals(2, provider.attempts.get());
         assertEquals(1, store.saveCount);
         assertEquals("summary after retry", store.summary);
         assertEquals(1, context.getMessages().size());
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.MODEL_RETRY.equals(event.getType())));
+        assertTrue(
+                events.stream().anyMatch(event -> AgentEvent.MODEL_RETRY.equals(event.getType())));
     }
 
     @Test
@@ -328,20 +361,23 @@ class DefaultConversationContextManagerTest {
         usageStore.latest = new ModelCallUsage();
         usageStore.latest.setMessageId("m2");
         usageStore.latest.setActualContextTokens(40);
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                new NoopCompactionStore(),
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper,
-                usageStore);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        new NoopCompactionStore(),
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper,
+                        usageStore);
 
         AgentMessage user = message("m1", AgentMessage.ROLE_USER, "first");
         AgentMessage assistant = message("m2", AgentMessage.ROLE_ASSISTANT, "answer");
         AgentMessage followUp = message("m3", AgentMessage.ROLE_USER, "new follow up");
 
-        ConversationContext context = manager.prepare(request(Arrays.asList(user, assistant, followUp)));
+        ConversationContext context =
+                manager.prepare(request(Arrays.asList(user, assistant, followUp)));
 
-        int deltaTokens = new TokenEstimator().estimateMessages(Collections.singletonList(followUp));
+        int deltaTokens =
+                new TokenEstimator().estimateMessages(Collections.singletonList(followUp));
         assertEquals(40 + deltaTokens, context.getEstimatedTokens());
         assertEquals(ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE, context.getEstimateSource());
     }
@@ -355,12 +391,13 @@ class DefaultConversationContextManagerTest {
         usageStore.latest = new ModelCallUsage();
         usageStore.latest.setMessageId("missing");
         usageStore.latest.setActualContextTokens(40);
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                new NoopCompactionStore(),
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper,
-                usageStore);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        new NoopCompactionStore(),
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper,
+                        usageStore);
 
         AgentMessage user = message("m1", AgentMessage.ROLE_USER, "first");
 
@@ -384,40 +421,47 @@ class DefaultConversationContextManagerTest {
         usageStore.latest.setMessageId("m4");
         usageStore.latest.setActualContextTokens(100);
         usageStore.latest.setCreatedAt(Instant.EPOCH);
-        DefaultConversationContextManager manager = new DefaultConversationContextManager(
-                settings,
-                compactionStore,
-                new DefaultAgentEventPublisher(objectMapper),
-                objectMapper,
-                usageStore);
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings,
+                        compactionStore,
+                        new DefaultAgentEventPublisher(objectMapper),
+                        objectMapper,
+                        usageStore);
 
         AgentMessage oldUser = message("m1", AgentMessage.ROLE_USER, "old user context");
-        AgentMessage oldAssistant = message("m2", AgentMessage.ROLE_ASSISTANT, "old assistant context");
+        AgentMessage oldAssistant =
+                message("m2", AgentMessage.ROLE_ASSISTANT, "old assistant context");
         AgentMessage recentUser = message("m3", AgentMessage.ROLE_USER, "recent user context");
-        AgentMessage recentAssistant = message("m4", AgentMessage.ROLE_ASSISTANT, "recent assistant context");
+        AgentMessage recentAssistant =
+                message("m4", AgentMessage.ROLE_ASSISTANT, "recent assistant context");
 
-        ConversationContext context = manager.prepare(new ConversationContextRequest(
-                "s1",
-                "r1",
-                "t1",
-                "System prompt",
-                Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
-                Collections.<ToolDefinition>emptyList(),
-                new CapturingModelProvider()));
+        ConversationContext context =
+                manager.prepare(
+                        new ConversationContextRequest(
+                                "s1",
+                                "r1",
+                                "t1",
+                                "System prompt",
+                                Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
+                                Collections.<ToolDefinition>emptyList(),
+                                new CapturingModelProvider()));
 
         assertEquals("m2", compactionStore.cursorMessageId);
         assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, context.getEstimateSource());
         assertEquals(context.getRawEstimatedTokens(), context.getEstimatedTokens());
         assertEquals(1, usageStore.findCount);
 
-        ConversationContext nextContext = manager.prepare(new ConversationContextRequest(
-                "s1",
-                "r1",
-                "t2",
-                "System prompt",
-                Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
-                Collections.<ToolDefinition>emptyList(),
-                new CapturingModelProvider()));
+        ConversationContext nextContext =
+                manager.prepare(
+                        new ConversationContextRequest(
+                                "s1",
+                                "r1",
+                                "t2",
+                                "System prompt",
+                                Arrays.asList(oldUser, oldAssistant, recentUser, recentAssistant),
+                                Collections.<ToolDefinition>emptyList(),
+                                new CapturingModelProvider()));
 
         assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, nextContext.getEstimateSource());
         assertEquals(nextContext.getRawEstimatedTokens(), nextContext.getEstimatedTokens());
@@ -438,7 +482,8 @@ class DefaultConversationContextManagerTest {
         return request(messages, null);
     }
 
-    private ConversationContextRequest request(List<AgentMessage> messages, ModelProvider provider) {
+    private ConversationContextRequest request(
+            List<AgentMessage> messages, ModelProvider provider) {
         return new ConversationContextRequest(
                 "s1",
                 "r1",
@@ -458,10 +503,8 @@ class DefaultConversationContextManagerTest {
         return message;
     }
 
-    private static AgentMessage turnMessage(String messageId,
-                                            String turnId,
-                                            String role,
-                                            String content) {
+    private static AgentMessage turnMessage(
+            String messageId, String turnId, String role, String content) {
         AgentMessage message = message(messageId, role, content);
         message.setTurnId(turnId);
         return message;
@@ -525,8 +568,7 @@ class DefaultConversationContextManagerTest {
         }
 
         @Override
-        public void append(ModelCallUsage usage) {
-        }
+        public void append(ModelCallUsage usage) {}
     }
 
     private static class CapturingModelProvider implements ModelProvider {
@@ -564,9 +606,8 @@ class DefaultConversationContextManagerTest {
         }
 
         @Override
-        public ModelResponse chat(ModelRequest request,
-                                  ModelDeltaConsumer deltaConsumer,
-                                  StopSignal stopSignal) {
+        public ModelResponse chat(
+                ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
             if (attempts.incrementAndGet() == 1) {
                 throw new ModelProviderException("temporary compaction failure", null, true);
             }

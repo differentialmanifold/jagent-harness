@@ -2,7 +2,7 @@ package io.github.differentialmanifold.jagentharness.spring;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "harness")
+@ConfigurationProperties(prefix = "agent")
 public class HarnessProperties {
 
     private Model model = new Model();
@@ -227,5 +227,4 @@ public class HarnessProperties {
             this.targetTokens = targetTokens;
         }
     }
-
 }

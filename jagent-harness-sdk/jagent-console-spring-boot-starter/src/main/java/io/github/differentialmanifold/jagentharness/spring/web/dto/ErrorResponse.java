@@ -6,8 +6,7 @@ public class ErrorResponse {
     private String error;
     private String message;
 
-    public ErrorResponse() {
-    }
+    public ErrorResponse() {}
 
     public ErrorResponse(int status, String error, String message) {
         this.status = status;

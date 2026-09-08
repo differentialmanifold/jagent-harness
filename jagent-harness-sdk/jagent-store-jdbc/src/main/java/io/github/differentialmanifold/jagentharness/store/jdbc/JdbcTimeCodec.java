@@ -4,8 +4,7 @@ import java.time.Instant;
 
 final class JdbcTimeCodec {
 
-    private JdbcTimeCodec() {
-    }
+    private JdbcTimeCodec() {}
 
     static String encode(Instant value) {
         return value == null ? null : value.toString();

@@ -1,78 +1,30 @@
-# Releasing
+# Releasing Maven artifacts
 
-JAgentHarness publishes only the SDK reactor under `jagent-harness-sdk/`.
-The root development reactor, examples, frontend, and design notes are not published to Maven Central.
+Framework artifacts use the `io.github.differentialmanifold` group. The root and SDK parent POMs, shared `jagent-api`, Java client, and server modules are published together. Applications under `examples/` are excluded from publication.
 
-## Prerequisites
+## Verify locally
 
-Create these GitHub repository secrets before publishing:
+Run the checks in the [development guide](README.md#development), then build release attachments without uploading or signing:
 
-| Secret | Description |
-| --- | --- |
-| `CENTRAL_USERNAME` | Sonatype Central Portal user token username. |
-| `CENTRAL_PASSWORD` | Sonatype Central Portal user token password. |
-| `GPG_PRIVATE_KEY` | ASCII-armored GPG private key used to sign artifacts. |
-| `GPG_PASSPHRASE` | Passphrase for the GPG private key. |
-
-Export the signing key with:
-
-```zsh
-gpg --armor --export-secret-keys <KEY_ID>
+```sh
+mvn -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release -Dgpg.skip verify
 ```
 
-Release signing uses the Maven GPG Plugin `bc` signer. The armored private key is
-passed to Maven through `MAVEN_GPG_KEY`; the workflow does not import the key into
-`~/.gnupg`.
+The release profile creates source and Javadoc JARs. Normal `package`, `verify`, and `install` builds do not upload artifacts.
 
-The Sonatype namespace must allow publishing under:
+## Publish
 
-```text
-io.github.differentialmanifold
+1. Set a non-SNAPSHOT version in the root POM. Update module parent versions, framework dependency versions, and the `jagent.version` property in `examples/server-demo/pom.xml` consistently.
+2. Verify the complete build and tests.
+3. Configure repository secrets: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE`.
+4. Push a `v<version>` tag or manually run the **Publish Maven artifacts** workflow. A tag must match the root POM version.
+
+The workflow runs the checks and then publishes with:
+
+```sh
+mvn -B -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release deploy
 ```
 
-## Release Flow
+For local publication, configure the `central` server in Maven settings and provide `MAVEN_GPG_KEY` and `MAVEN_GPG_PASSPHRASE` in the environment. The Central plugin has `autoPublish=true`; a release `deploy` uploads and publishes the artifacts.
 
-1. Create a release branch from `main`.
-
-   ```zsh
-   git checkout main
-   git pull
-   git checkout -b release/0.2.1
-   ```
-
-2. Set Maven versions to the release version.
-
-   ```zsh
-   mvn -f pom.xml versions:set -DnewVersion=0.2.1 -DgenerateBackupPoms=false
-   ```
-
-3. Run local checks.
-
-   ```zsh
-   mvn -f pom.xml test
-   mvn -B -f jagent-harness-sdk/pom.xml -P release -Dgpg.skip verify
-   ```
-
-4. Open a pull request into `main` and wait for CI to pass.
-
-   The `BC Signing` workflow performs a real release-profile signing check with
-   the `bc` signer, but it does not deploy artifacts.
-
-5. Squash merge the pull request.
-
-6. Tag the release from `main`.
-
-   ```zsh
-   git checkout main
-   git pull
-   git tag -a v0.2.1 -m "Release v0.2.1"
-   git push origin v0.2.1
-   ```
-
-7. The `Publish SDK` GitHub Actions workflow publishes the SDK modules to Maven Central.
-
-8. After the release is published, open a follow-up pull request to bump development versions.
-
-   ```zsh
-   mvn -f pom.xml versions:set -DnewVersion=0.2.2-SNAPSHOT -DgenerateBackupPoms=false
-   ```
+Keep the API version, JSON Schema, OpenAPI, and protocol fixtures consistent when changing the public contract.

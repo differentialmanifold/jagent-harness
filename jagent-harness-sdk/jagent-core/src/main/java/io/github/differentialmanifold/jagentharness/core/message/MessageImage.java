@@ -4,7 +4,7 @@ package io.github.differentialmanifold.jagentharness.core.message;
  * An image attached to a user message.
  *
  * <p>The URL may be an HTTP(S) URL or a {@code data:image/...;base64,...} URL. Web-facing
- * integrations should apply their own trust and size limits before creating an instance.</p>
+ * integrations should apply their own trust and size limits before creating an instance.
  */
 public class MessageImage {
 
@@ -13,8 +13,7 @@ public class MessageImage {
     private String url;
     private String detail;
 
-    public MessageImage() {
-    }
+    public MessageImage() {}
 
     public MessageImage(String name, String mediaType, String url) {
         this(name, mediaType, url, null);

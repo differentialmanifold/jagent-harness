@@ -1,8 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.event;
 
-import java.time.Instant;
-
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
+import java.time.Instant;
 
 public class AgentEvent {
 
@@ -35,11 +34,8 @@ public class AgentEvent {
     private String payloadJson;
     private Instant createdAt;
 
-    public static AgentEvent of(String sessionId,
-                                String runId,
-                                String turnId,
-                                String type,
-                                String payloadJson) {
+    public static AgentEvent of(
+            String sessionId, String runId, String turnId, String type, String payloadJson) {
         AgentEvent event = new AgentEvent();
         event.setEventId(Ids.newId("evt"));
         event.setSessionId(sessionId);

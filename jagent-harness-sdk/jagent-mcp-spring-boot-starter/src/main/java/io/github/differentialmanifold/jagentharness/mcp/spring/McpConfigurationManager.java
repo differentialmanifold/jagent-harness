@@ -1,8 +1,13 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -10,12 +15,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
-import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 
 public class McpConfigurationManager {
 
@@ -27,11 +26,13 @@ public class McpConfigurationManager {
     private final ObjectMapper objectMapper;
     private final McpConfigValidator validator = new McpConfigValidator();
 
-    public McpConfigurationManager(Path configRoot,
-                                   String configFile,
-                                   KnowledgeFileStore knowledgeFileStore,
-                                   ObjectMapper objectMapper) {
-        this.configFile = configFile == null || configFile.trim().isEmpty() ? "mcp.json" : configFile.trim();
+    public McpConfigurationManager(
+            Path configRoot,
+            String configFile,
+            KnowledgeFileStore knowledgeFileStore,
+            ObjectMapper objectMapper) {
+        this.configFile =
+                configFile == null || configFile.trim().isEmpty() ? "mcp.json" : configFile.trim();
         this.knowledgeFileStore = knowledgeFileStore;
         this.objectMapper = objectMapper;
     }
@@ -43,9 +44,10 @@ public class McpConfigurationManager {
     public synchronized McpConfigSnapshot runtimeSnapshot(String projectId) {
         String normalizedProjectId = projectId == null ? "" : projectId.trim();
         String globalContent = configContent(KnowledgeScope.global());
-        String projectContent = normalizedProjectId.isEmpty()
-                ? null
-                : configContent(KnowledgeScope.project(normalizedProjectId));
+        String projectContent =
+                normalizedProjectId.isEmpty()
+                        ? null
+                        : configContent(KnowledgeScope.project(normalizedProjectId));
         return merge(
                 readContent(globalContent, "global database " + configFile),
                 readContent(projectContent, "project database " + configFile),
@@ -55,16 +57,15 @@ public class McpConfigurationManager {
     public McpScopeConfigSnapshot scopeSnapshot(KnowledgeScope scope) {
         KnowledgeScope selectedScope = scope == null ? KnowledgeScope.global() : scope;
         String content = configContent(selectedScope);
-        Map<String, McpServerConfig> configs = readContent(
-                content,
-                selectedScope.getType() + " database " + configFile);
+        Map<String, McpServerConfig> configs =
+                readContent(content, selectedScope.getType() + " database " + configFile);
         String source = selectedScope.isGlobal() ? SOURCE_GLOBAL : SOURCE_PROJECT;
         Map<String, McpConfigEntry> servers = new LinkedHashMap<String, McpConfigEntry>();
         for (Map.Entry<String, McpServerConfig> entry : configs.entrySet()) {
-            servers.put(entry.getKey(), new McpConfigEntry(
-                    entry.getValue().copy(),
-                    source,
-                    Collections.<String>emptyList()));
+            servers.put(
+                    entry.getKey(),
+                    new McpConfigEntry(
+                            entry.getValue().copy(), source, Collections.<String>emptyList()));
         }
         return new McpScopeConfigSnapshot(servers, content);
     }
@@ -82,7 +83,8 @@ public class McpConfigurationManager {
             validator.validate(entry.getKey(), entry.getValue());
         }
         if (knowledgeFileStore == null) {
-            throw new IllegalStateException("KnowledgeFileStore is required for database MCP configuration");
+            throw new IllegalStateException(
+                    "KnowledgeFileStore is required for database MCP configuration");
         }
         String storedContent = content.endsWith("\n") ? content : content + "\n";
         return knowledgeFileStore.writeFile(scope, configFile, storedContent, "application/json");
@@ -94,7 +96,8 @@ public class McpConfigurationManager {
 
     public void deleteDatabase(KnowledgeScope scope) {
         if (knowledgeFileStore == null) {
-            throw new IllegalStateException("KnowledgeFileStore is required for database MCP configuration");
+            throw new IllegalStateException(
+                    "KnowledgeFileStore is required for database MCP configuration");
         }
         knowledgeFileStore.deleteFile(scope, configFile);
     }
@@ -103,9 +106,10 @@ public class McpConfigurationManager {
         return validator.validateAndResolve(name, config);
     }
 
-    private McpConfigSnapshot merge(Map<String, McpServerConfig> global,
-                                    Map<String, McpServerConfig> project,
-                                    String fingerprint) {
+    private McpConfigSnapshot merge(
+            Map<String, McpServerConfig> global,
+            Map<String, McpServerConfig> project,
+            String fingerprint) {
         Map<String, McpServerConfig> configs = new LinkedHashMap<String, McpServerConfig>();
         Map<String, String> sources = new LinkedHashMap<String, String>();
         Map<String, List<String>> overridden = new LinkedHashMap<String, List<String>>();
@@ -114,19 +118,22 @@ public class McpConfigurationManager {
 
         Map<String, McpConfigEntry> effective = new LinkedHashMap<String, McpConfigEntry>();
         for (Map.Entry<String, McpServerConfig> entry : configs.entrySet()) {
-            effective.put(entry.getKey(), new McpConfigEntry(
-                    entry.getValue().copy(),
-                    sources.get(entry.getKey()),
-                    overridden.get(entry.getKey())));
+            effective.put(
+                    entry.getKey(),
+                    new McpConfigEntry(
+                            entry.getValue().copy(),
+                            sources.get(entry.getKey()),
+                            overridden.get(entry.getKey())));
         }
         return new McpConfigSnapshot(effective, fingerprint);
     }
 
-    private void mergeSource(Map<String, McpServerConfig> configs,
-                             Map<String, String> sources,
-                             Map<String, List<String>> overridden,
-                             Map<String, McpServerConfig> additions,
-                             String source) {
+    private void mergeSource(
+            Map<String, McpServerConfig> configs,
+            Map<String, String> sources,
+            Map<String, List<String>> overridden,
+            Map<String, McpServerConfig> additions,
+            String source) {
         for (Map.Entry<String, McpServerConfig> entry : additions.entrySet()) {
             String previousSource = sources.get(entry.getKey());
             if (previousSource != null) {
@@ -158,18 +165,24 @@ public class McpConfigurationManager {
         if (knowledgeFileStore == null) {
             return null;
         }
-        KnowledgeFile file = knowledgeFileStore.readFile(scope == null ? KnowledgeScope.global() : scope, configFile);
+        KnowledgeFile file =
+                knowledgeFileStore.readFile(
+                        scope == null ? KnowledgeScope.global() : scope, configFile);
         return file == null ? null : file.getContent();
     }
 
     private String fingerprint(String projectId, String globalContent, String projectContent) {
-        String value = "mcp-runtime-v1\u0000"
-                + projectId + "\u0000"
-                + (globalContent == null ? "<absent>" : globalContent) + "\u0000"
-                + (projectContent == null ? "<absent>" : projectContent);
+        String value =
+                "mcp-runtime-v1\u0000"
+                        + projectId
+                        + "\u0000"
+                        + (globalContent == null ? "<absent>" : globalContent)
+                        + "\u0000"
+                        + (projectContent == null ? "<absent>" : projectContent);
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] digest =
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder result = new StringBuilder(digest.length * 2);
             for (byte item : digest) {
                 result.append(String.format("%02x", item & 0xff));

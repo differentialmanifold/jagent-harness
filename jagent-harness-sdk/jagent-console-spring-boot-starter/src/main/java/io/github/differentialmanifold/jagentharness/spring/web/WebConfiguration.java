@@ -15,10 +15,10 @@ public class WebConfiguration implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
+        registry.addMapping("/api/v1/**")
                 .allowedOrigins(properties.getAllowedOrigins().toArray(new String[0]))
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders(ChatController.RUN_ID_HEADER);
+                .exposedHeaders("X-Run-Id");
     }
 }

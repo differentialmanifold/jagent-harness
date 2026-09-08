@@ -5,8 +5,7 @@ public class PromptPreviewResponse {
     private String systemPrompt;
     private String workspaceRoot;
 
-    public PromptPreviewResponse() {
-    }
+    public PromptPreviewResponse() {}
 
     public PromptPreviewResponse(String systemPrompt, String workspaceRoot) {
         this.systemPrompt = systemPrompt;

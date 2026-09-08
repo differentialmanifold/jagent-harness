@@ -1,5 +1,11 @@
 package io.github.differentialmanifold.jagentharness.core.event;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -8,39 +14,31 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-
 public class DefaultAgentEventPublisher implements AgentEventPublisher {
 
     private final ObjectMapper objectMapper;
     private final Supplier<List<AgentEventListener>> listenersSupplier;
-    private final ThreadLocal<Consumer<AgentEvent>> scopedConsumer = new ThreadLocal<Consumer<AgentEvent>>();
+    private final ThreadLocal<Consumer<AgentEvent>> scopedConsumer =
+            new ThreadLocal<Consumer<AgentEvent>>();
 
     public DefaultAgentEventPublisher(ObjectMapper objectMapper) {
         this(objectMapper, Collections.<AgentEventListener>emptyList());
     }
 
-    public DefaultAgentEventPublisher(ObjectMapper objectMapper, List<AgentEventListener> listeners) {
+    public DefaultAgentEventPublisher(
+            ObjectMapper objectMapper, List<AgentEventListener> listeners) {
         this(objectMapper, new StaticListenersSupplier(listeners));
     }
 
-    public DefaultAgentEventPublisher(ObjectMapper objectMapper,
-                                      Supplier<List<AgentEventListener>> listenersSupplier) {
+    public DefaultAgentEventPublisher(
+            ObjectMapper objectMapper, Supplier<List<AgentEventListener>> listenersSupplier) {
         this.objectMapper = configureObjectMapper(objectMapper);
         this.listenersSupplier = listenersSupplier;
     }
 
     @Override
-    public AgentEvent publish(String sessionId,
-                              String runId,
-                              String turnId,
-                              String type,
-                              Object payload) {
+    public AgentEvent publish(
+            String sessionId, String runId, String turnId, String type, Object payload) {
         String payloadJson = writePayload(payload);
         AgentEvent event = AgentEvent.of(sessionId, runId, turnId, type, payloadJson);
         Consumer<AgentEvent> consumer = scopedConsumer.get();
@@ -67,7 +65,8 @@ public class DefaultAgentEventPublisher implements AgentEventPublisher {
     }
 
     private List<AgentEventListener> currentListeners() {
-        List<AgentEventListener> listeners = listenersSupplier == null ? null : listenersSupplier.get();
+        List<AgentEventListener> listeners =
+                listenersSupplier == null ? null : listenersSupplier.get();
         return listeners == null
                 ? Collections.<AgentEventListener>emptyList()
                 : new ArrayList<AgentEventListener>(listeners);
@@ -90,12 +89,16 @@ public class DefaultAgentEventPublisher implements AgentEventPublisher {
     private ObjectMapper configureObjectMapper(ObjectMapper objectMapper) {
         ObjectMapper mapper = objectMapper == null ? new ObjectMapper() : objectMapper.copy();
         SimpleModule module = new SimpleModule();
-        module.addSerializer(Instant.class, new JsonSerializer<Instant>() {
-            @Override
-            public void serialize(Instant value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-                gen.writeString(value.toString());
-            }
-        });
+        module.addSerializer(
+                Instant.class,
+                new JsonSerializer<Instant>() {
+                    @Override
+                    public void serialize(
+                            Instant value, JsonGenerator gen, SerializerProvider serializers)
+                            throws IOException {
+                        gen.writeString(value.toString());
+                    }
+                });
         mapper.registerModule(module);
         return mapper;
     }
@@ -104,9 +107,10 @@ public class DefaultAgentEventPublisher implements AgentEventPublisher {
         private final List<AgentEventListener> listeners;
 
         private StaticListenersSupplier(List<AgentEventListener> listeners) {
-            this.listeners = listeners == null
-                    ? Collections.<AgentEventListener>emptyList()
-                    : new ArrayList<AgentEventListener>(listeners);
+            this.listeners =
+                    listeners == null
+                            ? Collections.<AgentEventListener>emptyList()
+                            : new ArrayList<AgentEventListener>(listeners);
         }
 
         @Override

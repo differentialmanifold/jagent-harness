@@ -2,19 +2,17 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import java.nio.file.Path;
 import java.time.Instant;
-
-import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.sqlite.SQLiteDataSource;
 
 class JdbcModelCallUsageStoreTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void appendsAndFindsLatestUsageForSession() {
@@ -38,7 +36,8 @@ class JdbcModelCallUsageStoreTest {
         assertEquals(Integer.valueOf(10), latest.getReasoningTokens());
     }
 
-    private ModelCallUsage usage(String usageId, String sessionId, String messageId, int actualContextTokens) {
+    private ModelCallUsage usage(
+            String usageId, String sessionId, String messageId, int actualContextTokens) {
         ModelCallUsage usage = new ModelCallUsage();
         usage.setUsageId(usageId);
         usage.setSessionId(sessionId);

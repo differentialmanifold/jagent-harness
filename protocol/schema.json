@@ -1,0 +1,293 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "JAgent conversation protocol v1",
+  "definitions": {
+    "Image": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mediaType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^data:image/(png|jpeg|webp|gif);base64,"
+        },
+        "detail": {
+          "enum": [
+            "auto",
+            "low",
+            "high",
+            null
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "UserMessage": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "const": "user"
+        },
+        "content": {
+          "type": [
+            "string",
+            "object",
+            "array",
+            "number",
+            "boolean"
+          ]
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/definitions/Image"
+          }
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ]
+    },
+    "ToolMessage": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "const": "tool"
+        },
+        "toolCallId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "status": {
+          "enum": [
+            "SUCCEEDED",
+            "FAILED",
+            "UNKNOWN"
+          ]
+        },
+        "content": {
+          "type": [
+            "string",
+            "object",
+            "array",
+            "number",
+            "boolean"
+          ]
+        }
+      },
+      "required": [
+        "role",
+        "toolCallId",
+        "status",
+        "content"
+      ]
+    },
+    "ChatRequest": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "messages": {
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "$ref": "#/definitions/UserMessage"
+              }
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": {
+                "$ref": "#/definitions/ToolMessage"
+              }
+            }
+          ]
+        },
+        "clientTools": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/ToolDescriptor"
+          }
+        },
+        "clientInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stream": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sessionId",
+        "messages"
+      ],
+      "description": "Ordinary conversation messages. Tool results reference unanswered toolCallId values in the session history. runId is optional tracking metadata. No idempotency or automatic request replay."
+    },
+    "ToolInvocation": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "toolCallId",
+        "name",
+        "turnId",
+        "arguments"
+      ]
+    },
+    "ChatResponse": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "status": {
+          "enum": [
+            "RUNNING",
+            "REQUIRES_ACTION",
+            "COMPLETED",
+            "CANCELLED",
+            "INTERRUPTED"
+          ]
+        },
+        "answer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "toolCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ToolInvocation"
+          }
+        }
+      },
+      "required": [
+        "sessionId",
+        "runId",
+        "status",
+        "toolCalls"
+      ]
+    },
+    "StreamEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "eventId",
+        "sessionId",
+        "type",
+        "createdAt",
+        "payload"
+      ]
+    },
+    "ToolDescriptor": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "object"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "parameters"
+      ]
+    }
+  }
+}

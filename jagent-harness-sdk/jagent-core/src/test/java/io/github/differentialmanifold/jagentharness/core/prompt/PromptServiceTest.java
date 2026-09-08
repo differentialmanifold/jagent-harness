@@ -1,34 +1,36 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
-
-import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
-import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class PromptServiceTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void tellsModelHowToLoadFileSkills() {
-        SkillDescriptor skill = new SkillDescriptor(
-                "java-review",
-                "Use when reviewing Java code.",
-                "/tmp/skills/java-review/SKILL.md");
-        PromptService promptService = new PromptService(new SkillRegistry(Collections.singletonList(
-                context -> Collections.singletonList(skill))));
+        SkillDescriptor skill =
+                new SkillDescriptor(
+                        "java-review",
+                        "Use when reviewing Java code.",
+                        "/tmp/skills/java-review/SKILL.md");
+        PromptService promptService =
+                new PromptService(
+                        new SkillRegistry(
+                                Collections.singletonList(
+                                        context -> Collections.singletonList(skill))));
 
         String prompt = promptService.buildSystemPrompt(Collections.emptyList());
 
@@ -47,21 +49,37 @@ class PromptServiceTest {
         write(workspaceRoot.resolve("SYSTEM.md"), "Project system override.");
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
         store.writeFile("SYSTEM.md", "Database system override.\n", "text/markdown");
-        store.writeFile(KnowledgeScope.project("project-1"), "SYSTEM.md", "Project database override.\n", "text/markdown");
-        PromptService promptService = new PromptService(
-                new SkillRegistry(Collections.emptyList()),
-                globalRoot,
-                store);
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "SYSTEM.md",
+                "Project database override.\n",
+                "text/markdown");
+        PromptService promptService =
+                new PromptService(new SkillRegistry(Collections.emptyList()), globalRoot, store);
 
-        String prompt = promptService.buildSystemPrompt(new PromptContext(
-                Collections.emptyList(),
-                new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
+        String prompt =
+                promptService.buildSystemPrompt(
+                        new PromptContext(
+                                Collections.emptyList(),
+                                new AgentContext(
+                                        "session",
+                                        "run",
+                                        "turn",
+                                        null,
+                                        workspaceRoot,
+                                        globalRoot,
+                                        null,
+                                        "project-1")));
 
-        assertTrue(prompt.contains("You are a server-side agent running inside JAgentHarness."));
-        assertTrue(prompt.contains("Use available tools and skills to help the user accomplish the task."));
+        assertTrue(prompt.contains("You are an agent running inside JAgentHarness."));
+        assertTrue(
+                prompt.contains(
+                        "Use available tools and skills to help the user accomplish the task."));
         assertTrue(prompt.contains("Every executable capability is exposed as a registered tool"));
         assertTrue(prompt.contains("Trailing user messages may be added between turns"));
-        assertTrue(prompt.contains("whether to correct the current approach, extend the task, or change the order"));
+        assertTrue(
+                prompt.contains(
+                        "whether to correct the current approach, extend the task, or change the order"));
         assertTrue(prompt.contains("prefer newer instructions when they conflict with older ones"));
         assertFalse(prompt.contains("OpenAI-compatible"));
         assertFalse(prompt.contains("Java method"));
@@ -76,19 +94,36 @@ class PromptServiceTest {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile(KnowledgeScope.project("project-1"), "AGENTS.md", "Use user project rules.", "text/markdown");
-        PromptService promptService = new PromptService(
-                new SkillRegistry(Collections.emptyList()),
-                globalRoot,
-                store,
-                Collections.singletonList(context -> "Use application-specific tool rules."));
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "AGENTS.md",
+                "Use user project rules.",
+                "text/markdown");
+        PromptService promptService =
+                new PromptService(
+                        new SkillRegistry(Collections.emptyList()),
+                        globalRoot,
+                        store,
+                        Collections.singletonList(
+                                context -> "Use application-specific tool rules."));
 
-        String prompt = promptService.buildSystemPrompt(new PromptContext(
-                Collections.emptyList(),
-                new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
+        String prompt =
+                promptService.buildSystemPrompt(
+                        new PromptContext(
+                                Collections.emptyList(),
+                                new AgentContext(
+                                        "session",
+                                        "run",
+                                        "turn",
+                                        null,
+                                        workspaceRoot,
+                                        globalRoot,
+                                        null,
+                                        "project-1")));
 
-        assertInOrder(prompt,
-                "You are a server-side agent running inside JAgentHarness.",
+        assertInOrder(
+                prompt,
+                "You are an agent running inside JAgentHarness.",
                 "## Application System Instructions",
                 "Use application-specific tool rules.",
                 "## Agent Rules",
@@ -100,21 +135,31 @@ class PromptServiceTest {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile(KnowledgeScope.global(), "AGENTS.md", "Use global rules.\n", "text/markdown");
-        store.writeFile(KnowledgeScope.project("project-1"), "AGENTS.md", "Use project rules.\n", "text/markdown");
-        PromptService promptService = new PromptService(
-                new SkillRegistry(Collections.emptyList()),
-                globalRoot,
-                store);
+        store.writeFile(
+                KnowledgeScope.global(), "AGENTS.md", "Use global rules.\n", "text/markdown");
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "AGENTS.md",
+                "Use project rules.\n",
+                "text/markdown");
+        PromptService promptService =
+                new PromptService(new SkillRegistry(Collections.emptyList()), globalRoot, store);
 
-        String prompt = promptService.buildSystemPrompt(new PromptContext(
-                Collections.emptyList(),
-                new AgentContext("session", "run", "turn", null, workspaceRoot, globalRoot, null, "project-1")));
+        String prompt =
+                promptService.buildSystemPrompt(
+                        new PromptContext(
+                                Collections.emptyList(),
+                                new AgentContext(
+                                        "session",
+                                        "run",
+                                        "turn",
+                                        null,
+                                        workspaceRoot,
+                                        globalRoot,
+                                        null,
+                                        "project-1")));
 
-        assertInOrder(prompt,
-                "## Agent Rules",
-                "Use global rules.",
-                "Use project rules.");
+        assertInOrder(prompt, "## Agent Rules", "Use global rules.", "Use project rules.");
         assertFalse(prompt.contains("## Global Agent Rules"));
         assertFalse(prompt.contains("## Project Agent Rules"));
     }

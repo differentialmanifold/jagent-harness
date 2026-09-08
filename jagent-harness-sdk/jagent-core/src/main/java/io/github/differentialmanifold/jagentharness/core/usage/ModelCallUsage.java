@@ -1,9 +1,8 @@
 package io.github.differentialmanifold.jagentharness.core.usage;
 
-import java.time.Instant;
-
 import io.github.differentialmanifold.jagentharness.core.provider.ModelUsage;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
+import java.time.Instant;
 
 public class ModelCallUsage {
 
@@ -24,6 +23,7 @@ public class ModelCallUsage {
     private Integer estimatedTokens;
     /** Provider-reported context size for the next model call after excluding reasoning tokens. */
     private Integer actualContextTokens;
+
     private Integer promptTokens;
     private Integer completionTokens;
     private Integer reasoningTokens;
@@ -31,17 +31,18 @@ public class ModelCallUsage {
     private Integer totalTokens;
     private Instant createdAt;
 
-    public static ModelCallUsage fromUsage(String sessionId,
-                                           String runId,
-                                           String turnId,
-                                           String messageId,
-                                           String provider,
-                                           String model,
-                                           int contextWindowTokens,
-                                           int thresholdTokens,
-                                           String estimateSource,
-                                           Integer estimatedTokens,
-                                           ModelUsage usage) {
+    public static ModelCallUsage fromUsage(
+            String sessionId,
+            String runId,
+            String turnId,
+            String messageId,
+            String provider,
+            String model,
+            int contextWindowTokens,
+            int thresholdTokens,
+            String estimateSource,
+            Integer estimatedTokens,
+            ModelUsage usage) {
         ModelCallUsage record = new ModelCallUsage();
         record.setUsageId(Ids.newId("usage"));
         record.setSessionId(sessionId);

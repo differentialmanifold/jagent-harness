@@ -1,11 +1,5 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
@@ -25,6 +19,11 @@ import io.github.differentialmanifold.jagentharness.spring.web.dto.ToolCallRespo
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ToolConfigRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ToolConfigResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ToolInfoResponse;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,7 +33,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/tools")
+@RequestMapping("/api/v1/tools")
 public class ToolController {
 
     private final ToolRegistry toolRegistry;
@@ -47,11 +46,12 @@ public class ToolController {
         this(toolRegistry, null, null, null, new ObjectMapper());
     }
 
-    public ToolController(ToolRegistry toolRegistry,
-                          KnowledgeFileToolConfiguration toolConfiguration,
-                          SessionManager sessionManager,
-                          ToolContextFactory toolContextFactory,
-                          ObjectMapper objectMapper) {
+    public ToolController(
+            ToolRegistry toolRegistry,
+            KnowledgeFileToolConfiguration toolConfiguration,
+            SessionManager sessionManager,
+            ToolContextFactory toolContextFactory,
+            ObjectMapper objectMapper) {
         this.toolRegistry = toolRegistry;
         this.toolConfiguration = toolConfiguration;
         this.sessionManager = sessionManager;
@@ -63,7 +63,9 @@ public class ToolController {
     public List<ToolInfoResponse> list() {
         List<ToolInfoResponse> tools = new ArrayList<ToolInfoResponse>();
         for (ToolDefinition tool : toolRegistry.all()) {
-            tools.add(new ToolInfoResponse(tool.getName(), tool.getDescription(), tool.getParametersSchema()));
+            tools.add(
+                    new ToolInfoResponse(
+                            tool.getName(), tool.getDescription(), tool.getParametersSchema()));
         }
         return tools;
     }
@@ -87,7 +89,8 @@ public class ToolController {
             }
         }
         if (!requested.isEmpty()) {
-            throw new IllegalArgumentException("Unknown built-in tools: " + String.join(", ", requested));
+            throw new IllegalArgumentException(
+                    "Unknown built-in tools: " + String.join(", ", requested));
         }
         return configResponse(configuration.save(ordered));
     }
@@ -100,7 +103,9 @@ public class ToolController {
 
     @PostMapping("/call")
     public ToolCallResponse call(@RequestBody ToolCallRequest request) throws Exception {
-        if (request == null || request.getToolName() == null || request.getToolName().trim().isEmpty()) {
+        if (request == null
+                || request.getToolName() == null
+                || request.getToolName().trim().isEmpty()) {
             throw new IllegalArgumentException("toolName is required");
         }
         JsonNode arguments = request.getArguments();
@@ -116,16 +121,18 @@ public class ToolController {
             throw new IllegalStateException("ToolContextFactory is required for tool debugging");
         }
         SessionRecord session = session(request.getSessionId());
-        AgentRunOptions options = AgentRunOptions.builder()
-                .approvalMode(ToolApprovalMode.FULL_ACCESS)
-                .build();
+        AgentRunOptions options =
+                AgentRunOptions.builder().approvalMode(ToolApprovalMode.FULL_ACCESS).build();
         String toolCallId = Ids.newId("tool");
-        ToolContext context = toolContextFactory
-                .create(session, Ids.newId("run"), Ids.newId("turn"), options)
-                .forToolCall(toolCallId, toolName);
-        ToolExecutionResult result = tool.execute(
-                context,
-                arguments == null ? objectMapper.createObjectNode() : arguments);
+        ToolContext context =
+                toolContextFactory
+                        .create(session, Ids.newId("run"), Ids.newId("turn"), options)
+                        .forToolCall(toolCallId, toolName);
+        ToolExecutionResult result =
+                ((ToolDefinition) tool)
+                        .execute(
+                                context,
+                                arguments == null ? objectMapper.createObjectNode() : arguments);
         return new ToolCallResponse(result == null ? "" : result.getContent());
     }
 
@@ -137,22 +144,26 @@ public class ToolController {
             if (available) {
                 enabled.add(tool.getName());
             }
-            tools.add(new ToolInfoResponse(
-                    tool.getName(),
-                    tool.getDescription(),
-                    tool.getParametersSchema(),
-                    available));
+            tools.add(
+                    new ToolInfoResponse(
+                            tool.getName(),
+                            tool.getDescription(),
+                            tool.getParametersSchema(),
+                            available));
         }
         return new ToolConfigResponse(selection.isConfigured(), enabled, tools);
     }
 
     private ToolSelectionSnapshot selection() {
-        return toolConfiguration == null ? ToolSelectionSnapshot.defaults() : toolConfiguration.load();
+        return toolConfiguration == null
+                ? ToolSelectionSnapshot.defaults()
+                : toolConfiguration.load();
     }
 
     private KnowledgeFileToolConfiguration requireConfiguration() {
         if (toolConfiguration == null) {
-            throw new IllegalStateException("KnowledgeFileStore is required for built-in tool configuration");
+            throw new IllegalStateException(
+                    "KnowledgeFileStore is required for built-in tool configuration");
         }
         return toolConfiguration;
     }
@@ -175,7 +186,8 @@ public class ToolController {
             return null;
         }
         if (sessionManager == null) {
-            throw new IllegalStateException("SessionManager is required for contextual tool debugging");
+            throw new IllegalStateException(
+                    "SessionManager is required for contextual tool debugging");
         }
         return sessionManager.requireSession(normalized);
     }

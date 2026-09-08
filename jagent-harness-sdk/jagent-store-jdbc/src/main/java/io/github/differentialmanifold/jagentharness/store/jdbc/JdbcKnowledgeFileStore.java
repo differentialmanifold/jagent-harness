@@ -1,10 +1,5 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
@@ -12,11 +7,14 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifest;
-import io.github.differentialmanifold.jagentharness.core.prompt.SkillManifestStore;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
-public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifestStore {
+public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
 
     private static final String DEFAULT_CONTENT_TYPE = "text/markdown";
     private static final String DIRECTORY_CONTENT_TYPE = "inode/directory";
@@ -24,21 +22,25 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     private final JdbcTemplate jdbcTemplate;
     private final String applicationId;
 
-    private final RowMapper<KnowledgeFile> fileMapper = (rs, rowNum) -> new KnowledgeFile(
-            rs.getString("path"),
-            rs.getString("node_type"),
-            rs.getString("content"),
-            rs.getString("content_type"),
-            JdbcTimeCodec.decode(rs.getString("created_at")),
-            JdbcTimeCodec.decode(rs.getString("updated_at")));
+    private final RowMapper<KnowledgeFile> fileMapper =
+            (rs, rowNum) ->
+                    new KnowledgeFile(
+                            rs.getString("path"),
+                            rs.getString("node_type"),
+                            rs.getString("content"),
+                            rs.getString("content_type"),
+                            JdbcTimeCodec.decode(rs.getString("created_at")),
+                            JdbcTimeCodec.decode(rs.getString("updated_at")));
 
-    private final RowMapper<SkillManifest> skillManifestMapper = (rs, rowNum) -> new SkillManifest(
-            rs.getString("skill_key"),
-            rs.getString("skill_dir_path"),
-            rs.getString("skill_file_path"),
-            rs.getString("name"),
-            rs.getString("description"),
-            JdbcTimeCodec.decode(rs.getString("updated_at")));
+    private final RowMapper<SkillManifest> skillManifestMapper =
+            (rs, rowNum) ->
+                    new SkillManifest(
+                            rs.getString("skill_key"),
+                            rs.getString("skill_dir_path"),
+                            rs.getString("skill_file_path"),
+                            rs.getString("name"),
+                            rs.getString("description"),
+                            JdbcTimeCodec.decode(rs.getString("updated_at")));
 
     public JdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
@@ -53,15 +55,16 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     @Override
     public KnowledgeFile readFile(KnowledgeScope scope, String path) {
         KnowledgeScope effectiveScope = scope(scope);
-        List<KnowledgeFile> files = jdbcTemplate.query(
-                "select * from knowledge_files where application_id = ? and scope_type = ? and scope_id = ? "
-                        + "and path = ? and node_type = ?",
-                fileMapper,
-                applicationId,
-                effectiveScope.getType(),
-                effectiveScope.getId(),
-                KnowledgeFilePaths.normalize(path),
-                KnowledgeFile.TYPE_FILE);
+        List<KnowledgeFile> files =
+                jdbcTemplate.query(
+                        "select * from knowledge_files where application_id = ? and scope_type = ? and scope_id = ? "
+                                + "and path = ? and node_type = ?",
+                        fileMapper,
+                        applicationId,
+                        effectiveScope.getType(),
+                        effectiveScope.getId(),
+                        KnowledgeFilePaths.normalize(path),
+                        KnowledgeFile.TYPE_FILE);
         return files.isEmpty() ? null : files.get(0);
     }
 
@@ -104,15 +107,21 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     }
 
     @Override
-    public KnowledgeFile writeFile(KnowledgeScope scope, String path, String content, String contentType) {
+    public KnowledgeFile writeFile(
+            KnowledgeScope scope, String path, String content, String contentType) {
         KnowledgeScope effectiveScope = scope(scope);
         String normalizedPath = KnowledgeFilePaths.normalize(path);
-        String effectiveContentType = contentType == null || contentType.trim().isEmpty()
-                ? DEFAULT_CONTENT_TYPE
-                : contentType.trim();
+        String effectiveContentType =
+                contentType == null || contentType.trim().isEmpty()
+                        ? DEFAULT_CONTENT_TYPE
+                        : contentType.trim();
         ensureDirectories(effectiveScope, normalizedPath);
-        upsertFile(effectiveScope, normalizedPath, KnowledgeFile.TYPE_FILE,
-                content == null ? "" : content, effectiveContentType);
+        upsertFile(
+                effectiveScope,
+                normalizedPath,
+                KnowledgeFile.TYPE_FILE,
+                content == null ? "" : content,
+                effectiveContentType);
         syncIndexes(effectiveScope, normalizedPath, content == null ? "" : content);
         return readFile(effectiveScope, normalizedPath);
     }
@@ -135,12 +144,10 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
         deleteSkillManifest(effectiveScope, normalizedPath);
     }
 
-    @Override
     public List<SkillManifest> listManifests() {
         return listManifests(KnowledgeScope.global());
     }
 
-    @Override
     public List<SkillManifest> listManifests(KnowledgeScope scope) {
         KnowledgeScope effectiveScope = scope(scope);
         return jdbcTemplate.query(
@@ -164,11 +171,21 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
                 current.append('/');
             }
             current.append(segment);
-            upsertFile(scope, current.toString(), KnowledgeFile.TYPE_DIRECTORY, "", DIRECTORY_CONTENT_TYPE);
+            upsertFile(
+                    scope,
+                    current.toString(),
+                    KnowledgeFile.TYPE_DIRECTORY,
+                    "",
+                    DIRECTORY_CONTENT_TYPE);
         }
     }
 
-    private void upsertFile(KnowledgeScope scope, String path, String nodeType, String content, String contentType) {
+    private void upsertFile(
+            KnowledgeScope scope,
+            String path,
+            String nodeType,
+            String content,
+            String contentType) {
         Instant now = Instant.now();
         boolean exists = exists("knowledge_files", "path", path, scope);
         byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -220,7 +237,8 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     private void upsertSkillManifest(KnowledgeScope scope, String skillFilePath, String content) {
         String skillKey = KnowledgeFilePaths.skillKey(skillFilePath);
         String skillDirPath = KnowledgeFilePaths.skillDir(skillFilePath);
-        SkillDescriptor descriptor = SkillFileParser.readDescriptor(content, skillKey, skillFilePath);
+        SkillDescriptor descriptor =
+                SkillFileParser.readDescriptor(content, skillKey, skillFilePath);
         Instant now = Instant.now();
         boolean exists = exists("skill_manifests", "skill_key", skillKey, scope);
         if (exists) {
@@ -268,14 +286,19 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore, SkillManifest
     }
 
     private boolean exists(String table, String column, String value, KnowledgeScope scope) {
-        Integer count = jdbcTemplate.queryForObject(
-                "select count(*) from " + table + " where application_id = ? and scope_type = ? and scope_id = ? "
-                        + "and " + column + " = ?",
-                Integer.class,
-                applicationId,
-                scope.getType(),
-                scope.getId(),
-                value);
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        "select count(*) from "
+                                + table
+                                + " where application_id = ? and scope_type = ? and scope_id = ? "
+                                + "and "
+                                + column
+                                + " = ?",
+                        Integer.class,
+                        applicationId,
+                        scope.getType(),
+                        scope.getId(),
+                        value);
         return count != null && count.intValue() > 0;
     }
 

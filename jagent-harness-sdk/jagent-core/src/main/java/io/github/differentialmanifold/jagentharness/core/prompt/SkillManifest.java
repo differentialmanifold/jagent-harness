@@ -11,12 +11,13 @@ public class SkillManifest {
     private final String description;
     private final Instant updatedAt;
 
-    public SkillManifest(String skillKey,
-                         String skillDirPath,
-                         String skillFilePath,
-                         String name,
-                         String description,
-                         Instant updatedAt) {
+    public SkillManifest(
+            String skillKey,
+            String skillDirPath,
+            String skillFilePath,
+            String name,
+            String description,
+            Instant updatedAt) {
         this.skillKey = skillKey;
         this.skillDirPath = skillDirPath;
         this.skillFilePath = skillFilePath;

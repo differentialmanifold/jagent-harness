@@ -6,5 +6,9 @@ public interface MessageRepository {
 
     void append(AgentMessage message);
 
+    default void appendAll(List<AgentMessage> messages) {
+        for (AgentMessage message : messages) append(message);
+    }
+
     List<AgentMessage> findBySessionId(String sessionId);
 }

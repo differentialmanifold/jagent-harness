@@ -1,5 +1,10 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -7,19 +12,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
-
 public class PromptService implements PromptProvider {
 
     private static final String DEFAULT_SYSTEM_PROMPT =
-            "You are a server-side agent running inside JAgentHarness.\n"
+            "You are an agent running inside JAgentHarness.\n"
                     + "Use available tools and skills to help the user accomplish the task.\n"
                     + "Every executable capability is exposed as a registered tool, and every available skill describes a reusable workflow or domain instruction.\n"
                     + "When a tool result is needed, call the tool and continue after the result is returned.\n"
+                    + "Independent tools may be called in the same batch. When one tool depends on another tool's result or side effects, call them sequentially.\n"
                     + "Trailing user messages may be added between turns while a run is active; treat them as the user's latest input and decide from their content whether to correct the current approach, extend the task, or change the order of remaining work. Interpret multiple new messages in order, and prefer newer instructions when they conflict with older ones.\n";
 
     private final SkillRegistry skillRegistry;
@@ -35,24 +35,28 @@ public class PromptService implements PromptProvider {
         this(skillRegistry, defaultConfigRoot, null, Collections.emptyList());
     }
 
-    public PromptService(SkillRegistry skillRegistry,
-                         Path defaultConfigRoot,
-                         KnowledgeFileStore knowledgeFileStore) {
+    public PromptService(
+            SkillRegistry skillRegistry,
+            Path defaultConfigRoot,
+            KnowledgeFileStore knowledgeFileStore) {
         this(skillRegistry, defaultConfigRoot, knowledgeFileStore, Collections.emptyList());
     }
 
-    public PromptService(SkillRegistry skillRegistry,
-                         Path defaultConfigRoot,
-                         KnowledgeFileStore knowledgeFileStore,
-                         List<SystemPromptContributor> systemPromptContributors) {
+    public PromptService(
+            SkillRegistry skillRegistry,
+            Path defaultConfigRoot,
+            KnowledgeFileStore knowledgeFileStore,
+            List<SystemPromptContributor> systemPromptContributors) {
         this.skillRegistry = skillRegistry;
-        this.defaultConfigRoot = defaultConfigRoot == null
-                ? Paths.get(".").toAbsolutePath().normalize()
-                : defaultConfigRoot.toAbsolutePath().normalize();
+        this.defaultConfigRoot =
+                defaultConfigRoot == null
+                        ? Paths.get(".").toAbsolutePath().normalize()
+                        : defaultConfigRoot.toAbsolutePath().normalize();
         this.knowledgeFileStore = knowledgeFileStore;
-        this.systemPromptContributors = systemPromptContributors == null
-                ? Collections.emptyList()
-                : new ArrayList<SystemPromptContributor>(systemPromptContributors);
+        this.systemPromptContributors =
+                systemPromptContributors == null
+                        ? Collections.emptyList()
+                        : new ArrayList<SystemPromptContributor>(systemPromptContributors);
     }
 
     public String buildSystemPrompt(Collection<ToolDefinition> tools) {
@@ -60,16 +64,19 @@ public class PromptService implements PromptProvider {
     }
 
     public String buildSystemPrompt(Collection<ToolDefinition> tools, Path configRoot) {
-        return buildSystemPrompt(new PromptContext(
-                tools,
-                new AgentContext(null, null, null, null, null, configRoot, null)));
+        return buildSystemPrompt(
+                new PromptContext(
+                        tools, new AgentContext(null, null, null, null, null, configRoot, null)));
     }
 
     @Override
     public String buildSystemPrompt(PromptContext context) {
-        PromptContext effectiveContext = context == null
-                ? new PromptContext(null, new AgentContext(null, null, null, null, null, configRoot(), null))
-                : context;
+        PromptContext effectiveContext =
+                context == null
+                        ? new PromptContext(
+                                null,
+                                new AgentContext(null, null, null, null, null, configRoot(), null))
+                        : context;
         AgentContext agentContext = effectiveContext.getAgentContext();
         StringBuilder prompt = new StringBuilder();
         appendDefaultSystemPrompt(prompt);
@@ -78,7 +85,11 @@ public class PromptService implements PromptProvider {
 
         prompt.append("Available tools:\n");
         for (ToolDefinition tool : effectiveContext.getTools()) {
-            prompt.append("- ").append(tool.getName()).append(": ").append(tool.getDescription()).append("\n");
+            prompt.append("- ")
+                    .append(tool.getName())
+                    .append(": ")
+                    .append(tool.getDescription())
+                    .append("\n");
         }
         prompt.append("\n");
 
@@ -87,8 +98,10 @@ public class PromptService implements PromptProvider {
             boolean hasFileSkill = false;
             prompt.append("Available skills:\n");
             for (SkillDescriptor skill : skills) {
-                prompt.append("- ").append(skill.getName())
-                        .append(": ").append(skill.getDescription());
+                prompt.append("- ")
+                        .append(skill.getName())
+                        .append(": ")
+                        .append(skill.getDescription());
                 if (!isBlank(skill.getFilePath())) {
                     hasFileSkill = true;
                     prompt.append(" (file: ").append(skill.getFilePath()).append(")");
@@ -96,9 +109,12 @@ public class PromptService implements PromptProvider {
                 prompt.append("\n");
             }
             if (hasFileSkill) {
-                prompt.append("When a skill is relevant, call the skill tool with its SKILL.md path before following it. ");
-                prompt.append("Every path under skills/ is a skill resource: always load it with the skill tool, never with the read tool. ");
-                prompt.append("If SKILL.md references a relative path, resolve it relative to the directory containing SKILL.md and call the skill tool with the full resolved path.\n\n");
+                prompt.append(
+                        "When a skill is relevant, call the skill tool with its SKILL.md path before following it. ");
+                prompt.append(
+                        "Every path under skills/ is a skill resource: always load it with the skill tool, never with the read tool. ");
+                prompt.append(
+                        "If SKILL.md references a relative path, resolve it relative to the directory containing SKILL.md and call the skill tool with the full resolved path.\n\n");
             } else {
                 prompt.append("\n");
             }
@@ -156,7 +172,8 @@ public class PromptService implements PromptProvider {
         List<String> files = new ArrayList<String>();
         addAgentRuleFile(files, readKnowledgeIfExists(KnowledgeScope.global(), "AGENTS.md"));
         if (!isBlank(projectId)) {
-            addAgentRuleFile(files, readKnowledgeIfExists(KnowledgeScope.project(projectId), "AGENTS.md"));
+            addAgentRuleFile(
+                    files, readKnowledgeIfExists(KnowledgeScope.project(projectId), "AGENTS.md"));
         }
         return files;
     }
@@ -185,5 +202,4 @@ public class PromptService implements PromptProvider {
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }
-
 }

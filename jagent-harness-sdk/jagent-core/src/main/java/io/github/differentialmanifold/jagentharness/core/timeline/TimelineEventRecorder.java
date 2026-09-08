@@ -1,21 +1,21 @@
 package io.github.differentialmanifold.jagentharness.core.timeline;
 
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEventListener;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
-import io.github.differentialmanifold.jagentharness.core.event.AgentEventListener;
-
 public class TimelineEventRecorder implements AgentEventListener {
 
-    private static final Set<String> TRANSIENT_EVENT_TYPES = new HashSet<String>(Arrays.asList(
-            AgentEvent.MESSAGE_START,
-            AgentEvent.MESSAGE_UPDATE,
-            AgentEvent.MESSAGE_REASONING_UPDATE,
-            AgentEvent.CONTEXT_USAGE,
-            AgentEvent.TOOL_EXECUTION_UPDATE
-    ));
+    private static final Set<String> TRANSIENT_EVENT_TYPES =
+            new HashSet<String>(
+                    Arrays.asList(
+                            AgentEvent.MESSAGE_START,
+                            AgentEvent.MESSAGE_UPDATE,
+                            AgentEvent.MESSAGE_REASONING_UPDATE,
+                            AgentEvent.CONTEXT_USAGE,
+                            AgentEvent.TOOL_EXECUTION_UPDATE));
 
     private final TimelineEventRepository timelineEventStore;
 

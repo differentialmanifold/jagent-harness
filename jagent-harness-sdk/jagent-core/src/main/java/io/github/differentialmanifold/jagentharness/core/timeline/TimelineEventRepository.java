@@ -1,9 +1,8 @@
 package io.github.differentialmanifold.jagentharness.core.timeline;
 
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import java.util.Collections;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 
 public interface TimelineEventRepository {
 

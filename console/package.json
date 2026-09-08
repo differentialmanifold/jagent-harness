@@ -1,0 +1,26 @@
+{
+  "name": "jagent-console",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "dev": "npm run dev:coding",
+    "dev:coding": "vite --host 127.0.0.1 --port 5175 --strictPort --mode coding",
+    "build": "npm run build:server && npm run build:coding",
+    "preview": "vite preview --host 0.0.0.0 --port 4175 --strictPort --mode coding",
+    "test": "node --test",
+    "dev:server": "vite --host 127.0.0.1 --port 5175 --strictPort --mode server",
+    "build:server": "vite build --mode server --outDir dist/server",
+    "build:coding": "vite build --mode coding --outDir dist/coding"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "element-plus": "^2.14.1",
+    "vite": "^8.0.16",
+    "vue": "^3.5.13"
+  }
+}

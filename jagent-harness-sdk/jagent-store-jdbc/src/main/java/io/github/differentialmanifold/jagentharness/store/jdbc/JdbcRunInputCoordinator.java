@@ -1,13 +1,5 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
-import java.io.IOException;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInput;
@@ -15,6 +7,13 @@ import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinat
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputReceipt;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputStatus;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -22,10 +21,10 @@ import org.springframework.jdbc.core.RowMapper;
 /**
  * JDBC-backed best-effort input queue for an agent run.
  *
- * <p>Pending inputs stay in {@code agent_run_inputs} until the agent loop checks the next safe
- * turn boundary. Queue operations intentionally do not open a transaction or seal the run at an
- * empty boundary. A late submission may therefore be acknowledged without being stored or
- * consumed, matching the queue's best-effort settling semantics.</p>
+ * <p>Pending inputs stay in {@code agent_run_inputs} until the agent loop checks the next safe turn
+ * boundary. Queue operations intentionally do not open a transaction or seal the run at an empty
+ * boundary. A late submission may therefore be acknowledged without being stored or consumed,
+ * matching the queue's best-effort settling semantics.
  */
 public class JdbcRunInputCoordinator implements RunInputCoordinator {
 
@@ -36,31 +35,30 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final String applicationId;
-    private final RowMapper<StoredInput> inputMapper = new RowMapper<StoredInput>() {
-        @Override
-        public StoredInput mapRow(ResultSet rs, int rowNum) throws SQLException {
-            StoredInput stored = new StoredInput();
-            stored.id = rs.getLong("id");
-            stored.inputId = rs.getString("input_id");
-            stored.sessionId = rs.getString("session_id");
-            stored.runId = rs.getString("run_id");
-            stored.content = rs.getString("content");
-            stored.images = readImages(rs.getString("images_json"));
-            stored.status = RunInputStatus.valueOf(rs.getString("status"));
-            return stored;
-        }
-    };
+    private final RowMapper<StoredInput> inputMapper =
+            new RowMapper<StoredInput>() {
+                @Override
+                public StoredInput mapRow(ResultSet rs, int rowNum) throws SQLException {
+                    StoredInput stored = new StoredInput();
+                    stored.id = rs.getLong("id");
+                    stored.inputId = rs.getString("input_id");
+                    stored.sessionId = rs.getString("session_id");
+                    stored.runId = rs.getString("run_id");
+                    stored.content = rs.getString("content");
+                    stored.images = readImages(rs.getString("images_json"));
+                    stored.status = RunInputStatus.valueOf(rs.getString("status"));
+                    return stored;
+                }
+            };
 
-    public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate,
-                                   ObjectMapper objectMapper,
-                                   JdbcStoreProperties properties) {
+    public JdbcRunInputCoordinator(
+            JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, JdbcStoreProperties properties) {
         this.jdbcTemplate = requireJdbcTemplate(jdbcTemplate);
         this.objectMapper = requireObjectMapper(objectMapper);
         this.applicationId = properties.requireApplicationId();
     }
 
-    public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate,
-                                   JdbcStoreProperties properties) {
+    public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this(jdbcTemplate, new ObjectMapper(), properties);
     }
 
@@ -103,42 +101,43 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     }
 
     @Override
-    public RunInputReceipt submitInput(String runId,
-                                       String content,
-                                       List<MessageImage> images,
-                                       String inputId) {
+    public RunInputReceipt submitInput(
+            String runId, String content, List<MessageImage> images, String inputId) {
         requireText(runId, "runId");
         requireText(inputId, "inputId");
         String normalizedContent = requireInputContent(content, images);
-        List<MessageImage> normalizedImages = images == null
-                ? Collections.<MessageImage>emptyList()
-                : new ArrayList<MessageImage>(images);
+        List<MessageImage> normalizedImages =
+                images == null
+                        ? Collections.<MessageImage>emptyList()
+                        : new ArrayList<MessageImage>(images);
         String imagesJson = writeImages(normalizedImages);
 
         long now = System.currentTimeMillis();
         int inserted;
         try {
-            inserted = jdbcTemplate.update(
-                    "insert into agent_run_inputs "
-                            + "(application_id, input_id, session_id, run_id, content, images_json, "
-                            + "status, created_at, updated_at) "
-                            + "select ?, ?, active.session_id, active.run_id, ?, ?, ?, ?, ? "
-                            + "from agent_active_runs active "
-                            + "where active.application_id = ? and active.run_id = ? "
-                            + "and active.accepting_inputs = 1",
-                    applicationId,
-                    inputId,
-                    normalizedContent,
-                    imagesJson,
-                    STATUS_ACCEPTED,
-                    now,
-                    now,
-                    applicationId,
-                    runId);
+            inserted =
+                    jdbcTemplate.update(
+                            "insert into agent_run_inputs "
+                                    + "(application_id, input_id, session_id, run_id, content, images_json, "
+                                    + "status, created_at, updated_at) "
+                                    + "select ?, ?, active.session_id, active.run_id, ?, ?, ?, ?, ? "
+                                    + "from agent_active_runs active "
+                                    + "where active.application_id = ? and active.run_id = ? "
+                                    + "and active.accepting_inputs = 1",
+                            applicationId,
+                            inputId,
+                            normalizedContent,
+                            imagesJson,
+                            STATUS_ACCEPTED,
+                            now,
+                            now,
+                            applicationId,
+                            runId);
         } catch (DataAccessException e) {
             StoredInput concurrent = findByInputId(inputId);
             if (concurrent != null) {
-                return receiptForIdempotentSubmit(concurrent, runId, normalizedContent, normalizedImages);
+                return receiptForIdempotentSubmit(
+                        concurrent, runId, normalizedContent, normalizedImages);
             }
             throw e;
         }
@@ -146,7 +145,8 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         if (inserted == 0) {
             StoredInput existing = findByInputId(inputId);
             if (existing != null) {
-                return receiptForIdempotentSubmit(existing, runId, normalizedContent, normalizedImages);
+                return receiptForIdempotentSubmit(
+                        existing, runId, normalizedContent, normalizedImages);
             }
         }
 
@@ -156,22 +156,22 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     }
 
     @Override
-    public List<RunInput> claimPendingInputs(String sessionId,
-                                             String runId,
-                                             String completedTurnId) {
+    public List<RunInput> claimPendingInputs(
+            String sessionId, String runId, String completedTurnId) {
         requireText(sessionId, "sessionId");
         requireText(runId, "runId");
         requireText(completedTurnId, "completedTurnId");
 
-        List<StoredInput> pending = jdbcTemplate.query(
-                "select * from agent_run_inputs "
-                        + "where application_id = ? and session_id = ? and run_id = ? "
-                        + "and status = ? order by id asc",
-                inputMapper,
-                applicationId,
-                sessionId,
-                runId,
-                STATUS_ACCEPTED);
+        List<StoredInput> pending =
+                jdbcTemplate.query(
+                        "select * from agent_run_inputs "
+                                + "where application_id = ? and session_id = ? and run_id = ? "
+                                + "and status = ? order by id asc",
+                        inputMapper,
+                        applicationId,
+                        sessionId,
+                        runId,
+                        STATUS_ACCEPTED);
         if (pending.isEmpty()) {
             return Collections.emptyList();
         }
@@ -188,9 +188,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         return claimedInputs.isEmpty() ? Collections.<RunInput>emptyList() : claimedInputs;
     }
 
-    private int claimPendingInput(StoredInput input,
-                                  String completedTurnId,
-                                  long now) {
+    private int claimPendingInput(StoredInput input, String completedTurnId, long now) {
         return jdbcTemplate.update(
                 "update agent_run_inputs set status = ?, claimed_after_turn_id = ?, "
                         + "claimed_at = ?, updated_at = ? "
@@ -236,28 +234,31 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     }
 
     private StoredInput findByInputId(String inputId) {
-        List<StoredInput> rows = jdbcTemplate.query(
-                "select * from agent_run_inputs where application_id = ? and input_id = ?",
-                inputMapper,
-                applicationId,
-                inputId);
+        List<StoredInput> rows =
+                jdbcTemplate.query(
+                        "select * from agent_run_inputs where application_id = ? and input_id = ?",
+                        inputMapper,
+                        applicationId,
+                        inputId);
         return first(rows);
     }
 
     private ActiveRun findActiveRun(String runId) {
-        List<ActiveRun> rows = jdbcTemplate.query(
-                "select session_id from agent_active_runs "
-                        + "where application_id = ? and run_id = ?",
-                (rs, rowNum) -> new ActiveRun(rs.getString("session_id")),
-                applicationId,
-                runId);
+        List<ActiveRun> rows =
+                jdbcTemplate.query(
+                        "select session_id from agent_active_runs "
+                                + "where application_id = ? and run_id = ?",
+                        (rs, rowNum) -> new ActiveRun(rs.getString("session_id")),
+                        applicationId,
+                        runId);
         return first(rows);
     }
 
-    private RunInputReceipt receiptForIdempotentSubmit(StoredInput existing,
-                                                        String expectedRunId,
-                                                        String expectedContent,
-                                                        List<MessageImage> expectedImages) {
+    private RunInputReceipt receiptForIdempotentSubmit(
+            StoredInput existing,
+            String expectedRunId,
+            String expectedContent,
+            List<MessageImage> expectedImages) {
         if (!Objects.equals(expectedRunId, existing.runId)
                 || !Objects.equals(expectedContent, existing.content)
                 || !sameImages(expectedImages, existing.images)) {
@@ -268,12 +269,10 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     }
 
     private boolean sameImages(List<MessageImage> left, List<MessageImage> right) {
-        List<MessageImage> normalizedLeft = left == null
-                ? Collections.<MessageImage>emptyList()
-                : left;
-        List<MessageImage> normalizedRight = right == null
-                ? Collections.<MessageImage>emptyList()
-                : right;
+        List<MessageImage> normalizedLeft =
+                left == null ? Collections.<MessageImage>emptyList() : left;
+        List<MessageImage> normalizedRight =
+                right == null ? Collections.<MessageImage>emptyList() : right;
         if (normalizedLeft.size() != normalizedRight.size()) {
             return false;
         }
@@ -330,8 +329,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
             return Collections.emptyList();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<MessageImage>>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<List<MessageImage>>() {});
         } catch (IOException e) {
             throw new IllegalStateException("Failed to deserialize run input images", e);
         }

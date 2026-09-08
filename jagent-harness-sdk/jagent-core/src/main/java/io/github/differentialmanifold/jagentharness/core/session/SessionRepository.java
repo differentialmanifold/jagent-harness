@@ -10,7 +10,8 @@ public interface SessionRepository {
         return create(title, workspacePath);
     }
 
-    default SessionRecord create(String title, String workspacePath, String projectName, String projectId) {
+    default SessionRecord create(
+            String title, String workspacePath, String projectName, String projectId) {
         SessionRecord session = create(title, workspacePath, projectName);
         session.setProjectId(projectId);
         return session;

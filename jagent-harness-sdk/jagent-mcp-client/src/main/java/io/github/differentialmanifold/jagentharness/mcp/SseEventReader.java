@@ -12,7 +12,8 @@ final class SseEventReader {
 
     List<SseEvent> read(InputStream input) throws IOException {
         List<SseEvent> events = new ArrayList<SseEvent>();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        BufferedReader reader =
+                new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
         String id = null;
         StringBuilder data = new StringBuilder();
         String line;

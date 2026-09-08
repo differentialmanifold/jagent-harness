@@ -2,39 +2,40 @@ package io.github.differentialmanifold.jagentharness.core.prompt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SkillRegistryTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void databaseSkillOverridesProjectAndGlobalSkillsWithSameName() {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
-        SkillDescriptor database = new SkillDescriptor(
-                "review",
-                "Database review workflow.",
-                "skills/review/SKILL.md");
-        SkillDescriptor global = new SkillDescriptor(
-                "review",
-                "Global review workflow.",
-                globalRoot.resolve("skills/review/SKILL.md").toString());
-        SkillDescriptor project = new SkillDescriptor(
-                "review",
-                "Project review workflow.",
-                workspaceRoot.resolve("skills/review/SKILL.md").toString());
-        SkillRegistry registry = new SkillRegistry(Arrays.asList(
-                context -> Collections.singletonList(database),
-                context -> Arrays.asList(global, project)));
+        SkillDescriptor database =
+                new SkillDescriptor(
+                        "review", "Database review workflow.", "skills/review/SKILL.md");
+        SkillDescriptor global =
+                new SkillDescriptor(
+                        "review",
+                        "Global review workflow.",
+                        globalRoot.resolve("skills/review/SKILL.md").toString());
+        SkillDescriptor project =
+                new SkillDescriptor(
+                        "review",
+                        "Project review workflow.",
+                        workspaceRoot.resolve("skills/review/SKILL.md").toString());
+        SkillRegistry registry =
+                new SkillRegistry(
+                        Arrays.asList(
+                                context -> Collections.singletonList(database),
+                                context -> Arrays.asList(global, project)));
 
         List<SkillDescriptor> skills = registry.listSkills(context(globalRoot, workspaceRoot));
 
@@ -47,17 +48,21 @@ class SkillRegistryTest {
     void projectSkillOverridesGlobalSkillWithSameName() {
         Path globalRoot = tempDir.resolve("global");
         Path workspaceRoot = tempDir.resolve("workspace");
-        SkillDescriptor project = new SkillDescriptor(
-                "review",
-                "Project review workflow.",
-                workspaceRoot.resolve("skills/review/SKILL.md").toString());
-        SkillDescriptor global = new SkillDescriptor(
-                "review",
-                "Global review workflow.",
-                globalRoot.resolve("skills/review/SKILL.md").toString());
-        SkillRegistry registry = new SkillRegistry(Arrays.asList(
-                context -> Collections.singletonList(project),
-                context -> Collections.singletonList(global)));
+        SkillDescriptor project =
+                new SkillDescriptor(
+                        "review",
+                        "Project review workflow.",
+                        workspaceRoot.resolve("skills/review/SKILL.md").toString());
+        SkillDescriptor global =
+                new SkillDescriptor(
+                        "review",
+                        "Global review workflow.",
+                        globalRoot.resolve("skills/review/SKILL.md").toString());
+        SkillRegistry registry =
+                new SkillRegistry(
+                        Arrays.asList(
+                                context -> Collections.singletonList(project),
+                                context -> Collections.singletonList(global)));
 
         List<SkillDescriptor> skills = registry.listSkills(context(globalRoot, workspaceRoot));
 

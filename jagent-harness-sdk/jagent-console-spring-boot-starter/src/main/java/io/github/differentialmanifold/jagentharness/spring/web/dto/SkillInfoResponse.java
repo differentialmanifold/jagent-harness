@@ -7,8 +7,7 @@ public class SkillInfoResponse {
     private String filePath;
     private String scope;
 
-    public SkillInfoResponse() {
-    }
+    public SkillInfoResponse() {}
 
     public SkillInfoResponse(String name, String description, String filePath, String scope) {
         this.name = name;

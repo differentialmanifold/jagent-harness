@@ -1,15 +1,20 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalHandler;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalMode;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalHandler;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalMode;
-
 public class AgentRunOptions {
+
+    private final ClientCapabilities clientCapabilities;
+
+    public ClientCapabilities getClientCapabilities() {
+        return clientCapabilities;
+    }
 
     private final String runId;
     private final String traceId;
@@ -21,16 +26,18 @@ public class AgentRunOptions {
     private final RunInputSource runInputSource;
 
     private AgentRunOptions(Builder builder) {
+        this.clientCapabilities = builder.clientCapabilities;
         this.runId = builder.runId;
         this.traceId = builder.traceId;
-        this.attributes = Collections.unmodifiableMap(new LinkedHashMap<String, Object>(builder.attributes));
+        this.attributes =
+                Collections.unmodifiableMap(new LinkedHashMap<String, Object>(builder.attributes));
         this.eventConsumer = builder.eventConsumer;
         this.stopSignal = builder.stopSignal == null ? StopSignal.none() : builder.stopSignal;
-        this.approvalMode = builder.approvalMode == null ? ToolApprovalMode.FULL_ACCESS : builder.approvalMode;
+        this.approvalMode =
+                builder.approvalMode == null ? ToolApprovalMode.FULL_ACCESS : builder.approvalMode;
         this.approvalHandler = builder.approvalHandler;
-        this.runInputSource = builder.runInputSource == null
-                ? RunInputSource.none()
-                : builder.runInputSource;
+        this.runInputSource =
+                builder.runInputSource == null ? RunInputSource.none() : builder.runInputSource;
     }
 
     public static AgentRunOptions empty() {
@@ -79,6 +86,7 @@ public class AgentRunOptions {
 
     public Builder toBuilder() {
         return builder()
+                .clientCapabilities(clientCapabilities)
                 .runId(runId)
                 .traceId(traceId)
                 .attributes(attributes)
@@ -90,6 +98,13 @@ public class AgentRunOptions {
     }
 
     public static class Builder {
+        private ClientCapabilities clientCapabilities = ClientCapabilities.NONE;
+
+        public Builder clientCapabilities(ClientCapabilities value) {
+            this.clientCapabilities = value == null ? ClientCapabilities.NONE : value;
+            return this;
+        }
+
         private String runId;
         private String traceId;
         private final Map<String, Object> attributes = new LinkedHashMap<String, Object>();

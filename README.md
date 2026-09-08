@@ -1,409 +1,116 @@
 # JAgentHarness
 
-Embeddable Java agent harness SDK for server-side applications.
+**Run the agent harness remotely. Execute tools locally.**
 
-JAgentHarness is designed to run inside an application process, not as a central service that hosts unrelated agents. The host application registers tools, skills, prompts, model providers, and storage providers, then calls the harness from normal Java or Spring Boot code.
+JAgentHarness separates the agent loop from the environment where actions happen. Your application embeds a lightweight tool-execution SDK; a server runs the harness, calls the model, and maintains the conversation. A shared protocol connects them.
 
-This repository also includes coding and business-system examples with Spring Boot backends and a shared Vue console UI.
-
-## Features
-
-- Java 8 and Maven based SDK.
-- Agent loop for model calls, tool calls, tool results, and subsequent model calls.
-- Tools are Java methods, not command-line wrappers.
-- Spring Bean extension points for tools, model providers, skill providers, storage, and custom events.
-- OpenAI-compatible chat completions provider.
-- JDBC-backed session, message, timeline event, prompt, and skill storage.
-- Virtual knowledge filesystem for database-backed prompt and skill files.
-- Database-scoped `AGENTS.md` loading for global and project instructions.
-- Database-scoped skills with project-over-global precedence.
-- Java 8 Streamable HTTP MCP client with global and project database configuration.
-- Optional Console Spring Boot starter with `/api/*` endpoints and SSE streaming for realtime UIs.
-- Context compaction when a conversation approaches the model context window.
-
-## Repository Layout
-
-```text
-JAgentHarness/
-  pom.xml                         Development reactor for SDK modules and examples
-  jagent-harness-sdk/
-    pom.xml                       SDK reactor for publishable Maven modules
-    jagent-core/                  Core SDK interfaces and agent runtime
-    jagent-mcp-client/            Framework-neutral Streamable HTTP MCP client
-    jagent-mcp-spring-boot-starter/
-                                  MCP configuration and Spring Boot lifecycle
-    jagent-spring-boot-starter/   Spring Boot auto-configuration for embedded agent runtime
-    jagent-console-spring-boot-starter/
-                                  Optional backend console API for the Vue UI
-    jagent-store-jdbc/            JDBC session and timeline store
-  examples/
-    coding-tool-app/              Spring Boot coding-agent example backend
-    business-system-agent-demo/   Business-system SDK embedding example
-    business-system-agent-console-demo/
-                                  Business-system example backend with Console API
-  frontend/                       Vue console UI for Console Spring Boot examples
-  plan/                           Design notes
+```mermaid
+flowchart LR
+    subgraph device["DEVICE / YOUR APPLICATION"]
+        direction TB
+        sdk["Lightweight client SDK<br/>Advertise tools · Execute calls · Return results"]
+        tools["Your native tools<br/>Device APIs · UI actions · Files · Shell"]
+        sdk <-->|"Local calls and results"| tools
+    end
+    subgraph remote["CLOUD / YOUR SERVER"]
+        direction TB
+        harness["Agent Harness<br/>Agent loop · Context · Conversation state"]
+        model["Language model"]
+        harness <-->|"Model requests and responses"| model
+    end
+    sdk -->|"HTTP request: chat, tool catalog, results"| harness
+    harness -->|"HTTP response: tool calls or answer"| sdk
+    style sdk fill:#e8edff,stroke:#4f46e5,color:#172554
+    style tools fill:#e6f7f1,stroke:#0f766e,color:#134e4a
+    style harness fill:#e8edff,stroke:#4f46e5,color:#172554
 ```
 
-## Requirements
+The client initiates every connection. The server returns tool calls in its responses, so the device does not need to expose a callback endpoint.
 
-- Java 8
-- Maven 3.x
-- Node.js `^20.19.0` or `>=22.12.0` and npm, only for the Vue example UI
+## Why separate the harness from execution?
 
-## Quick Start
+A robot controller, a phone app, and a desktop application each have their own runtime, dependencies, and native APIs. The tools must run there, but embedding a full agent harness can tie the application to a different language, framework, or dependency stack. Reimplementing the agent loop for each environment adds another system to maintain.
 
-See [QUICK_START.md](./QUICK_START.md).
+JAgentHarness puts a protocol at that boundary. **The device implements its capabilities; the server runs the agent.** Model integration, context management, and conversation state live on the server. Local code owns tool implementations, permissions, and execution. Agent behavior can evolve independently of those device integrations.
 
-Short version:
+The current Java SDK uses the JDK HTTP stack and Jackson. It does not bring Spring, JDBC, model clients, or the agent runtime into the host application. Other languages can implement the same HTTP/JSON protocol without adopting the server's Java stack.
 
-macOS:
+## Where this fits
 
-```bash
-cp examples/coding-tool-app/launcher/.env.coding.example \
-  examples/coding-tool-app/launcher/.env.coding.local
-# Edit .env.coding.local, then:
-./examples/coding-tool-app/launcher/start-coding.command
+| Application | What stays local |
+| --- | --- |
+| Coding and desktop automation | Workspace access, application controls, shell commands |
+| Robot control | Hardware drivers, sensor access, device-specific actions |
+| Phone automation | Native app integration, UI actions, platform permissions |
+| Existing business applications | Internal services and operations exposed as tools |
+
+**Available today:** a Java server, lightweight Java client SDK, and a working coding demo. Robot and phone integrations illustrate applications of the design; their platform tools and adapters are not included. A complete JavaScript SDK is not yet provided.
+
+## How it works
+
+1. The client sends a user message and descriptions of its available tools.
+2. The harness runs until it needs a client tool, then returns the calls and releases the request.
+3. The SDK executes those tools locally and submits their results through the same chat API.
+4. The harness continues from the conversation history until it has an answer or needs another tool.
+
+The UI can present these exchanges as one continuous interaction. Tool implementations and local dependencies stay in the application; messages, tool arguments, and returned results cross the network. Your application chooses which capabilities to expose and what data its tools return.
+
+Server-side tools are also supported. In Java, both sides implement `ToolDefinition`; registration determines where execution happens. See the [protocol](protocol/README.md) for the wire format and failure semantics.
+
+## Try it locally
+
+You need **JDK 8+**, **Maven 3.6.3+**, **Node.js 22.12+**, and an OpenAI-compatible model endpoint. SQLite is included; no database service is needed.
+
+```sh
+git clone https://github.com/differentialmanifold/jagent-harness.git
+cd jagent-harness
+cp .env.example .env.local
 ```
 
-Windows Command Prompt:
+Set your model connection in `.env.local`:
 
-```bat
-copy examples\coding-tool-app\launcher\.env.coding.example examples\coding-tool-app\launcher\.env.coding.local
-rem Edit .env.coding.local, then:
-examples\coding-tool-app\launcher\start-coding.cmd
+```dotenv
+JAGENT_MODEL=your-model-name
+JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
+JAGENT_OPENAI_API_KEY=your-api-key
 ```
 
-The coding-app-specific launchers and configuration template live together under
-`examples/coding-tool-app/launcher`. The local `.env.coding.local` file is ignored by Git. The
-launcher checks the required tools, prepares dependencies, builds and starts the separate Java and
-Vite processes, and opens `http://127.0.0.1:5173`. The Windows launcher does not require
-PowerShell. See [QUICK_START.md](./QUICK_START.md) for configuration precedence and manual
-development.
+Start the coding demo:
 
-### Runtime input and stopping
-
-The backend assigns one `runId` to each streamed agent run and returns it in the `X-Run-Id`
-response header:
-
-```json
-{
-  "sessionId": "session-id",
-  "content": "Inspect the project"
-}
+```sh
+node scripts/dev.mjs
 ```
 
-While that run is active, send another user message through the same runtime-input endpoint:
+This builds and starts the harness server, coding client, and web console. Open **http://127.0.0.1:5175**, create a project with a local workspace path, and ask:
 
-```bash
-curl -X POST \
-  -H 'Content-Type: application/json' \
-  -d '{"inputId":"input-message-1","content":"Also update the tests"}' \
-  http://localhost:18080/api/chat/runs/run_1234567890abcdef/messages
-```
+> Read the README in this workspace and summarize the project.
 
-The client does not classify the message or ask the user to choose an input mode. All messages
-visible at a safe turn boundary are appended as separate user messages in submission order, followed
-by one model call. The main model interprets them in the existing conversation context and decides
-whether they correct the current approach, add constraints, or request additional work. A turn
-contains one model call and every tool call produced by it; active model/tool work is never
-interrupted. The identifier hierarchy remains `sessionId > runId > turnId > toolCallId`.
+Watch the tool calls: the server drives the conversation while the coding client reads the file on your machine. In a scratch workspace, try asking it to create a small file and read it back. Use the console's approval controls for local actions. **Ctrl+C** stops the demo.
 
-Stop the entire run using the same run ID:
+To see the same separation across machines, set `JAGENT_SERVER_URL` and `JAGENT_CLIENT_TOKEN` to an existing server, then run `node scripts/dev.mjs --client-only`. The workspace remains on the client machine.
 
-```bash
-curl -X POST \
-  http://localhost:18080/api/chat/runs/run_1234567890abcdef/stop
-```
+See [Quick start](QUICK_START.md) for configuration and troubleshooting.
 
-Every terminal run state closes its input gate and cancels unclaimed runtime messages. For an
-explicit Stop, the frontend also uses `AbortController` as a timeout fallback.
+## Integrate it
 
-Active runs are coordinated through `RunStopCoordinator`. The JDBC store provides the default
-implementation and records each run in the shared database, so a stop request can reach a run
-owned by another service instance. Each registered run watches only its own database row; there is
-no full-table polling. Run rows are retained: a run that was not stopped remains `NORMAL`, while a
-requested stop remains `STOP_REQUESTED`. Multiple runs may execute for the same session; the run ID
-selects the exact run to stop. Backend-generated run IDs are not reused. A custom
-coordinator bean can replace JDBC with Redis or another transport.
+- [Java client SDK](sdk/java/README.md): embed tool execution and register local capabilities.
+- [HTTP/JSON protocol](protocol/README.md): implement a client in another language or environment.
+- [Server integration](jagent-harness-sdk/README.md): host and configure the harness using Maven libraries.
+- [Coding client](examples/coding-java/README.md) and [server host](examples/server-demo/README.md): the two applications behind the demo.
 
-JDBC runtime input is deliberately best-effort. Pending input is stored separately from conversation
-messages and is polled once at each safe turn boundary. Submission and polling do not take an explicit
-application transaction or boundary lock, so an input accepted in the final race window may not be
-executed. The `202 Accepted` response acknowledges the submission attempt, not delivery.
-
-## Spring Boot Usage
-
-Add the modules your application needs:
-
-```xml
-<properties>
-    <jagent-harness.version>0.8.0</jagent-harness.version>
-</properties>
-
-<dependencies>
-    <dependency>
-        <groupId>io.github.differentialmanifold</groupId>
-        <artifactId>jagent-spring-boot-starter</artifactId>
-        <version>${jagent-harness.version}</version>
-    </dependency>
-    <dependency>
-        <groupId>io.github.differentialmanifold</groupId>
-        <artifactId>jagent-store-jdbc</artifactId>
-        <version>${jagent-harness.version}</version>
-    </dependency>
-    <!-- Add the JDBC driver used by your spring.datasource.* configuration. -->
-    <dependency>
-        <groupId>org.xerial</groupId>
-        <artifactId>sqlite-jdbc</artifactId>
-        <version>3.45.3.0</version>
-    </dependency>
-</dependencies>
-```
-
-This dependency set does not expose any HTTP API. It is for applications that call the agent from their own Java services.
-The Spring Boot starter includes the default OpenAI-compatible provider; add a custom `ModelProvider` bean for another provider.
-The JDBC store reuses the host application's Spring Boot `DataSource`; configure it with standard `spring.datasource.*` properties.
-When multiple host applications share one database, set a distinct `harness.store.jdbc.application-id` for each application so sessions, messages, prompt files, skills, approvals, and stop requests stay isolated.
-Its schema is published as `db/jagent-harness/schema.sql` inside `jagent-store-jdbc`, so host applications can run the same SQL in their own database migration process.
-The initializer creates missing objects but does not alter existing tables. Existing databases
-must be migrated explicitly or recreated when the schema changes, including the multimodal
-`messages.images_json` and `agent_run_inputs.images_json` columns.
-The schema includes the virtual knowledge filesystem, skill manifest, and active
-agent run tables. Multi-instance deployments must point every instance at the same database;
-the default SQLite configuration is intended for local single-host development.
-
-Add the console starter only when you want the bundled Vue console or the `/api/*` management endpoints:
-
-```xml
-<dependency>
-    <groupId>io.github.differentialmanifold</groupId>
-    <artifactId>jagent-console-spring-boot-starter</artifactId>
-    <version>${jagent-harness.version}</version>
-</dependency>
-```
-
-Add the MCP starter when the agent needs tools from remote Streamable HTTP MCP servers:
-
-```xml
-<dependency>
-    <groupId>io.github.differentialmanifold</groupId>
-    <artifactId>jagent-mcp-spring-boot-starter</artifactId>
-    <version>${jagent-harness.version}</version>
-</dependency>
-```
-
-Configure servers in the database-backed global or project `mcp.json` managed by the Console.
-Project servers override global servers with the same name:
-
-```json
-{
-  "mcpServers": {
-    "catalog": {
-      "transport": "streamable-http",
-      "url": "https://example.com/mcp",
-      "enabled": true,
-      "enabledTools": ["product_search", "inventory_check"],
-      "headers": {
-        "Authorization": "Bearer ${CATALOG_MCP_TOKEN}"
-      },
-      "connectTimeoutSeconds": 10,
-      "requestTimeoutSeconds": 60
-    }
-  }
-}
-```
-
-Sensitive headers must reference environment variables. MCP tools are exposed to the model as
-`serverName__toolName`. Omitting `enabledTools` loads every discovered tool; an empty array loads
-none. Global and project configuration changes are detected from the database and applied on the
-next agent run.
-
-Use the harness from application code:
-
-```java
-@Service
-public class AgentService {
-    private final AgentHarness agentHarness;
-
-    public AgentService(AgentHarness agentHarness) {
-        this.agentHarness = agentHarness;
-    }
-
-    public AgentRunResult run(String sessionId, String userText) {
-        AgentRunOptions options = AgentRunOptions.builder()
-                .traceId("trace-123")
-                .attribute("channel", "web")
-                .build();
-
-        return agentHarness.run(sessionId, userText, options);
-    }
-}
-```
-
-## Tools and Extensions
-
-Tools implement `ToolDefinition`:
-
-```java
-@Component
-public class MyTool implements ToolDefinition {
-    public String getName() {
-        return "my_tool";
-    }
-
-    public String getDescription() {
-        return "Call a business capability.";
-    }
-
-    public JsonNode getParametersSchema() {
-        return schema;
-    }
-
-    public ToolExecutionResult execute(ToolContext context, JsonNode arguments) {
-        return ToolExecutionResult.of("{}");
-    }
-}
-```
-
-Extensions are Spring beans. The starter collects `ToolDefinition`, `ModelProvider`, `SkillProvider`,
-`PromptProvider`, `SessionStore`, and `AgentEventListener` beans and wires them into the runtime.
-Reusable extension modules should expose those beans through Spring Boot auto-configuration.
-The default OpenAI-compatible provider uses an OkHttp-backed `ModelHttpClient`; applications can
-override it by registering their own `ModelHttpClient` bean.
-
-When configured, the provider reads its Bearer token from `harness.model.api-key`, which the
-examples bind to `JAGENT_OPENAI_API_KEY`. The value may remain empty for local or remote endpoints
-that do not require authentication. Applications that obtain tokens dynamically can replace that
-behavior with a thread-safe `ModelAccessTokenProvider` bean:
-
-```java
-@Bean
-public ModelAccessTokenProvider modelAccessTokenProvider(MyTokenService tokenService) {
-    return tokenService::getValidAccessToken;
-}
-```
-
-The provider calls this bean before every model request. OAuth login, refresh, caching, and token
-storage remain application responsibilities.
-
-Vision-capable models receive images through the standard OpenAI-compatible message shape. The
-provider sends text and image attachments as separate content parts, with browser-selected files
-encoded as base64 data URLs:
-
-```json
-{
-  "role": "user",
-  "content": [
-    { "type": "text", "text": "Describe this image" },
-    {
-      "type": "image_url",
-      "image_url": { "url": "data:image/png;base64,..." }
-    }
-  ]
-}
-```
-
-The configured endpoint and model must implement multimodal Chat Completions; text-only compatible
-models continue to receive ordinary string content when no image is attached.
-
-SDK callers can attach either an HTTP(S) image URL or a base64 data URL with the multimodal
-`AgentHarness` overload:
-
-```java
-MessageImage image = new MessageImage(
-        "screenshot.png",
-        "image/png",
-        "data:image/png;base64,...");
-agentHarness.run(sessionId, "Describe this screenshot", Collections.singletonList(image));
-```
-
-The console API deliberately accepts only base64 data URLs and limits each message to four images,
-10 MB per image, and 20 MB in total. This keeps browser uploads bounded and avoids making the model
-server fetch arbitrary remote URLs. The console also caps the encoded chat request body at 32 MB
-before JSON deserialization, including requests sent without a `Content-Length` header.
-
-For the initial `/api/chat/stream` request and runtime `/api/chat/runs/{runId}/messages` requests,
-the console-facing request shape is:
-
-```json
-{
-  "content": "Describe this image",
-  "images": [
-    {
-      "name": "screenshot.png",
-      "mediaType": "image/png",
-      "url": "data:image/png;base64,..."
-    }
-  ]
-}
-```
-
-The initial stream request also includes `sessionId` and may include `approvalMode`.
-
-The SDK provides the built-in `skill` tool for loading `SKILL.md` instructions and files referenced
-by a skill. The coding-tool example registers workspace-specific tools as Spring beans:
-`bash`, `read`, `edit`, `write`, `grep`, `find`, and `ls`. Its `read` tool only accesses the
-workspace and supports one-based `offset` and line-count `limit` arguments. `find` locates files
-with a required glob `pattern`; directory browsing remains the responsibility of `ls`. `grep`
-uses a required regular-expression `pattern` by default and accepts `literal`, `ignoreCase`,
-`glob`, and `limit` options. Search results expose `engine` as `ripgrep` or `java`; ripgrep honors
-ignore files, while the Java implementation is the automatic no-download fallback.
-
-JAgentHarness uses a built-in general system prompt that cannot be replaced by `SYSTEM.md`.
-It appends the global and current project `AGENTS.md` stored in the database. Skills use normal
-paths such as `skills/review/SKILL.md` and are merged by name with project scope taking precedence
-over global scope. The built-in `skill` tool resolves the same logical path from project scope first,
-then global scope. Runtime prompt, skill, and MCP loading does not scan the external filesystem.
-
-## Configuration
-
-Common environment variables used by the example applications:
-
-The coding-tool launcher reads `examples/coding-tool-app/launcher/.env.coding.local`. Existing
-operating-system environment variables override values from that file, and application defaults
-apply when neither source defines a value.
-
-| Variable | Example Default | Description |
-| --- | --- | --- |
-| `JAGENT_OPENAI_API_KEY` | empty | Optional API key for the OpenAI-compatible provider. When set, it is sent as a Bearer token. |
-| `JAGENT_OPENAI_BASE_URL` | empty | Required OpenAI-compatible API base URL, normally ending in `/v1`. |
-| `JAGENT_MODEL` | empty | Required model identifier accepted by the configured endpoint. It may be a local model path. |
-| `JAGENT_MODEL_STREAM_ENABLED` | `true` | Set to `false` for OpenAI-compatible endpoints that do not support SSE streaming. |
-| `JAGENT_MODEL_INCLUDE_USAGE` | `true` | Set to `false` when a compatible endpoint rejects `stream_options.include_usage`. |
-| `JAGENT_MAX_CHAT_REQUEST_BODY_SIZE` | `32MB` | Encoded body limit for chat requests that can contain base64 images. Keep it above the decoded-image total. |
-| `JAGENT_TEMPERATURE` | empty | Optional. If empty, `temperature` is not sent. |
-| `SERVER_PORT` | `18080` | HTTP port used by the example applications. |
-| `JAGENT_OPEN_BROWSER` | `true` | Set to `false` to keep the coding-tool launcher from opening a browser. |
-| `JAGENT_DATASOURCE_URL` | `jdbc:sqlite:jagent-harness.db` | JDBC URL used by the examples. |
-| `JAGENT_DATASOURCE_DRIVER` | `org.sqlite.JDBC` | JDBC driver class used by the examples. |
-| `JAGENT_DATASOURCE_USERNAME` | empty | JDBC username, when needed. |
-| `JAGENT_DATASOURCE_PASSWORD` | empty | JDBC password, when needed. |
-| `JAGENT_STOP_POLL_INTERVAL_MS` | `1000` | Interval for each active run to check its own stop row. |
-| `JAGENT_STOP_LISTENER_THREADS` | `2` | Shared scheduler threads used by the per-run stop listeners. |
-| `JAGENT_CORS_ORIGIN` | `http://localhost:5173` | Console UI CORS origin. Used only by the console starter. |
-| `JAGENT_CORS_ORIGIN_127` | `http://127.0.0.1:5173` | Additional console UI CORS origin for loopback access. |
-| `JAGENT_COMPACTION_ENABLED` | `true` | Enable context compaction. |
-| `JAGENT_CONTEXT_WINDOW_TOKENS` | `128000` | Model context window used for compaction checks. |
-| `JAGENT_RG_PATH` | empty | Optional absolute path to `rg`/`rg.exe`. The coding tools otherwise inspect the process `PATH` and fall back to their Java implementation when ripgrep is unavailable. No binary is downloaded. |
+The current release is `1.0.0`. For local development, run `mvn install` before building a separate Maven consumer. The current host targets a single service instance and application-level authentication; platform-specific permissions remain the client's responsibility.
 
 ## Development
 
-Run backend tests:
-
-```bash
-mvn -f pom.xml test
+```sh
+mvn clean install
+npm ci --prefix protocol
+npm test --prefix protocol
+npm ci --prefix console
+npm test --prefix console
+npm run build --prefix console
 ```
 
-Build the Vue UI:
+Maven runs the Java tests; npm runs the protocol and console tests. See [Releasing](RELEASING.md) for artifact publication.
 
-```bash
-cd frontend
-npm run build
-```
-
-The root `pom.xml` is for local development. Importing it in an IDE lets examples use SDK modules directly from the Maven reactor without installing them into the local Maven repository.
-
-## License
-
-This project is licensed under the [MIT License](./LICENSE).
+[MIT License](LICENSE).

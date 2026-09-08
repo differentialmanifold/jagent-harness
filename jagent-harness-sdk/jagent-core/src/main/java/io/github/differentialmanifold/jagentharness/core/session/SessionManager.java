@@ -10,7 +10,8 @@ public interface SessionManager {
         return createSession(title, workspacePath);
     }
 
-    default SessionRecord createSession(String title, String workspacePath, String projectName, String projectId) {
+    default SessionRecord createSession(
+            String title, String workspacePath, String projectName, String projectId) {
         return createSession(title, workspacePath, projectName);
     }
 

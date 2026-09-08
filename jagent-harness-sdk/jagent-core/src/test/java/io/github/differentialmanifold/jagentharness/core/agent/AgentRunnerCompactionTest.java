@@ -4,11 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionState;
 import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
@@ -16,12 +11,9 @@ import io.github.differentialmanifold.jagentharness.core.conversation.Conversati
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.DefaultConversationContextManager;
 import io.github.differentialmanifold.jagentharness.core.conversation.TokenEstimator;
-import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
-import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
-import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
@@ -29,12 +21,17 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderR
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelUsage;
-import io.github.differentialmanifold.jagentharness.core.agent.AgentRunOptions;
-import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
 import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContextFactory;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AgentRunnerCompactionTest {
@@ -43,8 +40,10 @@ class AgentRunnerCompactionTest {
     void compactsOlderMessagesWhenConversationApproachesContextWindow() {
         FakeSessionStore store = new FakeSessionStore();
         FakeCompactionStore compactionStore = new FakeCompactionStore();
-        store.messages.add(message("m1", AgentMessage.ROLE_USER, repeated("old user requirement ", 20)));
-        store.messages.add(message("m2", AgentMessage.ROLE_ASSISTANT, repeated("old assistant answer ", 20)));
+        store.messages.add(
+                message("m1", AgentMessage.ROLE_USER, repeated("old user requirement ", 20)));
+        store.messages.add(
+                message("m2", AgentMessage.ROLE_ASSISTANT, repeated("old assistant answer ", 20)));
         store.messages.add(message("m3", AgentMessage.ROLE_USER, repeated("old follow up ", 20)));
         store.messages.add(message("m4", AgentMessage.ROLE_ASSISTANT, "recent assistant answer"));
 
@@ -55,20 +54,25 @@ class AgentRunnerCompactionTest {
         DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
         AgentSettings settings = settings();
 
-        AgentRunner runner = new AgentRunner(
-                settings,
-                store,
-                eventPublisher,
-                new StaticPromptProvider(),
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                new DefaultConversationContextManager(settings, compactionStore, eventPublisher, objectMapper),
-                objectMapper);
+        AgentRunner runner =
+                new AgentRunner(
+                        settings,
+                        store,
+                        eventPublisher,
+                        new StaticPromptProvider(),
+                        new ToolRegistry(),
+                        providers,
+                        new DefaultToolContextFactory(),
+                        new DefaultConversationContextManager(
+                                settings, compactionStore, eventPublisher, objectMapper),
+                        objectMapper);
 
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        AgentRunResult result = runner.run("s1", "new request that must remain verbatim",
-                AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result =
+                runner.run(
+                        "s1",
+                        "new request that must remain verbatim",
+                        AgentRunOptions.builder().eventConsumer(events::add).build());
 
         assertEquals("summary from compact", compactionStore.summary);
         assertEquals("m2", compactionStore.cursorMessageId);
@@ -81,7 +85,9 @@ class AgentRunnerCompactionTest {
         assertEquals(3, normalRequest.getMessages().size());
         assertEquals("m3", normalRequest.getMessages().get(0).getMessageId());
         assertEquals("m4", normalRequest.getMessages().get(1).getMessageId());
-        assertEquals("new request that must remain verbatim", normalRequest.getMessages().get(2).getContent());
+        assertEquals(
+                "new request that must remain verbatim",
+                normalRequest.getMessages().get(2).getContent());
         assertFalse(containsMessage(normalRequest.getMessages(), "m1"));
         assertFalse(containsMessage(normalRequest.getMessages(), "m2"));
         AgentMessage userMessage = store.messages.get(store.messages.size() - 2);
@@ -93,8 +99,12 @@ class AgentRunnerCompactionTest {
         assertEquals("m4", userMessage.getParentMessageId());
         assertEquals(userMessage.getMessageId(), assistantMessage.getParentMessageId());
 
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.COMPACTION_START.equals(event.getType())));
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.COMPACTION_END.equals(event.getType())));
+        assertTrue(
+                events.stream()
+                        .anyMatch(event -> AgentEvent.COMPACTION_START.equals(event.getType())));
+        assertTrue(
+                events.stream()
+                        .anyMatch(event -> AgentEvent.COMPACTION_END.equals(event.getType())));
     }
 
     @Test
@@ -115,23 +125,26 @@ class AgentRunnerCompactionTest {
         AgentSettings settings = settings();
         settings.setCompactionEnabled(false);
 
-        AgentRunner runner = new AgentRunner(
-                settings,
-                store,
-                eventPublisher,
-                new StaticPromptProvider(),
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                new DefaultConversationContextManager(settings, new FakeCompactionStore(), eventPublisher, objectMapper),
-                usageStore,
-                objectMapper);
+        AgentRunner runner =
+                new AgentRunner(
+                        settings,
+                        store,
+                        eventPublisher,
+                        new StaticPromptProvider(),
+                        new ToolRegistry(),
+                        providers,
+                        new DefaultToolContextFactory(),
+                        new DefaultConversationContextManager(
+                                settings, new FakeCompactionStore(), eventPublisher, objectMapper),
+                        usageStore,
+                        objectMapper);
 
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        AgentRunResult result = runner.run(
-                "s1",
-                "hello",
-                AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result =
+                runner.run(
+                        "s1",
+                        "hello",
+                        AgentRunOptions.builder().eventConsumer(events::add).build());
 
         AgentMessage assistant = store.messages.get(store.messages.size() - 1);
         assertEquals(assistant.getMessageId(), usageStore.appended.getMessageId());
@@ -140,11 +153,16 @@ class AgentRunnerCompactionTest {
         assertEquals(Integer.valueOf(36), usageStore.appended.getActualContextTokens());
         ModelRequest modelRequest = provider.normalRequests.get(0);
         TokenEstimator estimator = new TokenEstimator();
-        int expectedNextContextEstimate = estimator.estimateText(modelRequest.getSystemPrompt())
-                + estimator.estimateMessages(modelRequest.getMessages())
-                + estimator.estimateMessages(Collections.singletonList(assistant));
-        assertEquals(Integer.valueOf(expectedNextContextEstimate), usageStore.appended.getEstimatedTokens());
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
+        int expectedNextContextEstimate =
+                estimator.estimateText(modelRequest.getSystemPrompt())
+                        + estimator.estimateMessages(modelRequest.getMessages())
+                        + estimator.estimateMessages(Collections.singletonList(assistant));
+        assertEquals(
+                Integer.valueOf(expectedNextContextEstimate),
+                usageStore.appended.getEstimatedTokens());
+        assertTrue(
+                events.stream()
+                        .anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
     }
 
     @Test
@@ -162,32 +180,35 @@ class AgentRunnerCompactionTest {
         DefaultAgentEventPublisher eventPublisher = new DefaultAgentEventPublisher(objectMapper);
         AgentSettings settings = settings();
         settings.setCompactionEnabled(false);
-        ConversationContextManager contextManager = request -> new ConversationContext(
-                request.getSystemPrompt(),
-                request.getMessages(),
-                12,
-                120,
-                1000,
-                800,
-                ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE);
+        ConversationContextManager contextManager =
+                request ->
+                        new ConversationContext(
+                                request.getSystemPrompt(),
+                                request.getMessages(),
+                                12,
+                                120,
+                                1000,
+                                800,
+                                ModelCallUsage.ESTIMATE_SOURCE_ACTUAL_BASELINE);
 
-        AgentRunner runner = new AgentRunner(
-                settings,
-                store,
-                eventPublisher,
-                new StaticPromptProvider(),
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                contextManager,
-                usageStore,
-                objectMapper);
+        AgentRunner runner =
+                new AgentRunner(
+                        settings,
+                        store,
+                        eventPublisher,
+                        new StaticPromptProvider(),
+                        new ToolRegistry(),
+                        providers,
+                        new DefaultToolContextFactory(),
+                        contextManager,
+                        usageStore,
+                        objectMapper);
 
         runner.run("s1", "hello");
 
         AgentMessage assistant = store.messages.get(store.messages.size() - 1);
-        int expectedEstimate = 120
-                + new TokenEstimator().estimateMessages(Collections.singletonList(assistant));
+        int expectedEstimate =
+                120 + new TokenEstimator().estimateMessages(Collections.singletonList(assistant));
         assertEquals(Integer.valueOf(expectedEstimate), usageStore.appended.getEstimatedTokens());
         assertEquals(ModelCallUsage.ESTIMATE_SOURCE_FULL, usageStore.appended.getEstimateSource());
     }
@@ -207,27 +228,32 @@ class AgentRunnerCompactionTest {
         AgentSettings settings = settings();
         settings.setCompactionEnabled(false);
 
-        AgentRunner runner = new AgentRunner(
-                settings,
-                store,
-                eventPublisher,
-                new StaticPromptProvider(),
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                new DefaultConversationContextManager(settings, new FakeCompactionStore(), eventPublisher, objectMapper),
-                new FailingUsageStore(),
-                objectMapper);
+        AgentRunner runner =
+                new AgentRunner(
+                        settings,
+                        store,
+                        eventPublisher,
+                        new StaticPromptProvider(),
+                        new ToolRegistry(),
+                        providers,
+                        new DefaultToolContextFactory(),
+                        new DefaultConversationContextManager(
+                                settings, new FakeCompactionStore(), eventPublisher, objectMapper),
+                        new FailingUsageStore(),
+                        objectMapper);
 
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        AgentRunResult result = runner.run(
-                "s1",
-                "hello",
-                AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result =
+                runner.run(
+                        "s1",
+                        "hello",
+                        AgentRunOptions.builder().eventConsumer(events::add).build());
 
         assertEquals("final answer", result.getAnswer());
         assertEquals(2, store.messages.size());
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
+        assertTrue(
+                events.stream()
+                        .anyMatch(event -> AgentEvent.CONTEXT_USAGE.equals(event.getType())));
         assertTrue(events.stream().anyMatch(event -> AgentEvent.AGENT_END.equals(event.getType())));
     }
 
@@ -339,6 +365,7 @@ class AgentRunnerCompactionTest {
 
         private final SessionRecord session;
         private final List<AgentMessage> messages = new ArrayList<AgentMessage>();
+
         private FakeSessionStore() {
             session = new SessionRecord();
             session.setSessionId("s1");

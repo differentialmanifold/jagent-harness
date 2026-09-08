@@ -1,79 +1,38 @@
 name: CI
-
 on:
   pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
-
+    branches: [main]
 permissions:
   contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 8
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
           cache: maven
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Validate coding launcher syntax
-        run: |
-          bash -n examples/coding-tool-app/launcher/start-coding.command
-          node --check examples/coding-tool-app/launcher/start-coding.mjs
-
-      - name: Run backend tests
-        run: mvn -f pom.xml test
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-  coding-tools-windows:
+          cache-dependency-path: |
+            console/package-lock.json
+            protocol/package-lock.json
+      - run: node --check scripts/dev.mjs
+      - run: mvn -B install
+      - run: npm ci --prefix protocol && npm test --prefix protocol
+      - run: npm ci --prefix console && npm test --prefix console && npm run build --prefix console
+  coding-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 8
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
           cache: maven
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Validate Windows launcher syntax
-        shell: cmd
-        run: node --check examples\coding-tool-app\launcher\start-coding.mjs
-
-      - name: Build coding tool dependencies
-        run: mvn -B -f pom.xml -pl examples/coding-tool-app -am -DskipTests install
-
-      - name: Run coding tool tests
-        run: mvn -B -f examples/coding-tool-app/pom.xml test
+      - run: mvn -B -pl examples/coding-java -am test

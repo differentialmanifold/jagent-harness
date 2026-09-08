@@ -1,13 +1,12 @@
 package io.github.differentialmanifold.jagentharness.mcp;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
-import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class McpServerConfig {
 
@@ -22,8 +21,7 @@ public class McpServerConfig {
     private int requestTimeoutSeconds = 60;
     private List<String> enabledTools;
 
-    public McpServerConfig() {
-    }
+    public McpServerConfig() {}
 
     public McpServerConfig copy() {
         McpServerConfig copy = new McpServerConfig();
@@ -61,8 +59,7 @@ public class McpServerConfig {
         if (value.isEmpty()) {
             return STREAMABLE_HTTP;
         }
-        String compact = value.toLowerCase(Locale.ROOT)
-                .replaceAll("[\\s_-]", "");
+        String compact = value.toLowerCase(Locale.ROOT).replaceAll("[\\s_-]", "");
         if ("http".equals(compact) || "streamablehttp".equals(compact)) {
             return STREAMABLE_HTTP;
         }
@@ -90,9 +87,10 @@ public class McpServerConfig {
     }
 
     public void setHeaders(Map<String, String> headers) {
-        this.headers = headers == null
-                ? new LinkedHashMap<String, String>()
-                : new LinkedHashMap<String, String>(headers);
+        this.headers =
+                headers == null
+                        ? new LinkedHashMap<String, String>()
+                        : new LinkedHashMap<String, String>(headers);
     }
 
     public int getConnectTimeoutSeconds() {

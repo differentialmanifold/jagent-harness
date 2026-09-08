@@ -1,5 +1,25 @@
 package io.github.differentialmanifold.jagentharness.core.provider.openai;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelUsage;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpClient;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpException;
+import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpRequest;
+import io.github.differentialmanifold.jagentharness.core.provider.http.OkHttpModelHttpClient;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,27 +33,6 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
-import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
-import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
-import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelUsage;
-import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpClient;
-import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpException;
-import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpRequest;
-import io.github.differentialmanifold.jagentharness.core.provider.http.OkHttpModelHttpClient;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
-
 public class OpenAiCompatibleProvider implements ModelProvider {
 
     private final OpenAiCompatibleProviderConfig config;
@@ -41,7 +40,8 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     private final ModelHttpClient httpClient;
     private final Supplier<String> accessTokenSupplier;
 
-    public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config, ObjectMapper objectMapper) {
+    public OpenAiCompatibleProvider(
+            OpenAiCompatibleProviderConfig config, ObjectMapper objectMapper) {
         this(
                 config,
                 objectMapper,
@@ -49,15 +49,17 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 config::getApiKey);
     }
 
-    public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config,
-                                    ObjectMapper objectMapper,
-                                    ModelHttpClient httpClient) {
+    public OpenAiCompatibleProvider(
+            OpenAiCompatibleProviderConfig config,
+            ObjectMapper objectMapper,
+            ModelHttpClient httpClient) {
         this(config, objectMapper, httpClient, config::getApiKey);
     }
 
-    public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config,
-                                    ObjectMapper objectMapper,
-                                    Supplier<String> accessTokenSupplier) {
+    public OpenAiCompatibleProvider(
+            OpenAiCompatibleProviderConfig config,
+            ObjectMapper objectMapper,
+            Supplier<String> accessTokenSupplier) {
         this(
                 config,
                 objectMapper,
@@ -65,14 +67,16 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 accessTokenSupplier);
     }
 
-    public OpenAiCompatibleProvider(OpenAiCompatibleProviderConfig config,
-                                    ObjectMapper objectMapper,
-                                    ModelHttpClient httpClient,
-                                    Supplier<String> accessTokenSupplier) {
+    public OpenAiCompatibleProvider(
+            OpenAiCompatibleProviderConfig config,
+            ObjectMapper objectMapper,
+            ModelHttpClient httpClient,
+            Supplier<String> accessTokenSupplier) {
         this.config = config;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
-        this.accessTokenSupplier = accessTokenSupplier == null ? config::getApiKey : accessTokenSupplier;
+        this.accessTokenSupplier =
+                accessTokenSupplier == null ? config::getApiKey : accessTokenSupplier;
     }
 
     @Override
@@ -95,21 +99,19 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 throw new StopRequestedException(e);
             }
             throw new ModelProviderException(
-                    "Model provider request failed: " + e.getMessage(),
-                    e,
-                    isRetryable(e));
+                    "Model provider request failed: " + e.getMessage(), e, isRetryable(e));
         }
     }
 
     @Override
     public ModelResponse chat(ModelRequest request, Consumer<String> contentDeltaConsumer) {
-        return chat(request, ModelDeltaConsumer.contentOnly(contentDeltaConsumer), StopSignal.none());
+        return chat(
+                request, ModelDeltaConsumer.contentOnly(contentDeltaConsumer), StopSignal.none());
     }
 
     @Override
-    public ModelResponse chat(ModelRequest request,
-                              Consumer<String> contentDeltaConsumer,
-                              StopSignal stopSignal) {
+    public ModelResponse chat(
+            ModelRequest request, Consumer<String> contentDeltaConsumer, StopSignal stopSignal) {
         return chat(request, ModelDeltaConsumer.contentOnly(contentDeltaConsumer), stopSignal);
     }
 
@@ -119,15 +121,15 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     @Override
-    public ModelResponse chat(ModelRequest request,
-                              ModelDeltaConsumer deltaConsumer,
-                              StopSignal stopSignal) {
+    public ModelResponse chat(
+            ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
         StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         effectiveSignal.throwIfAborted();
         if (!config.isStreamEnabled()) {
             ModelResponse response = chatNonStreaming(request, effectiveSignal);
             if (deltaConsumer != null) {
-                if (response.getReasoningContent() != null && !response.getReasoningContent().isEmpty()) {
+                if (response.getReasoningContent() != null
+                        && !response.getReasoningContent().isEmpty()) {
                     deltaConsumer.onReasoningDelta(response.getReasoningContent());
                 }
                 if (response.getContent() != null && !response.getContent().isEmpty()) {
@@ -140,29 +142,27 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         ObjectNode payload = buildPayload(request, true);
         try {
             return postStream(
-                    objectMapper.writeValueAsString(payload),
-                    deltaConsumer,
-                    effectiveSignal);
+                    objectMapper.writeValueAsString(payload), deltaConsumer, effectiveSignal);
         } catch (IOException e) {
             if (effectiveSignal.isAborted()) {
                 throw new StopRequestedException(e);
             }
             throw new ModelProviderException(
-                    "Model provider stream request failed: " + e.getMessage(),
-                    e,
-                    isRetryable(e));
+                    "Model provider stream request failed: " + e.getMessage(), e, isRetryable(e));
         }
     }
 
     private String postJson(String body, StopSignal stopSignal) throws IOException {
-        return httpClient.postJson(
-                new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
-                stopSignal).getBody();
+        return httpClient
+                .postJson(
+                        new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
+                        stopSignal)
+                .getBody();
     }
 
-    private ModelResponse postStream(String body,
-                                     ModelDeltaConsumer deltaConsumer,
-                                     StopSignal stopSignal) throws IOException {
+    private ModelResponse postStream(
+            String body, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal)
+            throws IOException {
         return httpClient.postStream(
                 new ModelHttpRequest(resolveChatCompletionsUrl(), headers(), body),
                 inputStream -> parseStreamResponse(inputStream, deltaConsumer),
@@ -172,7 +172,8 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     private ObjectNode buildPayload(ModelRequest request, boolean stream) {
         String model = trimToEmpty(request.getModel());
         if (model.isEmpty()) {
-            throw new ModelProviderException("Model name is required. Configure harness.model.model.");
+            throw new ModelProviderException(
+                    "Model name is required. Configure agent.model.model.");
         }
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("model", model);
@@ -320,9 +321,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         return response;
     }
 
-    private ModelResponse parseStreamResponse(InputStream inputStream,
-                                              ModelDeltaConsumer deltaConsumer) throws IOException {
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+    private ModelResponse parseStreamResponse(
+            InputStream inputStream, ModelDeltaConsumer deltaConsumer) throws IOException {
+        BufferedReader reader =
+                new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
         StreamAccumulator accumulator = new StreamAccumulator();
         StringBuilder data = new StringBuilder();
         String line;
@@ -341,9 +343,9 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         return accumulator.toResponse(objectMapper);
     }
 
-    private void consumeSseData(StringBuilder data,
-                                StreamAccumulator accumulator,
-                                ModelDeltaConsumer deltaConsumer) throws IOException {
+    private void consumeSseData(
+            StringBuilder data, StreamAccumulator accumulator, ModelDeltaConsumer deltaConsumer)
+            throws IOException {
         if (data.length() == 0) {
             return;
         }
@@ -400,7 +402,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private ModelUsage parseUsage(JsonNode usageNode) {
-        if (usageNode == null || usageNode.isMissingNode() || usageNode.isNull() || !usageNode.isObject()) {
+        if (usageNode == null
+                || usageNode.isMissingNode()
+                || usageNode.isNull()
+                || !usageNode.isObject()) {
             return null;
         }
         ModelUsage usage = new ModelUsage();
@@ -408,15 +413,15 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         usage.setCompletionTokens(integerValue(usageNode.path("completion_tokens")));
         usage.setTotalTokens(integerValue(usageNode.path("total_tokens")));
 
-        Integer reasoningTokens = integerValue(
-                usageNode.path("completion_tokens_details").path("reasoning_tokens"));
+        Integer reasoningTokens =
+                integerValue(usageNode.path("completion_tokens_details").path("reasoning_tokens"));
         if (reasoningTokens == null) {
             reasoningTokens = integerValue(usageNode.path("reasoning_tokens"));
         }
         usage.setReasoningTokens(reasoningTokens);
 
-        Integer cachedTokens = integerValue(
-                usageNode.path("prompt_tokens_details").path("cached_tokens"));
+        Integer cachedTokens =
+                integerValue(usageNode.path("prompt_tokens_details").path("cached_tokens"));
         if (cachedTokens == null) {
             cachedTokens = integerValue(usageNode.path("cached_tokens"));
         }
@@ -449,7 +454,8 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     private String resolveChatCompletionsUrl() {
         String base = trimToEmpty(config.getBaseUrl());
         if (base.isEmpty()) {
-            throw new ModelProviderException("Model provider base URL is required. Configure harness.model.base-url.");
+            throw new ModelProviderException(
+                    "Model provider base URL is required. Configure agent.model.base-url.");
         }
 
         int queryIndex = base.indexOf('?');
@@ -514,7 +520,8 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     private static class StreamAccumulator {
         private final StringBuilder content = new StringBuilder();
         private final StringBuilder reasoningContent = new StringBuilder();
-        private final Map<Integer, ToolCallAccumulator> toolCalls = new TreeMap<Integer, ToolCallAccumulator>();
+        private final Map<Integer, ToolCallAccumulator> toolCalls =
+                new TreeMap<Integer, ToolCallAccumulator>();
         private final List<String> rawChunks = new ArrayList<String>();
         private ModelUsage usage;
 
@@ -525,10 +532,12 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             List<ToolCall> calls = new ArrayList<ToolCall>();
             for (Map.Entry<Integer, ToolCallAccumulator> entry : toolCalls.entrySet()) {
                 ToolCallAccumulator toolCall = entry.getValue();
-                String id = toolCall.id == null || toolCall.id.isEmpty()
-                        ? "call_stream_" + entry.getKey()
-                        : toolCall.id;
-                calls.add(new ToolCall(id, toolCall.name.toString(), toolCall.arguments.toString()));
+                String id =
+                        toolCall.id == null || toolCall.id.isEmpty()
+                                ? "call_stream_" + entry.getKey()
+                                : toolCall.id;
+                calls.add(
+                        new ToolCall(id, toolCall.name.toString(), toolCall.arguments.toString()));
             }
             response.setToolCalls(calls);
             response.setUsage(usage);

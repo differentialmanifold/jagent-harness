@@ -1,14 +1,13 @@
 package io.github.differentialmanifold.jagentharness.mcp;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -30,20 +29,25 @@ final class StreamableHttpTransport implements AutoCloseable {
     StreamableHttpTransport(McpServerConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(Math.max(1, config.getConnectTimeoutSeconds()), TimeUnit.SECONDS)
-                .readTimeout(Math.max(1, config.getRequestTimeoutSeconds()), TimeUnit.SECONDS)
-                .writeTimeout(Math.max(1, config.getRequestTimeoutSeconds()), TimeUnit.SECONDS)
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .build();
+        this.httpClient =
+                new OkHttpClient.Builder()
+                        .connectTimeout(
+                                Math.max(1, config.getConnectTimeoutSeconds()), TimeUnit.SECONDS)
+                        .readTimeout(
+                                Math.max(1, config.getRequestTimeoutSeconds()), TimeUnit.SECONDS)
+                        .writeTimeout(
+                                Math.max(1, config.getRequestTimeoutSeconds()), TimeUnit.SECONDS)
+                        .followRedirects(false)
+                        .followSslRedirects(false)
+                        .build();
     }
 
-    JsonNode request(JsonNode message, JsonNode requestId, StopSignal stopSignal) throws IOException {
+    JsonNode request(JsonNode message, JsonNode requestId, StopSignal stopSignal)
+            throws IOException {
         Call call = httpClient.newCall(postRequest(message));
         StopSignal signal = stopSignal == null ? StopSignal.none() : stopSignal;
         try (StopRegistration ignored = signal.onStop(call::cancel);
-             Response response = call.execute()) {
+                Response response = call.execute()) {
             signal.throwIfAborted();
             captureSession(response);
             if (response.code() == 404 && sessionId != null) {
@@ -51,8 +55,10 @@ final class StreamableHttpTransport implements AutoCloseable {
                 throw new McpSessionExpiredException();
             }
             if (!response.isSuccessful()) {
-                throw new McpProtocolException("MCP server returned HTTP " + response.code()
-                        + responseMessage(response.body()));
+                throw new McpProtocolException(
+                        "MCP server returned HTTP "
+                                + response.code()
+                                + responseMessage(response.body()));
             }
             ResponseBody body = response.body();
             if (body == null) {
@@ -89,10 +95,11 @@ final class StreamableHttpTransport implements AutoCloseable {
     }
 
     private Request.Builder requestBuilder() {
-        Request.Builder builder = new Request.Builder()
-                .url(config.getUrl())
-                .header("Accept", "application/json, text/event-stream")
-                .header("Content-Type", "application/json");
+        Request.Builder builder =
+                new Request.Builder()
+                        .url(config.getUrl())
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Content-Type", "application/json");
         for (Map.Entry<String, String> header : config.getHeaders().entrySet()) {
             builder.header(header.getKey(), header.getValue());
         }
@@ -116,7 +123,8 @@ final class StreamableHttpTransport implements AutoCloseable {
                 return message;
             }
         }
-        throw new McpProtocolException("MCP SSE response ended without a matching JSON-RPC response");
+        throw new McpProtocolException(
+                "MCP SSE response ended without a matching JSON-RPC response");
     }
 
     private boolean sameRequestId(JsonNode expected, JsonNode actual) {

@@ -1,5 +1,15 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
+import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileContentResponse;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileImportResponse;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileResponse;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileWriteRequest;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -8,17 +18,6 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
-
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
-import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
-import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileImportResponse;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileContentResponse;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileResponse;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileWriteRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,13 +32,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api/vfs")
+@RequestMapping("/api/v1/vfs")
 public class VirtualFileController {
 
     private final KnowledgeFileStore knowledgeFileStore;
     private final SessionManager sessionManager;
 
-    public VirtualFileController(KnowledgeFileStore knowledgeFileStore, SessionManager sessionManager) {
+    public VirtualFileController(
+            KnowledgeFileStore knowledgeFileStore, SessionManager sessionManager) {
         this.knowledgeFileStore = knowledgeFileStore;
         this.sessionManager = sessionManager;
     }
@@ -78,10 +78,12 @@ public class VirtualFileController {
             throw new IllegalArgumentException("Request body is required.");
         }
         validateKnowledgePath(request.getPath());
-        return new VirtualFileResponse(knowledgeFileStore.writeFile(scope(scope, sessionId),
-                request.getPath(),
-                request.getContent(),
-                request.getContentType()));
+        return new VirtualFileResponse(
+                knowledgeFileStore.writeFile(
+                        scope(scope, sessionId),
+                        request.getPath(),
+                        request.getContent(),
+                        request.getContentType()));
     }
 
     @DeleteMapping("/files")
@@ -96,11 +98,13 @@ public class VirtualFileController {
     @GetMapping(value = "/skills/export", produces = "application/zip")
     public ResponseEntity<byte[]> exportSkills(
             @RequestParam(value = "scope", required = false) String scope,
-            @RequestParam(value = "sessionId", required = false) String sessionId) throws IOException {
+            @RequestParam(value = "sessionId", required = false) String sessionId)
+            throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8);
         try {
-            for (KnowledgeFile file : knowledgeFileStore.listFiles(scope(scope, sessionId), "skills")) {
+            for (KnowledgeFile file :
+                    knowledgeFileStore.listFiles(scope(scope, sessionId), "skills")) {
                 String path = normalizeSkillPath(file.getPath());
                 ZipEntry entry = new ZipEntry(path);
                 zip.putNextEntry(entry);
@@ -121,7 +125,8 @@ public class VirtualFileController {
     public VirtualFileImportResponse importSkills(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "scope", required = false) String scope,
-            @RequestParam(value = "sessionId", required = false) String sessionId) throws IOException {
+            @RequestParam(value = "sessionId", required = false) String sessionId)
+            throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Skills zip file is required.");
         }
@@ -136,7 +141,8 @@ public class VirtualFileController {
                     String path = normalizeImportedSkillPath(entry.getName());
                     if (path != null) {
                         String content = readZipEntry(zip);
-                        knowledgeFileStore.writeFile(knowledgeScope, path, content, contentType(path));
+                        knowledgeFileStore.writeFile(
+                                knowledgeScope, path, content, contentType(path));
                         imported += 1;
                     }
                 }
@@ -178,10 +184,12 @@ public class VirtualFileController {
     private void validateSkillFilePath(String normalized) {
         String[] parts = normalized.split("/");
         if (parts.length < 3) {
-            throw new IllegalArgumentException("Skill file path must be under skills/{skill}/: " + normalized);
+            throw new IllegalArgumentException(
+                    "Skill file path must be under skills/{skill}/: " + normalized);
         }
         if ("SKILL.md".equals(parts[parts.length - 1]) && parts.length != 3) {
-            throw new IllegalArgumentException("SKILL.md must be directly under skills/{skill}/: " + normalized);
+            throw new IllegalArgumentException(
+                    "SKILL.md must be directly under skills/{skill}/: " + normalized);
         }
     }
 

@@ -4,8 +4,7 @@ public class VirtualFileImportResponse {
 
     private int imported;
 
-    public VirtualFileImportResponse() {
-    }
+    public VirtualFileImportResponse() {}
 
     public VirtualFileImportResponse(int imported) {
         this.imported = imported;

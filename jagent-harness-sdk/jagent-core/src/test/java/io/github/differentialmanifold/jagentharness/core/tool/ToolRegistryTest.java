@@ -5,12 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Collections;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ToolRegistryTest {
@@ -47,16 +46,20 @@ class ToolRegistryTest {
     @Test
     void resolvesDynamicToolsForCurrentContext() {
         ToolDefinition dynamic = new StubTool("remote", "remote");
-        ToolProvider provider = context -> context == null || context.getSessionId() == null
-                ? Collections.<ToolDefinition>emptyList()
-                : Collections.singletonList(dynamic);
-        ToolRegistry registry = new ToolRegistry(
-                Collections.singletonList(new StubTool("local", "local")),
-                Collections.singletonList(provider));
+        ToolProvider provider =
+                context ->
+                        context == null || context.getSessionId() == null
+                                ? Collections.<ToolDefinition>emptyList()
+                                : Collections.singletonList(dynamic);
+        ToolRegistry registry =
+                new ToolRegistry(
+                        Collections.singletonList(new StubTool("local", "local")),
+                        Collections.singletonList(provider));
 
         assertEquals(1, registry.all().size());
-        List<ToolDefinition> tools = new ArrayList<ToolDefinition>(
-                registry.all(new AgentContext("session", "run", "turn")));
+        List<ToolDefinition> tools =
+                new ArrayList<ToolDefinition>(
+                        registry.all(new AgentContext("session", "run", "turn")));
         assertEquals(2, tools.size());
         assertSame(dynamic, tools.get(1));
     }
@@ -64,12 +67,15 @@ class ToolRegistryTest {
     @Test
     void getsDynamicToolForCurrentContext() {
         ToolDefinition dynamic = new StubTool("remote", "remote");
-        ToolProvider provider = context -> context != null && "session".equals(context.getSessionId())
-                ? Collections.singletonList(dynamic)
-                : Collections.<ToolDefinition>emptyList();
-        ToolRegistry registry = new ToolRegistry(
-                Collections.<ToolDefinition>emptyList(),
-                Collections.singletonList(provider));
+        ToolProvider provider =
+                context ->
+                        context != null && "session".equals(context.getSessionId())
+                                ? Collections.singletonList(dynamic)
+                                : Collections.<ToolDefinition>emptyList();
+        ToolRegistry registry =
+                new ToolRegistry(
+                        Collections.<ToolDefinition>emptyList(),
+                        Collections.singletonList(provider));
 
         assertSame(dynamic, registry.get("remote", new AgentContext("session", "run", "turn")));
         assertNull(registry.get("remote"));
@@ -78,35 +84,41 @@ class ToolRegistryTest {
 
     @Test
     void rejectsDynamicToolNameCollisions() {
-        ToolRegistry registry = new ToolRegistry(
-                Collections.singletonList(new StubTool("read", "local")),
-                Collections.singletonList(context -> Collections.singletonList(new StubTool("read", "remote"))));
+        ToolRegistry registry =
+                new ToolRegistry(
+                        Collections.singletonList(new StubTool("read", "local")),
+                        Collections.singletonList(
+                                context ->
+                                        Collections.singletonList(new StubTool("read", "remote"))));
 
-        assertThrows(IllegalStateException.class,
+        assertThrows(
+                IllegalStateException.class,
                 () -> registry.all(new AgentContext("session", "run", "turn")));
     }
 
     @Test
     void availabilityPoliciesFilterStaticToolsWithoutFilteringDynamicTools() {
         ToolDefinition dynamic = new StubTool("remote", "remote");
-        ToolAvailabilityPolicy readOnly = (tools, context) -> {
-            List<ToolDefinition> filtered = new ArrayList<ToolDefinition>();
-            for (ToolDefinition tool : tools) {
-                if ("read".equals(tool.getName())) {
-                    filtered.add(tool);
-                }
-            }
-            return filtered;
-        };
-        ToolRegistry registry = new ToolRegistry(
-                java.util.Arrays.<ToolDefinition>asList(
-                        new StubTool("read", "read"),
-                        new StubTool("bash", "bash")),
-                Collections.singletonList(context -> Collections.singletonList(dynamic)),
-                Collections.singletonList(readOnly));
+        ToolAvailabilityPolicy readOnly =
+                (tools, context) -> {
+                    List<ToolDefinition> filtered = new ArrayList<ToolDefinition>();
+                    for (ToolDefinition tool : tools) {
+                        if ("read".equals(tool.getName())) {
+                            filtered.add(tool);
+                        }
+                    }
+                    return filtered;
+                };
+        ToolRegistry registry =
+                new ToolRegistry(
+                        java.util.Arrays.<ToolDefinition>asList(
+                                new StubTool("read", "read"), new StubTool("bash", "bash")),
+                        Collections.singletonList(context -> Collections.singletonList(dynamic)),
+                        Collections.singletonList(readOnly));
 
-        List<ToolDefinition> resolved = new ArrayList<ToolDefinition>(
-                registry.all(new AgentContext("session", "run", "turn")));
+        List<ToolDefinition> resolved =
+                new ArrayList<ToolDefinition>(
+                        registry.all(new AgentContext("session", "run", "turn")));
 
         assertEquals(2, resolved.size());
         assertEquals("read", resolved.get(0).getName());

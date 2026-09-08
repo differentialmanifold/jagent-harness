@@ -1,0 +1,7 @@
+{
+  "sessionId": "sess_example",
+  "runId": "run_example",
+  "status": "COMPLETED",
+  "answer": "The file describes the project.",
+  "toolCalls": []
+}

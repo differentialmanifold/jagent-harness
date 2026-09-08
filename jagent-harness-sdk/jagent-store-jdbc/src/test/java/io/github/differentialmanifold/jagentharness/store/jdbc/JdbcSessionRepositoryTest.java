@@ -2,18 +2,16 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.nio.file.Path;
-
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.sqlite.SQLiteDataSource;
 
 class JdbcSessionRepositoryTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void persistsProjectNameWhenCreatingSession() {
@@ -22,22 +20,21 @@ class JdbcSessionRepositoryTest {
         properties.setApplicationId("default");
         JdbcSessionRepository repository = new JdbcSessionRepository(jdbcTemplate, properties);
 
-        SessionRecord created = repository.create(
-                "New Chat - Demo",
-                "/tmp/demo",
-                "Demo",
-                "project-demo");
+        SessionRecord created =
+                repository.create("New Chat - Demo", "/tmp/demo", "Demo", "project-demo");
 
         SessionRecord loaded = repository.findBySessionId(created.getSessionId());
         assertEquals("New Chat - Demo", loaded.getTitle());
         assertEquals("Demo", loaded.getProjectName());
         assertEquals("project-demo", loaded.getProjectId());
         assertEquals("/tmp/demo", loaded.getWorkspacePath());
-        assertEquals("Demo", jdbcTemplate.queryForObject(
-                "select name from projects where application_id = ? and project_id = ?",
-                String.class,
-                "default",
-                "project-demo"));
+        assertEquals(
+                "Demo",
+                jdbcTemplate.queryForObject(
+                        "select name from projects where application_id = ? and project_id = ?",
+                        String.class,
+                        "default",
+                        "project-demo"));
     }
 
     private JdbcTemplate createDatabase() {

@@ -1,21 +1,19 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.ErrorResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-
 import javax.servlet.FilterChain;
+import javax.servlet.ReadListener;
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
-import javax.servlet.ReadListener;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.ErrorResponse;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,9 +22,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /** Limits the JSON body of the two chat endpoints that can carry base64 images. */
 public class ChatRequestBodyLimitFilter extends OncePerRequestFilter {
 
-    private static final String STREAM_PATH = "/api/chat/stream";
-    private static final String RUNS_PATH_PREFIX = "/api/chat/runs/";
-    private static final String MESSAGES_PATH_SUFFIX = "/messages";
+    private static final String STREAM_PATH = "/api/v1/chat";
+    private static final String RUNS_PATH_PREFIX = "/api/v1/runs/";
+    private static final String MESSAGES_PATH_SUFFIX = "/inputs";
 
     private final long maxBytes;
     private final ObjectMapper objectMapper;
@@ -52,22 +50,22 @@ public class ChatRequestBodyLimitFilter extends OncePerRequestFilter {
             return true;
         }
         String path = pathWithinApplication(request);
-        if (STREAM_PATH.equals(path)) {
+        if (STREAM_PATH.equals(path) || "/api/v1/chat".equals(path)) {
             return false;
         }
         if (!path.startsWith(RUNS_PATH_PREFIX) || !path.endsWith(MESSAGES_PATH_SUFFIX)) {
             return true;
         }
-        String runId = path.substring(
-                RUNS_PATH_PREFIX.length(),
-                path.length() - MESSAGES_PATH_SUFFIX.length());
+        String runId =
+                path.substring(
+                        RUNS_PATH_PREFIX.length(), path.length() - MESSAGES_PATH_SUFFIX.length());
         return runId.isEmpty() || runId.indexOf('/') >= 0;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         if (request.getContentLengthLong() > maxBytes) {
             writePayloadTooLarge(response, new RequestBodyTooLargeException(maxBytes));
             return;
@@ -107,8 +105,9 @@ public class ChatRequestBodyLimitFilter extends OncePerRequestFilter {
         return null;
     }
 
-    private void writePayloadTooLarge(HttpServletResponse response,
-                                      RequestBodyTooLargeException exception) throws IOException {
+    private void writePayloadTooLarge(
+            HttpServletResponse response, RequestBodyTooLargeException exception)
+            throws IOException {
         if (response.isCommitted()) {
             throw exception;
         }
@@ -138,7 +137,8 @@ public class ChatRequestBodyLimitFilter extends OncePerRequestFilter {
         @Override
         public ServletInputStream getInputStream() throws IOException {
             if (reader != null) {
-                throw new IllegalStateException("getReader() has already been called for this request");
+                throw new IllegalStateException(
+                        "getReader() has already been called for this request");
             }
             if (inputStream == null) {
                 inputStream = new LimitedServletInputStream(super.getInputStream(), maxBytes);
@@ -149,12 +149,14 @@ public class ChatRequestBodyLimitFilter extends OncePerRequestFilter {
         @Override
         public BufferedReader getReader() throws IOException {
             if (inputStream != null && reader == null) {
-                throw new IllegalStateException("getInputStream() has already been called for this request");
+                throw new IllegalStateException(
+                        "getInputStream() has already been called for this request");
             }
             if (reader == null) {
-                Charset charset = getCharacterEncoding() == null
-                        ? StandardCharsets.UTF_8
-                        : Charset.forName(getCharacterEncoding());
+                Charset charset =
+                        getCharacterEncoding() == null
+                                ? StandardCharsets.UTF_8
+                                : Charset.forName(getCharacterEncoding());
                 inputStream = new LimitedServletInputStream(super.getInputStream(), maxBytes);
                 reader = new BufferedReader(new InputStreamReader(inputStream, charset));
             }

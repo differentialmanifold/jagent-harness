@@ -17,19 +17,24 @@ public interface KnowledgeFileStore {
     }
 
     default List<KnowledgeFile> listFiles(KnowledgeScope scope, String prefix) {
-        return requireGlobal(scope) ? listFiles(prefix) : java.util.Collections.<KnowledgeFile>emptyList();
+        return requireGlobal(scope)
+                ? listFiles(prefix)
+                : java.util.Collections.<KnowledgeFile>emptyList();
     }
 
-    default KnowledgeFile writeFile(KnowledgeScope scope, String path, String content, String contentType) {
+    default KnowledgeFile writeFile(
+            KnowledgeScope scope, String path, String content, String contentType) {
         if (!requireGlobal(scope)) {
-            throw new UnsupportedOperationException("Project-scoped knowledge files are not supported by this store");
+            throw new UnsupportedOperationException(
+                    "Project-scoped knowledge files are not supported by this store");
         }
         return writeFile(path, content, contentType);
     }
 
     default void deleteFile(KnowledgeScope scope, String path) {
         if (!requireGlobal(scope)) {
-            throw new UnsupportedOperationException("Project-scoped knowledge files are not supported by this store");
+            throw new UnsupportedOperationException(
+                    "Project-scoped knowledge files are not supported by this store");
         }
         deleteFile(path);
     }

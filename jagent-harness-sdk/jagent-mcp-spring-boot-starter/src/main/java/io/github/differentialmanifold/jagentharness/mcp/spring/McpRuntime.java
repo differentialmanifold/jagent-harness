@@ -1,14 +1,7 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
@@ -17,6 +10,12 @@ import io.github.differentialmanifold.jagentharness.mcp.McpClient;
 import io.github.differentialmanifold.jagentharness.mcp.McpRemoteTool;
 import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import io.github.differentialmanifold.jagentharness.mcp.McpToolDescriptor;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
 public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializingSingleton {
@@ -58,7 +57,8 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     public synchronized Map<String, McpServerRuntimeStatus> statuses(String projectId) {
         ensureInitialized();
         Scope scope = scope(projectId);
-        return Collections.unmodifiableMap(new LinkedHashMap<String, McpServerRuntimeStatus>(scope.statuses));
+        return Collections.unmodifiableMap(
+                new LinkedHashMap<String, McpServerRuntimeStatus>(scope.statuses));
     }
 
     public McpTestResult test(String name, McpServerConfig input) {
@@ -71,7 +71,8 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
             for (McpToolDescriptor descriptor : descriptors) {
                 names.add(descriptor.getName());
             }
-            return new McpTestResult(true, null, client.getNegotiatedProtocolVersion(), names, descriptors);
+            return new McpTestResult(
+                    true, null, client.getNegotiatedProtocolVersion(), names, descriptors);
         } catch (Exception e) {
             return new McpTestResult(
                     false,
@@ -86,10 +87,8 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
         }
     }
 
-    public McpToolCallResult call(String name,
-                                  McpServerConfig input,
-                                  String toolName,
-                                  JsonNode arguments) {
+    public McpToolCallResult call(
+            String name, McpServerConfig input, String toolName, JsonNode arguments) {
         McpClient client = null;
         try {
             McpServerConfig config = configurationManager.resolve(name, input);
@@ -129,7 +128,8 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
 
     private Scope loadScope(McpConfigSnapshot snapshot) {
         List<ToolDefinition> tools = new ArrayList<ToolDefinition>();
-        Map<String, McpServerRuntimeStatus> statuses = new LinkedHashMap<String, McpServerRuntimeStatus>();
+        Map<String, McpServerRuntimeStatus> statuses =
+                new LinkedHashMap<String, McpServerRuntimeStatus>();
         List<McpClient> clients = new ArrayList<McpClient>();
         Map<String, String> modelNames = new LinkedHashMap<String, String>();
 
@@ -137,8 +137,10 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
             String serverName = entry.getKey();
             McpServerConfig rawConfig = entry.getValue().getConfig();
             if (!rawConfig.isEnabled()) {
-                statuses.put(serverName, new McpServerRuntimeStatus(
-                        "disabled", null, null, Collections.<String>emptyList()));
+                statuses.put(
+                        serverName,
+                        new McpServerRuntimeStatus(
+                                "disabled", null, null, Collections.<String>emptyList()));
                 continue;
             }
             McpClient client = null;
@@ -155,15 +157,19 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                     if (!isToolEnabled(config, descriptor.getName())) {
                         continue;
                     }
-                    McpRemoteTool tool = new McpRemoteTool(serverName, descriptor, client, objectMapper);
+                    McpRemoteTool tool =
+                            new McpRemoteTool(serverName, descriptor, client, objectMapper);
                     String qualifiedName = serverName + "/" + descriptor.getName();
                     String previous = modelNames.get(tool.getName());
                     if (previous == null) {
                         previous = serverModelNames.put(tool.getName(), qualifiedName);
                     }
                     if (previous != null) {
-                        throw new IllegalStateException("MCP tool name collision between " + previous
-                                + " and " + qualifiedName);
+                        throw new IllegalStateException(
+                                "MCP tool name collision between "
+                                        + previous
+                                        + " and "
+                                        + qualifiedName);
                     }
                     serverTools.add(tool);
                     remoteNames.add(descriptor.getName());
@@ -171,19 +177,26 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                 modelNames.putAll(serverModelNames);
                 clients.add(client);
                 tools.addAll(serverTools);
-                statuses.put(serverName, new McpServerRuntimeStatus(
-                        "available",
-                        null,
-                        client.getNegotiatedProtocolVersion(),
-                        remoteNames,
-                        availableNames,
-                        descriptors));
+                statuses.put(
+                        serverName,
+                        new McpServerRuntimeStatus(
+                                "available",
+                                null,
+                                client.getNegotiatedProtocolVersion(),
+                                remoteNames,
+                                availableNames,
+                                descriptors));
             } catch (Exception e) {
                 if (client != null) {
                     client.close();
                 }
-                statuses.put(serverName, new McpServerRuntimeStatus(
-                        "unavailable", safeMessage(e), null, Collections.<String>emptyList()));
+                statuses.put(
+                        serverName,
+                        new McpServerRuntimeStatus(
+                                "unavailable",
+                                safeMessage(e),
+                                null,
+                                Collections.<String>emptyList()));
             }
         }
         return new Scope(snapshot.getFingerprint(), tools, statuses, clients);
@@ -242,13 +255,16 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
         private final Map<String, McpServerRuntimeStatus> statuses;
         private final List<McpClient> clients;
 
-        private Scope(String fingerprint,
-                      List<ToolDefinition> tools,
-                      Map<String, McpServerRuntimeStatus> statuses,
-                      List<McpClient> clients) {
+        private Scope(
+                String fingerprint,
+                List<ToolDefinition> tools,
+                Map<String, McpServerRuntimeStatus> statuses,
+                List<McpClient> clients) {
             this.fingerprint = fingerprint;
             this.tools = Collections.unmodifiableList(new ArrayList<ToolDefinition>(tools));
-            this.statuses = Collections.unmodifiableMap(new LinkedHashMap<String, McpServerRuntimeStatus>(statuses));
+            this.statuses =
+                    Collections.unmodifiableMap(
+                            new LinkedHashMap<String, McpServerRuntimeStatus>(statuses));
             this.clients = new ArrayList<McpClient>(clients);
         }
     }

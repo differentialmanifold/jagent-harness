@@ -2,10 +2,9 @@ package io.github.differentialmanifold.jagentharness.core.prompt;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class DatabaseSkillProviderTest {
@@ -13,10 +12,11 @@ class DatabaseSkillProviderTest {
     @Test
     void readsSkillDescriptorsFromDatabaseFiles() {
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        KnowledgeFile file = store.writeFile(
-                "skills/review/SKILL.md",
-                "---\nname: review\ndescription: Review code from the database.\n---\n\n# Review\n",
-                "text/markdown");
+        KnowledgeFile file =
+                store.writeFile(
+                        "skills/review/SKILL.md",
+                        "---\nname: review\ndescription: Review code from the database.\n---\n\n# Review\n",
+                        "text/markdown");
 
         List<SkillDescriptor> skills = new DatabaseSkillProvider(store).listSkills(null);
 

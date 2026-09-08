@@ -2,13 +2,12 @@ package io.github.differentialmanifold.jagentharness.core.event;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 class DefaultAgentEventPublisherTest {
@@ -17,14 +16,18 @@ class DefaultAgentEventPublisherTest {
     void publishesCustomEventToScopedConsumerAndListeners() {
         List<AgentEvent> listenerEvents = new ArrayList<AgentEvent>();
         List<AgentEvent> scopedEvents = new ArrayList<AgentEvent>();
-        DefaultAgentEventPublisher publisher = new DefaultAgentEventPublisher(
-                new ObjectMapper(),
-                Collections.<AgentEventListener>singletonList(listenerEvents::add));
+        DefaultAgentEventPublisher publisher =
+                new DefaultAgentEventPublisher(
+                        new ObjectMapper(),
+                        Collections.<AgentEventListener>singletonList(listenerEvents::add));
 
-        publisher.withEventConsumer(scopedEvents::add, () -> {
-            publisher.publish("s1", "r1", "t1", "plugin.progress", payload("message", "Half done"));
-            return null;
-        });
+        publisher.withEventConsumer(
+                scopedEvents::add,
+                () -> {
+                    publisher.publish(
+                            "s1", "r1", "t1", "plugin.progress", payload("message", "Half done"));
+                    return null;
+                });
 
         assertEquals(1, scopedEvents.size());
         assertEquals(1, listenerEvents.size());
@@ -40,10 +43,13 @@ class DefaultAgentEventPublisherTest {
         DefaultAgentEventPublisher publisher = new DefaultAgentEventPublisher(new ObjectMapper());
         CustomEventSource eventSource = new CustomEventSource(publisher);
 
-        publisher.withEventConsumer(scopedEvents::add, () -> {
-            eventSource.publishStatus("s1", "r1", "t1", "plugin.status", payload("message", "Ready"));
-            return null;
-        });
+        publisher.withEventConsumer(
+                scopedEvents::add,
+                () -> {
+                    eventSource.publishStatus(
+                            "s1", "r1", "t1", "plugin.status", payload("message", "Ready"));
+                    return null;
+                });
 
         assertEquals(1, scopedEvents.size());
         assertEquals("plugin.status", scopedEvents.get(0).getType());
@@ -56,11 +62,12 @@ class DefaultAgentEventPublisherTest {
             this.publisher = publisher;
         }
 
-        private void publishStatus(String sessionId,
-                                   String runId,
-                                   String turnId,
-                                   String type,
-                                   Map<String, Object> payload) {
+        private void publishStatus(
+                String sessionId,
+                String runId,
+                String turnId,
+                String type,
+                Map<String, Object> payload) {
             publisher.publish(sessionId, runId, turnId, type, payload);
         }
     }

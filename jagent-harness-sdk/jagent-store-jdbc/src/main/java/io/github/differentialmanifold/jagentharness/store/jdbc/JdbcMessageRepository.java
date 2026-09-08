@@ -1,15 +1,14 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -19,17 +18,29 @@ public class JdbcMessageRepository implements MessageRepository {
     private final ObjectMapper objectMapper;
     private final String applicationId;
 
-    public JdbcMessageRepository(JdbcTemplate jdbcTemplate,
-                                 ObjectMapper objectMapper,
-                                 JdbcStoreProperties properties) {
+    public JdbcMessageRepository(
+            JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.applicationId = properties.requireApplicationId();
     }
 
     @Override
+    public void appendAll(List<AgentMessage> messages) {
+        new org.springframework.transaction.support.TransactionTemplate(
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(
+                                jdbcTemplate.getDataSource()))
+                .execute(
+                        status -> {
+                            for (AgentMessage message : messages) append(message);
+                            return null;
+                        });
+    }
+
+    @Override
     public void append(AgentMessage message) {
-        jdbcTemplate.update("insert into messages "
+        jdbcTemplate.update(
+                "insert into messages "
                         + "(application_id, message_id, session_id, run_id, turn_id, parent_message_id, role, content, "
                         + "images_json, reasoning_content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
@@ -99,8 +110,7 @@ public class JdbcMessageRepository implements MessageRepository {
             return new ArrayList<ToolCall>();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<ToolCall>>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<List<ToolCall>>() {});
         } catch (IOException e) {
             throw new IllegalStateException("Failed to deserialize tool calls", e);
         }
@@ -122,8 +132,7 @@ public class JdbcMessageRepository implements MessageRepository {
             return new ArrayList<MessageImage>();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<MessageImage>>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<List<MessageImage>>() {});
         } catch (IOException e) {
             throw new IllegalStateException("Failed to deserialize message images", e);
         }

@@ -8,8 +8,7 @@ public final class McpToolNames {
 
     private static final int MAX_LENGTH = 64;
 
-    private McpToolNames() {
-    }
+    private McpToolNames() {}
 
     public static String modelName(String serverName, String toolName) {
         String raw = sanitize(serverName) + "__" + sanitize(toolName);
@@ -40,8 +39,9 @@ public final class McpToolNames {
 
     private static String sha256(String value) {
         try {
-            byte[] bytes = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] bytes =
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder result = new StringBuilder();
             for (byte current : bytes) {
                 result.append(String.format("%02x", current & 0xff));

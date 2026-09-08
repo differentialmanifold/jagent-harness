@@ -1,5 +1,6 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -7,8 +8,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 
 public class SkillRegistry {
 
@@ -47,7 +46,8 @@ public class SkillRegistry {
                         continue;
                     }
                     String key = skillKey(skill, sequence);
-                    RankedSkill candidate = new RankedSkill(skill, skillPriority(skill, context), sequence);
+                    RankedSkill candidate =
+                            new RankedSkill(skill, skillPriority(skill, context), sequence);
                     RankedSkill existing = skills.get(key);
                     if (existing == null || candidate.compareTo(existing) >= 0) {
                         skills.put(key, candidate);

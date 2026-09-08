@@ -1,9 +1,8 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
-import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -19,7 +18,8 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
 
     @Override
     public void append(AgentEvent event) {
-        jdbcTemplate.update("insert into timeline_events "
+        jdbcTemplate.update(
+                "insert into timeline_events "
                         + "(application_id, event_id, session_id, run_id, turn_id, type, payload_json, created_at) "
                         + "values (?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,

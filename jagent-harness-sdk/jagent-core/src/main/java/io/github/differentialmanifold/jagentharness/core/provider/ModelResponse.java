@@ -1,9 +1,8 @@
 package io.github.differentialmanifold.jagentharness.core.provider;
 
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import java.util.ArrayList;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 
 public class ModelResponse {
 

@@ -5,15 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Paths;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -31,6 +22,14 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResul
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ToolCallRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.ToolConfigRequest;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class ToolControllerTest {
@@ -39,16 +38,14 @@ class ToolControllerTest {
     private final MemoryKnowledgeFileStore fileStore = new MemoryKnowledgeFileStore();
     private final KnowledgeFileToolConfiguration configuration =
             new KnowledgeFileToolConfiguration(fileStore, objectMapper);
-    private final ToolRegistry registry = new ToolRegistry(
-            Arrays.<ToolDefinition>asList(new EchoTool("read"), new EchoTool("bash")),
-            Collections.emptyList(),
-            Collections.singletonList(configuration));
-    private final ToolController controller = new ToolController(
-            registry,
-            configuration,
-            sessionManager(),
-            toolContextFactory(),
-            objectMapper);
+    private final ToolRegistry registry =
+            new ToolRegistry(
+                    Arrays.<ToolDefinition>asList(new EchoTool("read"), new EchoTool("bash")),
+                    Collections.emptyList(),
+                    Collections.singletonList(configuration));
+    private final ToolController controller =
+            new ToolController(
+                    registry, configuration, sessionManager(), toolContextFactory(), objectMapper);
 
     @Test
     void defaultsToAllToolsAndSavesAnExplicitSelection() {
@@ -135,10 +132,8 @@ class ToolControllerTest {
     private ToolContextFactory toolContextFactory() {
         return new ToolContextFactory() {
             @Override
-            public ToolContext create(SessionRecord session,
-                                      String runId,
-                                      String turnId,
-                                      AgentRunOptions options) {
+            public ToolContext create(
+                    SessionRecord session, String runId, String turnId, AgentRunOptions options) {
                 return new ToolContext(
                         session == null ? null : session.getSessionId(),
                         runId,
@@ -173,7 +168,8 @@ class ToolControllerTest {
 
         @Override
         public ToolExecutionResult execute(ToolContext context, JsonNode arguments) {
-            return ToolExecutionResult.of(context.getWorkspaceRoot() + ":" + arguments.path("value").asText());
+            return ToolExecutionResult.of(
+                    context.getWorkspaceRoot() + ":" + arguments.path("value").asText());
         }
     }
 
@@ -193,13 +189,14 @@ class ToolControllerTest {
 
         @Override
         public KnowledgeFile writeFile(String path, String content, String contentType) {
-            KnowledgeFile file = new KnowledgeFile(
-                    path,
-                    KnowledgeFile.TYPE_FILE,
-                    content,
-                    contentType,
-                    Instant.now(),
-                    Instant.now());
+            KnowledgeFile file =
+                    new KnowledgeFile(
+                            path,
+                            KnowledgeFile.TYPE_FILE,
+                            content,
+                            contentType,
+                            Instant.now(),
+                            Instant.now());
             files.put(path, file);
             return file;
         }

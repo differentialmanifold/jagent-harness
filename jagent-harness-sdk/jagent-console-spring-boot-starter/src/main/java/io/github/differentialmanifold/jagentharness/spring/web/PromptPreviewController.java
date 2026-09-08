@@ -1,7 +1,5 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
-import java.nio.file.Path;
-
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
@@ -11,13 +9,14 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.AgentContextRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.PromptPreviewResponse;
+import java.nio.file.Path;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/agent/prompt-preview")
+@RequestMapping("/api/v1/agent/prompt-preview")
 public class PromptPreviewController {
 
     private final PromptProvider promptProvider;
@@ -26,11 +25,12 @@ public class PromptPreviewController {
     private final SessionManager sessionManager;
     private final WorkspaceRootResolver workspaceRootResolver;
 
-    public PromptPreviewController(PromptProvider promptProvider,
-                                   ToolRegistry toolRegistry,
-                                   AgentSettings settings,
-                                   SessionManager sessionManager,
-                                   WorkspaceRootResolver workspaceRootResolver) {
+    public PromptPreviewController(
+            PromptProvider promptProvider,
+            ToolRegistry toolRegistry,
+            AgentSettings settings,
+            SessionManager sessionManager,
+            WorkspaceRootResolver workspaceRootResolver) {
         this.promptProvider = promptProvider;
         this.toolRegistry = toolRegistry;
         this.settings = settings;
@@ -39,24 +39,32 @@ public class PromptPreviewController {
     }
 
     @PostMapping
-    public PromptPreviewResponse preview(@RequestBody(required = false) AgentContextRequest request) {
+    public PromptPreviewResponse preview(
+            @RequestBody(required = false) AgentContextRequest request) {
         SessionRecord session = findSession(request);
-        Path workspaceRoot = session == null
-                ? null
-                : workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
-        AgentContext context = new AgentContext(
-                session == null ? null : session.getSessionId(),
-                null,
-                null,
-                null,
-                workspaceRoot,
-                settings.getConfigRoot(),
-                null,
-                session == null ? null : session.getProjectId());
-        String prompt = promptProvider.buildSystemPrompt(new PromptContext(toolRegistry.all(context), context));
+        Path workspaceRoot =
+                session == null
+                        ? null
+                        : workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
+        AgentContext context =
+                new AgentContext(
+                        session == null ? null : session.getSessionId(),
+                        null,
+                        null,
+                        null,
+                        workspaceRoot,
+                        settings.getConfigRoot(),
+                        null,
+                        session == null ? null : session.getProjectId());
+        if (request != null)
+            context.setClientCapabilities(
+                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
+                            request.getClientTools(), request.getClientInstructions()));
+        String prompt =
+                promptProvider.buildSystemPrompt(
+                        new PromptContext(toolRegistry.all(context), context));
         return new PromptPreviewResponse(
-                prompt,
-                workspaceRoot == null ? null : workspaceRoot.toString());
+                prompt, workspaceRoot == null ? null : workspaceRoot.toString());
     }
 
     private SessionRecord findSession(AgentContextRequest request) {

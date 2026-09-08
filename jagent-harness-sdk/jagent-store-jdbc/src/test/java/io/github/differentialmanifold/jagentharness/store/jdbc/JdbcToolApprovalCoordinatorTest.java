@@ -5,6 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalDecision;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalRequest;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
@@ -12,20 +16,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalDecision;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.sqlite.SQLiteDataSource;
 
 class JdbcToolApprovalCoordinatorTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void resolvesPendingApprovalAcrossCoordinatorInstances() throws Exception {
@@ -36,21 +34,25 @@ class JdbcToolApprovalCoordinatorTest {
         CountDownLatch pending = new CountDownLatch(1);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<ToolApprovalDecision> future = executor.submit(() -> owner.awaitDecision(
-                    "run-1",
-                    "session-1",
-                    request,
-                    StopSignal.none(),
-                    () -> pending.countDown()));
+            Future<ToolApprovalDecision> future =
+                    executor.submit(
+                            () ->
+                                    owner.awaitDecision(
+                                            "run-1",
+                                            "session-1",
+                                            request,
+                                            StopSignal.none(),
+                                            () -> pending.countDown()));
 
             assertTrue(pending.await(1, TimeUnit.SECONDS));
-            assertNotNull(jdbcTemplate.queryForObject(
-                    "select id from agent_approvals "
-                            + "where application_id = ? and run_id = ? and approval_id = ?",
-                    Long.class,
-                    "default",
-                    "run-1",
-                    "approval-1"));
+            assertNotNull(
+                    jdbcTemplate.queryForObject(
+                            "select id from agent_approvals "
+                                    + "where application_id = ? and run_id = ? and approval_id = ?",
+                            Long.class,
+                            "default",
+                            "run-1",
+                            "approval-1"));
             assertTrue(apiInstance.resolve("run-1", "approval-1", true, "approved"));
 
             ToolApprovalDecision decision = future.get(2, TimeUnit.SECONDS);
@@ -80,12 +82,15 @@ class JdbcToolApprovalCoordinatorTest {
         CountDownLatch pending = new CountDownLatch(1);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<ToolApprovalDecision> future = executor.submit(() -> owner.awaitDecision(
-                    "run-1",
-                    "session-1",
-                    request,
-                    StopSignal.none(),
-                    () -> pending.countDown()));
+            Future<ToolApprovalDecision> future =
+                    executor.submit(
+                            () ->
+                                    owner.awaitDecision(
+                                            "run-1",
+                                            "session-1",
+                                            request,
+                                            StopSignal.none(),
+                                            () -> pending.countDown()));
 
             assertTrue(pending.await(1, TimeUnit.SECONDS));
             apiInstance.cancelRun("run-1");
@@ -118,7 +123,8 @@ class JdbcToolApprovalCoordinatorTest {
     private JdbcToolApprovalCoordinator coordinator(JdbcTemplate jdbcTemplate) {
         JdbcToolApprovalProperties properties = new JdbcToolApprovalProperties();
         properties.setPollIntervalMillis(20L);
-        return new JdbcToolApprovalCoordinator(jdbcTemplate, new ObjectMapper(), storeProperties("default"), properties);
+        return new JdbcToolApprovalCoordinator(
+                jdbcTemplate, new ObjectMapper(), storeProperties("default"), properties);
     }
 
     private JdbcStoreProperties storeProperties(String applicationId) {

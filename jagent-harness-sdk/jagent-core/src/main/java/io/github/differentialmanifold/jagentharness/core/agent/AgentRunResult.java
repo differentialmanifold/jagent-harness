@@ -2,6 +2,28 @@ package io.github.differentialmanifold.jagentharness.core.agent;
 
 public class AgentRunResult {
 
+    private String status = "COMPLETED";
+    private java.util.List<io.github.differentialmanifold.jagentharness.core.tool.ToolCall>
+            toolCalls = new java.util.ArrayList<>();
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public java.util.List<io.github.differentialmanifold.jagentharness.core.tool.ToolCall>
+            getToolCalls() {
+        return toolCalls;
+    }
+
+    public void setToolCalls(
+            java.util.List<io.github.differentialmanifold.jagentharness.core.tool.ToolCall> calls) {
+        this.toolCalls = new java.util.ArrayList<>(calls);
+    }
+
     private String sessionId;
     private String runId;
     private String firstTurnId;
@@ -56,5 +78,4 @@ public class AgentRunResult {
     public void setTurnCount(int turnCount) {
         this.turnCount = turnCount;
     }
-
 }

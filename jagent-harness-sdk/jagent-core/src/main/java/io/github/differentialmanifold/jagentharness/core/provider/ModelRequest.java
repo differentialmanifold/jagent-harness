@@ -1,10 +1,9 @@
 package io.github.differentialmanifold.jagentharness.core.provider;
 
-import java.util.Collection;
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import java.util.Collection;
+import java.util.List;
 
 public class ModelRequest {
 

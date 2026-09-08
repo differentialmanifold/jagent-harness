@@ -1,10 +1,9 @@
 package io.github.differentialmanifold.jagentharness.core.conversation;
 
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 
 public class ConversationContext {
 
@@ -20,17 +19,19 @@ public class ConversationContext {
         this(systemPrompt, messages, 0, 0, 0, 0, null);
     }
 
-    public ConversationContext(String systemPrompt,
-                               List<AgentMessage> messages,
-                               int estimatedTokens,
-                               int rawEstimatedTokens,
-                               int contextWindowTokens,
-                               int thresholdTokens,
-                               String estimateSource) {
+    public ConversationContext(
+            String systemPrompt,
+            List<AgentMessage> messages,
+            int estimatedTokens,
+            int rawEstimatedTokens,
+            int contextWindowTokens,
+            int thresholdTokens,
+            String estimateSource) {
         this.systemPrompt = systemPrompt;
-        this.messages = messages == null
-                ? Collections.<AgentMessage>emptyList()
-                : Collections.unmodifiableList(new ArrayList<AgentMessage>(messages));
+        this.messages =
+                messages == null
+                        ? Collections.<AgentMessage>emptyList()
+                        : Collections.unmodifiableList(new ArrayList<AgentMessage>(messages));
         this.estimatedTokens = estimatedTokens;
         this.rawEstimatedTokens = rawEstimatedTokens;
         this.contextWindowTokens = contextWindowTokens;

@@ -14,10 +14,11 @@ public class McpRemoteTool implements ToolDefinition {
     private final McpClient client;
     private final ObjectMapper objectMapper;
 
-    public McpRemoteTool(String serverName,
-                         McpToolDescriptor descriptor,
-                         McpClient client,
-                         ObjectMapper objectMapper) {
+    public McpRemoteTool(
+            String serverName,
+            McpToolDescriptor descriptor,
+            McpClient client,
+            ObjectMapper objectMapper) {
         this.modelName = McpToolNames.modelName(serverName, descriptor.getName());
         this.descriptor = descriptor;
         this.client = client;

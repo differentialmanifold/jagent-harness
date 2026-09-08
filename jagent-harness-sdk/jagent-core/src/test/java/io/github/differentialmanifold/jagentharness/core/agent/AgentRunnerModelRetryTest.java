@@ -3,13 +3,6 @@ package io.github.differentialmanifold.jagentharness.core.agent;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
@@ -26,6 +19,12 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
 import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class AgentRunnerModelRetryTest {
@@ -39,21 +38,33 @@ class AgentRunnerModelRetryTest {
         ObjectMapper objectMapper = new ObjectMapper();
         List<AgentEvent> events = new ArrayList<AgentEvent>();
 
-        AgentRunResult result = createRunner(store, providers, objectMapper)
-                .run("s1", "hello", AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result =
+                createRunner(store, providers, objectMapper)
+                        .run(
+                                "s1",
+                                "hello",
+                                AgentRunOptions.builder().eventConsumer(events::add).build());
 
         assertEquals("recovered", result.getAnswer());
         assertEquals(2, provider.attempts.get());
         assertEquals(2, store.messages.size());
         assertEquals("recovered", store.messages.get(1).getContent());
 
-        AgentEvent retryEvent = events.stream()
-                .filter(event -> AgentEvent.MODEL_RETRY.equals(event.getType()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("model_retry event was not published"));
+        AgentEvent retryEvent =
+                events.stream()
+                        .filter(event -> AgentEvent.MODEL_RETRY.equals(event.getType()))
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new AssertionError("model_retry event was not published"));
         assertEquals(1, objectMapper.readTree(retryEvent.getPayloadJson()).path("attempt").asInt());
-        assertEquals(2, objectMapper.readTree(retryEvent.getPayloadJson()).path("nextAttempt").asInt());
-        assertTrue(objectMapper.readTree(retryEvent.getPayloadJson()).path("error").asText().contains("temporary outage"));
+        assertEquals(
+                2, objectMapper.readTree(retryEvent.getPayloadJson()).path("nextAttempt").asInt());
+        assertTrue(
+                objectMapper
+                        .readTree(retryEvent.getPayloadJson())
+                        .path("error")
+                        .asText()
+                        .contains("temporary outage"));
     }
 
     @Test
@@ -65,8 +76,12 @@ class AgentRunnerModelRetryTest {
         ObjectMapper objectMapper = new ObjectMapper();
         List<AgentEvent> events = new ArrayList<AgentEvent>();
 
-        AgentRunResult result = createRunner(store, providers, objectMapper)
-                .run("s1", "hello", AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result =
+                createRunner(store, providers, objectMapper)
+                        .run(
+                                "s1",
+                                "hello",
+                                AgentRunOptions.builder().eventConsumer(events::add).build());
 
         assertEquals("recovered", result.getAnswer());
         assertEquals(2, provider.attempts.get());
@@ -74,32 +89,68 @@ class AgentRunnerModelRetryTest {
         assertEquals("recovered", store.messages.get(1).getContent());
         assertEquals("new reasoning", store.messages.get(1).getReasoningContent());
 
-        AgentEvent retryEvent = events.stream()
-                .filter(event -> AgentEvent.MODEL_RETRY.equals(event.getType()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("model_retry event was not published"));
-        assertTrue(objectMapper.readTree(retryEvent.getPayloadJson()).path("resetOutput").asBoolean());
+        AgentEvent retryEvent =
+                events.stream()
+                        .filter(event -> AgentEvent.MODEL_RETRY.equals(event.getType()))
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new AssertionError("model_retry event was not published"));
+        assertTrue(
+                objectMapper.readTree(retryEvent.getPayloadJson()).path("resetOutput").asBoolean());
 
-        List<AgentEvent> contentUpdates = events.stream()
-                .filter(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType()))
-                .collect(Collectors.toList());
+        List<AgentEvent> contentUpdates =
+                events.stream()
+                        .filter(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType()))
+                        .collect(Collectors.toList());
         assertEquals(2, contentUpdates.size());
-        assertEquals("partial", objectMapper.readTree(contentUpdates.get(0).getPayloadJson()).path("delta").asText());
-        assertEquals(0, objectMapper.readTree(contentUpdates.get(0).getPayloadJson()).path("index").asInt());
-        assertEquals("recovered", objectMapper.readTree(contentUpdates.get(1).getPayloadJson()).path("delta").asText());
-        assertEquals(0, objectMapper.readTree(contentUpdates.get(1).getPayloadJson()).path("index").asInt());
+        assertEquals(
+                "partial",
+                objectMapper
+                        .readTree(contentUpdates.get(0).getPayloadJson())
+                        .path("delta")
+                        .asText());
+        assertEquals(
+                0,
+                objectMapper
+                        .readTree(contentUpdates.get(0).getPayloadJson())
+                        .path("index")
+                        .asInt());
+        assertEquals(
+                "recovered",
+                objectMapper
+                        .readTree(contentUpdates.get(1).getPayloadJson())
+                        .path("delta")
+                        .asText());
+        assertEquals(
+                0,
+                objectMapper
+                        .readTree(contentUpdates.get(1).getPayloadJson())
+                        .path("index")
+                        .asInt());
 
-        List<AgentEvent> reasoningUpdates = events.stream()
-                .filter(event -> AgentEvent.MESSAGE_REASONING_UPDATE.equals(event.getType()))
-                .collect(Collectors.toList());
+        List<AgentEvent> reasoningUpdates =
+                events.stream()
+                        .filter(
+                                event ->
+                                        AgentEvent.MESSAGE_REASONING_UPDATE.equals(event.getType()))
+                        .collect(Collectors.toList());
         assertEquals(2, reasoningUpdates.size());
-        assertEquals(0, objectMapper.readTree(reasoningUpdates.get(0).getPayloadJson()).path("index").asInt());
-        assertEquals(0, objectMapper.readTree(reasoningUpdates.get(1).getPayloadJson()).path("index").asInt());
+        assertEquals(
+                0,
+                objectMapper
+                        .readTree(reasoningUpdates.get(0).getPayloadJson())
+                        .path("index")
+                        .asInt());
+        assertEquals(
+                0,
+                objectMapper
+                        .readTree(reasoningUpdates.get(1).getPayloadJson())
+                        .path("index")
+                        .asInt());
     }
 
-    private AgentRunner createRunner(FakeSessionStore store,
-                                     ModelProviderRegistry providers,
-                                     ObjectMapper objectMapper) {
+    private AgentRunner createRunner(
+            FakeSessionStore store, ModelProviderRegistry providers, ObjectMapper objectMapper) {
         return new AgentRunner(
                 settings(),
                 store,
@@ -108,7 +159,8 @@ class AgentRunnerModelRetryTest {
                 new ToolRegistry(),
                 providers,
                 new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
+                request ->
+                        new ConversationContext(request.getSystemPrompt(), request.getMessages()),
                 objectMapper);
     }
 
@@ -136,9 +188,8 @@ class AgentRunnerModelRetryTest {
         }
 
         @Override
-        public ModelResponse chat(ModelRequest request,
-                                  ModelDeltaConsumer deltaConsumer,
-                                  StopSignal stopSignal) {
+        public ModelResponse chat(
+                ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
             int attempt = attempts.incrementAndGet();
             if (attempt == 1) {
                 throw new ModelProviderException("temporary outage", null, true);
@@ -165,9 +216,8 @@ class AgentRunnerModelRetryTest {
         }
 
         @Override
-        public ModelResponse chat(ModelRequest request,
-                                  ModelDeltaConsumer deltaConsumer,
-                                  StopSignal stopSignal) {
+        public ModelResponse chat(
+                ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
             int attempt = attempts.incrementAndGet();
             if (attempt == 1) {
                 deltaConsumer.onReasoningDelta("old reasoning");

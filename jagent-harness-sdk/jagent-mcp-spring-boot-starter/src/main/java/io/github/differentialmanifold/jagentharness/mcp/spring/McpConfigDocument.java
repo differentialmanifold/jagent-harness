@@ -1,9 +1,8 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
+import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
-import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 
 public class McpConfigDocument {
 
@@ -14,8 +13,9 @@ public class McpConfigDocument {
     }
 
     public void setMcpServers(Map<String, McpServerConfig> mcpServers) {
-        this.mcpServers = mcpServers == null
-                ? new LinkedHashMap<String, McpServerConfig>()
-                : new LinkedHashMap<String, McpServerConfig>(mcpServers);
+        this.mcpServers =
+                mcpServers == null
+                        ? new LinkedHashMap<String, McpServerConfig>()
+                        : new LinkedHashMap<String, McpServerConfig>(mcpServers);
     }
 }

@@ -10,7 +10,8 @@ public class McpScopeConfigSnapshot {
     private final String databaseConfig;
 
     McpScopeConfigSnapshot(Map<String, McpConfigEntry> servers, String databaseConfig) {
-        this.servers = Collections.unmodifiableMap(new LinkedHashMap<String, McpConfigEntry>(servers));
+        this.servers =
+                Collections.unmodifiableMap(new LinkedHashMap<String, McpConfigEntry>(servers));
         this.databaseConfig = databaseConfig;
     }
 
