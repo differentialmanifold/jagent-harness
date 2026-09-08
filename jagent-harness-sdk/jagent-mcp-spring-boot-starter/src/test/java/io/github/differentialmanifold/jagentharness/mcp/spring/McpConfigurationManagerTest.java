@@ -5,69 +5,89 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class McpConfigurationManagerTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void mergesProjectAndGlobalDatabaseScopesAndRefreshesRuntimeSnapshots() throws Exception {
         MemoryStore store = new MemoryStore();
-        store.writeFile(KnowledgeScope.global(), "mcp.json", document(
-                server("global-only", "http://global/only"),
-                server("shared", "http://global/shared")), "application/json");
-        store.writeFile(KnowledgeScope.project("project-1"), "mcp.json", document(
-                server("project-only", "http://project/only"),
-                server("shared", "http://project/shared")), "application/json");
-        McpConfigurationManager manager = new McpConfigurationManager(
-                tempDir, "mcp.json", store, new ObjectMapper());
+        store.writeFile(
+                KnowledgeScope.global(),
+                "mcp.json",
+                document(
+                        server("global-only", "http://global/only"),
+                        server("shared", "http://global/shared")),
+                "application/json");
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "mcp.json",
+                document(
+                        server("project-only", "http://project/only"),
+                        server("shared", "http://project/shared")),
+                "application/json");
+        McpConfigurationManager manager =
+                new McpConfigurationManager(tempDir, "mcp.json", store, new ObjectMapper());
         manager.initialize();
 
         McpConfigSnapshot runtime = manager.runtimeSnapshot("project-1");
         assertEquals(3, runtime.getEffectiveServers().size());
         assertEquals("project", runtime.getEffectiveServers().get("shared").getSource());
-        assertEquals("http://project/shared", runtime.getEffectiveServers().get("shared").getConfig().getUrl());
-        assertEquals(java.util.Collections.singletonList("global"),
+        assertEquals(
+                "http://project/shared",
+                runtime.getEffectiveServers().get("shared").getConfig().getUrl());
+        assertEquals(
+                java.util.Collections.singletonList("global"),
                 runtime.getEffectiveServers().get("shared").getOverriddenSources());
         McpScopeConfigSnapshot globalScope = manager.scopeSnapshot(KnowledgeScope.global());
         assertEquals(2, globalScope.getServers().size());
         assertEquals("global", globalScope.getServers().get("shared").getSource());
         assertNull(globalScope.getServers().get("project-only"));
-        McpScopeConfigSnapshot projectScope = manager.scopeSnapshot(KnowledgeScope.project("project-1"));
+        McpScopeConfigSnapshot projectScope =
+                manager.scopeSnapshot(KnowledgeScope.project("project-1"));
         assertEquals(2, projectScope.getServers().size());
         assertEquals("project", projectScope.getServers().get("shared").getSource());
         assertNull(projectScope.getServers().get("global-only"));
         String initialFingerprint = runtime.getFingerprint();
 
-        store.writeFile(KnowledgeScope.global(), "mcp.json",
-                document(server("changed-global", "http://changed/global")), "application/json");
-        store.writeFile(KnowledgeScope.project("project-1"), "mcp.json",
-                document(server("changed-project", "http://changed/project")), "application/json");
+        store.writeFile(
+                KnowledgeScope.global(),
+                "mcp.json",
+                document(server("changed-global", "http://changed/global")),
+                "application/json");
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "mcp.json",
+                document(server("changed-project", "http://changed/project")),
+                "application/json");
 
         McpConfigSnapshot refreshed = manager.runtimeSnapshot("project-1");
         assertEquals(2, refreshed.getEffectiveServers().size());
-        assertEquals("http://changed/global",
+        assertEquals(
+                "http://changed/global",
                 refreshed.getEffectiveServers().get("changed-global").getConfig().getUrl());
-        assertEquals("http://changed/project",
+        assertEquals(
+                "http://changed/project",
                 refreshed.getEffectiveServers().get("changed-project").getConfig().getUrl());
         assertNotEquals(initialFingerprint, refreshed.getFingerprint());
-        McpScopeConfigSnapshot refreshedProject = manager.scopeSnapshot(KnowledgeScope.project("project-1"));
+        McpScopeConfigSnapshot refreshedProject =
+                manager.scopeSnapshot(KnowledgeScope.project("project-1"));
         assertEquals(1, refreshedProject.getServers().size());
-        assertEquals("http://changed/project",
+        assertEquals(
+                "http://changed/project",
                 refreshedProject.getServers().get("changed-project").getConfig().getUrl());
         assertNull(refreshedProject.getServers().get("changed-global"));
     }
@@ -75,17 +95,23 @@ class McpConfigurationManagerTest {
     @Test
     void runtimeReplacesCachedScopeWhenDatabaseConfigurationChanges() throws Exception {
         MemoryStore store = new MemoryStore();
-        store.writeFile(KnowledgeScope.global(), "mcp.json",
-                document(disabledServer("first", "http://first/mcp")), "application/json");
-        McpConfigurationManager manager = new McpConfigurationManager(
-                tempDir, "mcp.json", store, new ObjectMapper());
+        store.writeFile(
+                KnowledgeScope.global(),
+                "mcp.json",
+                document(disabledServer("first", "http://first/mcp")),
+                "application/json");
+        McpConfigurationManager manager =
+                new McpConfigurationManager(tempDir, "mcp.json", store, new ObjectMapper());
         McpRuntime runtime = new McpRuntime(manager, new ObjectMapper());
         try {
             runtime.initialize();
             assertEquals("disabled", runtime.statuses(null).get("first").getStatus());
 
-            store.writeFile(KnowledgeScope.global(), "mcp.json",
-                    document(disabledServer("second", "http://second/mcp")), "application/json");
+            store.writeFile(
+                    KnowledgeScope.global(),
+                    "mcp.json",
+                    document(disabledServer("second", "http://second/mcp")),
+                    "application/json");
             runtime.listTools(null);
 
             assertNull(runtime.statuses(null).get("first"));
@@ -118,9 +144,14 @@ class McpConfigurationManagerTest {
     @Test
     void acceptsCommonStreamableHttpConfigurationAliases() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        String[] values = new String[]{
-                "streamable-http", "streamableHttp", "streamable_http", "Streamable HTTP", "http"
-        };
+        String[] values =
+                new String[] {
+                    "streamable-http",
+                    "streamableHttp",
+                    "streamable_http",
+                    "Streamable HTTP",
+                    "http"
+                };
         for (String value : values) {
             McpServerConfig config = server("remote", "https://example.com/mcp").getValue();
             config.setTransport(value);
@@ -130,22 +161,26 @@ class McpConfigurationManagerTest {
             assertEquals(McpServerConfig.STREAMABLE_HTTP, validated.getTransport());
         }
 
-        McpConfigDocument typeDocument = objectMapper.readValue(
-                "{\"mcpServers\":{\"remote\":{\"type\":\"http\",\"url\":\"https://example.com/mcp\"}}}",
-                McpConfigDocument.class);
-        assertEquals(McpServerConfig.STREAMABLE_HTTP,
+        McpConfigDocument typeDocument =
+                objectMapper.readValue(
+                        "{\"mcpServers\":{\"remote\":{\"type\":\"http\",\"url\":\"https://example.com/mcp\"}}}",
+                        McpConfigDocument.class);
+        assertEquals(
+                McpServerConfig.STREAMABLE_HTTP,
                 typeDocument.getMcpServers().get("remote").getTransport());
 
         McpServerConfig sse = server("legacy", "https://example.com/sse").getValue();
         sse.setTransport("sse");
-        assertThrows(IllegalArgumentException.class, () -> new McpConfigValidator().validate("legacy", sse));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new McpConfigValidator().validate("legacy", sse));
     }
 
     @Test
     void replacesAndDeletesTheSingleDatabaseConfigFile() throws Exception {
         MemoryStore store = new MemoryStore();
-        McpConfigurationManager manager = new McpConfigurationManager(
-                tempDir, "mcp.json", store, new ObjectMapper());
+        McpConfigurationManager manager =
+                new McpConfigurationManager(tempDir, "mcp.json", store, new ObjectMapper());
         String first = document(server("first", "http://first/mcp"));
         String second = document(server("second", "http://second/mcp"));
 
@@ -155,8 +190,13 @@ class McpConfigurationManagerTest {
         manager.saveDatabase(second);
         assertEquals(second + "\n", store.readFile("mcp.json").getContent());
         assertEquals(1, manager.scopeSnapshot(KnowledgeScope.global()).getServers().size());
-        assertEquals("http://second/mcp",
-                manager.scopeSnapshot(KnowledgeScope.global()).getServers().get("second").getConfig().getUrl());
+        assertEquals(
+                "http://second/mcp",
+                manager.scopeSnapshot(KnowledgeScope.global())
+                        .getServers()
+                        .get("second")
+                        .getConfig()
+                        .getUrl());
 
         manager.deleteDatabase();
         assertNull(store.readFile("mcp.json"));
@@ -202,7 +242,9 @@ class McpConfigurationManagerTest {
         @Override
         public List<KnowledgeFile> listFiles(String prefix) {
             KnowledgeFile file = readFile(prefix);
-            return file == null ? java.util.Collections.<KnowledgeFile>emptyList() : java.util.Collections.singletonList(file);
+            return file == null
+                    ? java.util.Collections.<KnowledgeFile>emptyList()
+                    : java.util.Collections.singletonList(file);
         }
 
         @Override
@@ -211,8 +253,16 @@ class McpConfigurationManagerTest {
         }
 
         @Override
-        public KnowledgeFile writeFile(KnowledgeScope scope, String path, String content, String contentType) {
-            KnowledgeFile file = new KnowledgeFile(path, KnowledgeFile.TYPE_FILE, content, contentType, Instant.now(), Instant.now());
+        public KnowledgeFile writeFile(
+                KnowledgeScope scope, String path, String content, String contentType) {
+            KnowledgeFile file =
+                    new KnowledgeFile(
+                            path,
+                            KnowledgeFile.TYPE_FILE,
+                            content,
+                            contentType,
+                            Instant.now(),
+                            Instant.now());
             files.put(key(scope, path), file);
             return file;
         }

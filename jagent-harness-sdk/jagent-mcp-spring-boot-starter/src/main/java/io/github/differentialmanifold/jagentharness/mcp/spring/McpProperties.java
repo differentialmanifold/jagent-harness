@@ -2,7 +2,7 @@ package io.github.differentialmanifold.jagentharness.mcp.spring;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "harness.mcp")
+@ConfigurationProperties(prefix = "agent.mcp")
 public class McpProperties {
 
     private boolean enabled = true;

@@ -2,28 +2,18 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
 
-@ConfigurationProperties(prefix = "harness.console")
+@ConfigurationProperties(prefix = "agent.http")
 public class ConsoleProperties {
 
-    private boolean enabled = true;
     private List<String> allowedOrigins = new ArrayList<String>();
     private DataSize maxChatRequestBodySize = DataSize.ofMegabytes(32);
 
     public ConsoleProperties() {
-        allowedOrigins.add("http://localhost:5173");
-        allowedOrigins.add("http://127.0.0.1:5173");
-    }
-
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
+        allowedOrigins.add("http://localhost:5175");
+        allowedOrigins.add("http://127.0.0.1:5175");
     }
 
     public List<String> getAllowedOrigins() {

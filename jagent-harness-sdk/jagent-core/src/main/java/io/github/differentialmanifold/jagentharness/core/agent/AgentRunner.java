@@ -1,5 +1,35 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
+import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
+import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextRequest;
+import io.github.differentialmanifold.jagentharness.core.conversation.TokenEstimator;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.ConversationHistory;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
+import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
+import io.github.differentialmanifold.jagentharness.core.support.Ids;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -12,36 +42,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
-import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
-import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
-import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
-import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextManager;
-import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContextRequest;
-import io.github.differentialmanifold.jagentharness.core.conversation.TokenEstimator;
-import io.github.differentialmanifold.jagentharness.core.support.Ids;
-import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
-import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
-import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
-import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
-import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
-import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
-import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 
 public class AgentRunner implements AgentHarness {
 
@@ -60,15 +60,16 @@ public class AgentRunner implements AgentHarness {
     private final ModelCallRetryExecutor modelCallRetryExecutor;
     private final TokenEstimator tokenEstimator = new TokenEstimator();
 
-    public AgentRunner(AgentSettings settings,
-                       SessionStore sessionStore,
-                       AgentEventPublisher eventPublisher,
-                       PromptProvider promptProvider,
-                       ToolRegistry toolRegistry,
-                       ModelProviderRegistry providerRegistry,
-                       ToolContextFactory toolContextFactory,
-                       ConversationContextManager conversationContextManager,
-                       ObjectMapper objectMapper) {
+    public AgentRunner(
+            AgentSettings settings,
+            SessionStore sessionStore,
+            AgentEventPublisher eventPublisher,
+            PromptProvider promptProvider,
+            ToolRegistry toolRegistry,
+            ModelProviderRegistry providerRegistry,
+            ToolContextFactory toolContextFactory,
+            ConversationContextManager conversationContextManager,
+            ObjectMapper objectMapper) {
         this(
                 settings,
                 sessionStore,
@@ -82,16 +83,17 @@ public class AgentRunner implements AgentHarness {
                 objectMapper);
     }
 
-    public AgentRunner(AgentSettings settings,
-                       SessionStore sessionStore,
-                       AgentEventPublisher eventPublisher,
-                       PromptProvider promptProvider,
-                       ToolRegistry toolRegistry,
-                       ModelProviderRegistry providerRegistry,
-                       ToolContextFactory toolContextFactory,
-                       ConversationContextManager conversationContextManager,
-                       ModelCallUsageStore modelCallUsageStore,
-                       ObjectMapper objectMapper) {
+    public AgentRunner(
+            AgentSettings settings,
+            SessionStore sessionStore,
+            AgentEventPublisher eventPublisher,
+            PromptProvider promptProvider,
+            ToolRegistry toolRegistry,
+            ModelProviderRegistry providerRegistry,
+            ToolContextFactory toolContextFactory,
+            ConversationContextManager conversationContextManager,
+            ModelCallUsageStore modelCallUsageStore,
+            ObjectMapper objectMapper) {
         this.settings = settings;
         this.sessionStore = sessionStore;
         this.eventPublisher = eventPublisher;
@@ -100,40 +102,47 @@ public class AgentRunner implements AgentHarness {
         this.providerRegistry = providerRegistry;
         this.toolContextFactory = toolContextFactory;
         this.conversationContextManager = conversationContextManager;
-        this.modelCallUsageStore = modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
+        this.modelCallUsageStore =
+                modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
         this.objectMapper = objectMapper;
         this.modelCallRetryExecutor = new ModelCallRetryExecutor(settings, eventPublisher);
     }
 
-    @Override
     public AgentRunResult run(String sessionId, String userText) {
-        return run(sessionId, userText, Collections.<MessageImage>emptyList(), AgentRunOptions.empty());
+        return run(
+                sessionId,
+                userText,
+                Collections.<MessageImage>emptyList(),
+                AgentRunOptions.empty());
     }
 
-    @Override
     public AgentRunResult run(String sessionId, String userText, AgentRunOptions options) {
         return run(sessionId, userText, Collections.<MessageImage>emptyList(), options);
     }
 
-    @Override
-    public AgentRunResult run(String sessionId,
-                              String userText,
-                              List<MessageImage> images,
-                              AgentRunOptions options) {
-        AgentRunOptions effectiveOptions = options == null ? AgentRunOptions.empty() : options;
-        return eventPublisher.withEventConsumer(
-                effectiveOptions.getEventConsumer(),
-                () -> runInternal(sessionId, userText, images, effectiveOptions));
+    public AgentRunResult run(
+            String sessionId, String userText, List<MessageImage> images, AgentRunOptions options) {
+        return run(sessionId, initialUserMessages(sessionId, userText, images), options);
     }
 
-    private AgentRunResult runInternal(String sessionId,
-                                       String userText,
-                                       List<MessageImage> images,
-                                       AgentRunOptions effectiveOptions) {
+    /** Ordinary conversation input: append user/tool messages, then execute the same loop. */
+    public AgentRunResult run(
+            String sessionId, List<AgentMessage> messages, AgentRunOptions options) {
+        AgentRunOptions effectiveOptions = options == null ? AgentRunOptions.empty() : options;
+        ConversationHistory.validateInput(
+                sessionId, sessionStore.findMessages(sessionId), messages);
+        return eventPublisher.withEventConsumer(
+                effectiveOptions.getEventConsumer(),
+                () -> runInternal(sessionId, messages, effectiveOptions));
+    }
+
+    private AgentRunResult runInternal(
+            String sessionId, List<AgentMessage> messages, AgentRunOptions effectiveOptions) {
         SessionRecord session = sessionStore.requireSession(sessionId);
         String runId = valueOrNewRunId(effectiveOptions.getRunId());
         String parentMessageId = lastMessageId(sessionStore.findMessages(sessionId));
-        List<AgentMessage> pendingUserMessages = initialUserMessages(sessionId, userText, images);
+        List<AgentMessage> pendingUserMessages = new ArrayList<>(messages);
+        List<ToolCall> pendingClientCalls = new ArrayList<ToolCall>();
         String answer = "";
         int turnCount = 0;
         String firstTurnId = null;
@@ -143,7 +152,11 @@ public class AgentRunner implements AgentHarness {
         StringBuilder partialReasoning = new StringBuilder();
         StopSignal stopSignal = effectiveOptions.getStopSignal();
 
-        publish(sessionId, runId, null, AgentEvent.AGENT_START,
+        publish(
+                sessionId,
+                runId,
+                null,
+                AgentEvent.AGENT_START,
                 runPayload(sessionId, runId, effectiveOptions));
 
         try {
@@ -158,45 +171,85 @@ public class AgentRunner implements AgentHarness {
                 partialAnswer.setLength(0);
                 partialReasoning.setLength(0);
 
-                ToolContext toolContext = createToolContext(
-                        session,
+                ToolContext toolContext =
+                        createToolContext(session, runId, turnId, effectiveOptions);
+                publish(
+                        sessionId,
                         runId,
                         turnId,
-                        effectiveOptions);
-                publish(sessionId, runId, turnId, AgentEvent.TURN_START,
+                        AgentEvent.TURN_START,
                         turnPayload(sessionId, runId, turnId, turnCount, toolContext));
 
                 if (!pendingUserMessages.isEmpty()) {
                     for (AgentMessage userMessage : pendingUserMessages) {
                         userMessage.setRunId(runId);
-                        userMessage.setTurnId(turnId);
+                        if (userMessage.getTurnId() == null) userMessage.setTurnId(turnId);
                         userMessage.setParentMessageId(parentMessageId);
-                        sessionStore.appendMessage(userMessage);
                         parentMessageId = userMessage.getMessageId();
-                        publish(sessionId, runId, turnId, AgentEvent.MESSAGE_END,
+                    }
+                    sessionStore.appendMessages(pendingUserMessages);
+                    for (AgentMessage userMessage : pendingUserMessages) {
+                        if ("tool".equals(userMessage.getRole())) {
+                            Map<String, Object> payload = new LinkedHashMap<>();
+                            payload.put("toolCallId", userMessage.getToolCallId());
+                            payload.put("toolName", userMessage.getToolName());
+                            payload.put("result", userMessage.getContent());
+                            publish(
+                                    sessionId,
+                                    runId,
+                                    userMessage.getTurnId(),
+                                    AgentEvent.TOOL_EXECUTION_END,
+                                    payload);
+                        }
+                        publish(
+                                sessionId,
+                                runId,
+                                turnId,
+                                AgentEvent.MESSAGE_END,
                                 eventPayload("message", userMessage));
                     }
                     pendingUserMessages = Collections.emptyList();
                 }
 
                 stopSignal.throwIfAborted();
-                publish(sessionId, runId, turnId, AgentEvent.MESSAGE_START,
+                // Partial results are ordinary messages too; wait for the remaining results
+                // before sending the next model request.
+                Map<String, ToolCall> unanswered =
+                        ConversationHistory.pendingTools(sessionStore.findMessages(sessionId));
+                if (!unanswered.isEmpty()) {
+                    pendingClientCalls.addAll(unanswered.values());
+                    publish(
+                            sessionId,
+                            runId,
+                            turnId,
+                            AgentEvent.TURN_END,
+                            completedTurnPayload(turnCount, true));
+                    currentTurnEnded = true;
+                    break;
+                }
+                publish(
+                        sessionId,
+                        runId,
+                        turnId,
+                        AgentEvent.MESSAGE_START,
                         singleton("turnIndex", turnCount));
 
                 Collection<ToolDefinition> tools = toolRegistry.all(toolContext);
                 ModelProvider provider = requireProvider();
-                String systemPrompt = promptProvider.buildSystemPrompt(new PromptContext(tools, toolContext));
+                String systemPrompt =
+                        promptProvider.buildSystemPrompt(new PromptContext(tools, toolContext));
                 List<AgentMessage> storedMessages = sessionStore.findMessages(sessionId);
-                ConversationContext conversationContext = conversationContextManager.prepare(
-                        new ConversationContextRequest(
-                                sessionId,
-                                runId,
-                                turnId,
-                                systemPrompt,
-                                storedMessages,
-                                tools,
-                                provider,
-                                stopSignal));
+                ConversationContext conversationContext =
+                        conversationContextManager.prepare(
+                                new ConversationContextRequest(
+                                        sessionId,
+                                        runId,
+                                        turnId,
+                                        systemPrompt,
+                                        storedMessages,
+                                        tools,
+                                        provider,
+                                        stopSignal));
 
                 ModelRequest request = new ModelRequest();
                 request.setModel(settings.getModel());
@@ -205,52 +258,59 @@ public class AgentRunner implements AgentHarness {
                 request.setMessages(conversationContext.getMessages());
                 request.setTools(tools);
 
-                final int[] contentDeltaIndex = new int[]{0};
-                final int[] reasoningDeltaIndex = new int[]{0};
-                ModelResponse response = modelCallRetryExecutor.call(
-                        provider,
-                        request,
-                        new ModelDeltaConsumer() {
-                            @Override
-                            public void onContentDelta(String delta) {
-                                partialAnswer.append(delta);
-                                publishAssistantTextUpdate(
-                                        sessionId,
-                                        runId,
-                                        turnId,
-                                        delta,
-                                        contentDeltaIndex[0]++);
-                            }
+                final int[] contentDeltaIndex = new int[] {0};
+                final int[] reasoningDeltaIndex = new int[] {0};
+                ModelResponse response =
+                        modelCallRetryExecutor.call(
+                                provider,
+                                request,
+                                new ModelDeltaConsumer() {
+                                    @Override
+                                    public void onContentDelta(String delta) {
+                                        partialAnswer.append(delta);
+                                        publishAssistantTextUpdate(
+                                                sessionId,
+                                                runId,
+                                                turnId,
+                                                delta,
+                                                contentDeltaIndex[0]++);
+                                    }
 
-                            @Override
-                            public void onReasoningDelta(String delta) {
-                                partialReasoning.append(delta);
-                                publishAssistantReasoningUpdate(
-                                        sessionId,
-                                        runId,
-                                        turnId,
-                                        delta,
-                                        reasoningDeltaIndex[0]++);
-                            }
-                        },
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                partialAnswer.setLength(0);
-                                partialReasoning.setLength(0);
-                                contentDeltaIndex[0] = 0;
-                                reasoningDeltaIndex[0] = 0;
-                            }
-                        },
-                        stopSignal,
-                        sessionId,
-                        runId,
-                        turnId);
+                                    @Override
+                                    public void onReasoningDelta(String delta) {
+                                        partialReasoning.append(delta);
+                                        publishAssistantReasoningUpdate(
+                                                sessionId,
+                                                runId,
+                                                turnId,
+                                                delta,
+                                                reasoningDeltaIndex[0]++);
+                                    }
+                                },
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        partialAnswer.setLength(0);
+                                        partialReasoning.setLength(0);
+                                        contentDeltaIndex[0] = 0;
+                                        reasoningDeltaIndex[0] = 0;
+                                    }
+                                },
+                                stopSignal,
+                                sessionId,
+                                runId,
+                                turnId);
                 stopSignal.throwIfAborted();
-                AgentMessage assistantMessage = AgentMessage.assistant(
-                        sessionId,
-                        response.getContent(),
-                        response.getToolCalls());
+                if (response.getToolCalls() != null) {
+                    for (ToolCall call : response.getToolCalls()) {
+                        call.setToolCallId(Ids.newId("call"));
+                        call.setClientExecution(
+                                toolRegistry.isClientTool(call.getName(), toolContext));
+                    }
+                }
+                AgentMessage assistantMessage =
+                        AgentMessage.assistant(
+                                sessionId, response.getContent(), response.getToolCalls());
                 assistantMessage.setReasoningContent(response.getReasoningContent());
                 assistantMessage.setRunId(runId);
                 assistantMessage.setTurnId(turnId);
@@ -259,7 +319,11 @@ public class AgentRunner implements AgentHarness {
                 parentMessageId = assistantMessage.getMessageId();
                 partialAnswer.setLength(0);
                 partialReasoning.setLength(0);
-                publish(sessionId, runId, turnId, AgentEvent.MESSAGE_END,
+                publish(
+                        sessionId,
+                        runId,
+                        turnId,
+                        AgentEvent.MESSAGE_END,
                         eventPayload("message", assistantMessage));
                 publishContextUsage(
                         sessionId,
@@ -271,27 +335,45 @@ public class AgentRunner implements AgentHarness {
                         response);
 
                 answer = response.getContent();
-                boolean hasToolCalls = response.getToolCalls() != null
-                        && !response.getToolCalls().isEmpty();
+                boolean hasToolCalls =
+                        response.getToolCalls() != null && !response.getToolCalls().isEmpty();
                 if (hasToolCalls) {
-                    parentMessageId = executeToolCalls(
-                            sessionId,
-                            runId,
-                            turnId,
-                            toolContext,
-                            response.getToolCalls(),
-                            parentMessageId);
+                    parentMessageId =
+                            executeToolCalls(
+                                    sessionId,
+                                    runId,
+                                    turnId,
+                                    toolContext,
+                                    response.getToolCalls(),
+                                    parentMessageId);
+                    for (ToolCall call : response.getToolCalls()) {
+                        if (toolRegistry.isClientTool(call.getName(), toolContext)) {
+                            pendingClientCalls.add(call);
+                        }
+                    }
+                    if (!pendingClientCalls.isEmpty()) {
+                        publish(
+                                sessionId,
+                                runId,
+                                turnId,
+                                AgentEvent.TURN_END,
+                                completedTurnPayload(turnCount, true));
+                        currentTurnEnded = true;
+                        break;
+                    }
                 }
 
-                publish(sessionId, runId, turnId, AgentEvent.TURN_END,
+                publish(
+                        sessionId,
+                        runId,
+                        turnId,
+                        AgentEvent.TURN_END,
                         completedTurnPayload(turnCount, hasToolCalls));
                 currentTurnEnded = true;
 
-                List<RunInput> pendingInputs = claimPendingInputs(
-                        effectiveOptions.getRunInputSource(),
-                        sessionId,
-                        runId,
-                        turnId);
+                List<RunInput> pendingInputs =
+                        claimPendingInputs(
+                                effectiveOptions.getRunInputSource(), sessionId, runId, turnId);
                 if (!pendingInputs.isEmpty()) {
                     pendingUserMessages = runInputMessages(sessionId, pendingInputs);
                     publishRunInputsApplied(sessionId, runId, turnId, pendingInputs);
@@ -303,12 +385,13 @@ public class AgentRunner implements AgentHarness {
                 break;
             }
         } catch (StopRequestedException e) {
-            AgentMessage stoppedMessage = appendStoppedAssistantMessage(
-                    sessionId,
-                    runId,
-                    currentTurnId,
-                    partialAnswer.toString(),
-                    partialReasoning.toString());
+            AgentMessage stoppedMessage =
+                    appendStoppedAssistantMessage(
+                            sessionId,
+                            runId,
+                            currentTurnId,
+                            partialAnswer.toString(),
+                            partialReasoning.toString());
             publishStopped(
                     sessionId,
                     runId,
@@ -320,12 +403,13 @@ public class AgentRunner implements AgentHarness {
             throw e;
         } catch (RuntimeException e) {
             if (stopSignal.isAborted()) {
-                AgentMessage stoppedMessage = appendStoppedAssistantMessage(
-                        sessionId,
-                        runId,
-                        currentTurnId,
-                        partialAnswer.toString(),
-                        partialReasoning.toString());
+                AgentMessage stoppedMessage =
+                        appendStoppedAssistantMessage(
+                                sessionId,
+                                runId,
+                                currentTurnId,
+                                partialAnswer.toString(),
+                                partialReasoning.toString());
                 publishStopped(
                         sessionId,
                         runId,
@@ -349,20 +433,29 @@ public class AgentRunner implements AgentHarness {
         result.setAnswer(answer);
         result.setTurnCount(turnCount);
 
-        publish(sessionId, runId, null, AgentEvent.AGENT_END, result);
+        if (!pendingClientCalls.isEmpty()) {
+            result.setStatus("REQUIRES_ACTION");
+            result.setToolCalls(pendingClientCalls);
+            publish(sessionId, runId, currentTurnId, "agent_requires_action", result);
+        } else {
+            publish(sessionId, runId, null, AgentEvent.AGENT_END, result);
+        }
         sessionStore.touch(sessionId);
         return result;
     }
 
-    private String executeToolCalls(String sessionId,
-                                    String runId,
-                                    String turnId,
-                                    ToolContext toolContext,
-                                    List<ToolCall> toolCalls,
-                                    String parentMessageId) {
+    private String executeToolCalls(
+            String sessionId,
+            String runId,
+            String turnId,
+            ToolContext toolContext,
+            List<ToolCall> toolCalls,
+            String parentMessageId) {
         StopSignal stopSignal = toolContext.getStopSignal();
         for (int index = 0; index < toolCalls.size(); index++) {
             ToolCall call = toolCalls.get(index);
+            // Execute all server tools before yielding the client batch.
+            if (toolRegistry.isClientTool(call.getName(), toolContext)) continue;
             try {
                 stopSignal.throwIfAborted();
             } catch (StopRequestedException e) {
@@ -393,11 +486,9 @@ public class AgentRunner implements AgentHarness {
                         parentMessageId);
                 throw e;
             }
-            AgentMessage toolMessage = AgentMessage.tool(
-                    sessionId,
-                    call.getToolCallId(),
-                    call.getName(),
-                    result.getContent());
+            AgentMessage toolMessage =
+                    AgentMessage.tool(
+                            sessionId, call.getToolCallId(), call.getName(), result.getContent());
             toolMessage.setRunId(runId);
             toolMessage.setTurnId(turnId);
             toolMessage.setParentMessageId(parentMessageId);
@@ -409,7 +500,12 @@ public class AgentRunner implements AgentHarness {
             endPayload.put("toolName", call.getName());
             endPayload.put("result", result.getContent());
             publish(sessionId, runId, turnId, AgentEvent.TOOL_EXECUTION_END, endPayload);
-            publish(sessionId, runId, turnId, AgentEvent.MESSAGE_END, eventPayload("message", toolMessage));
+            publish(
+                    sessionId,
+                    runId,
+                    turnId,
+                    AgentEvent.MESSAGE_END,
+                    eventPayload("message", toolMessage));
         }
         return parentMessageId;
     }
@@ -452,7 +548,8 @@ public class AgentRunner implements AgentHarness {
     private ModelProvider requireProvider() {
         ModelProvider provider = providerRegistry.get(settings.getProvider());
         if (provider == null) {
-            throw new IllegalStateException("No model provider registered for: " + settings.getProvider());
+            throw new IllegalStateException(
+                    "No model provider registered for: " + settings.getProvider());
         }
         return provider;
     }
@@ -469,27 +566,25 @@ public class AgentRunner implements AgentHarness {
         return runId == null || runId.trim().isEmpty() ? Ids.newId("run") : runId.trim();
     }
 
-    private List<RunInput> claimPendingInputs(RunInputSource source,
-                                              String sessionId,
-                                              String runId,
-                                              String completedTurnId) {
+    private List<RunInput> claimPendingInputs(
+            RunInputSource source, String sessionId, String runId, String completedTurnId) {
         RunInputSource effectiveSource = source == null ? RunInputSource.none() : source;
-        List<RunInput> claimed = effectiveSource.claimPendingInputs(
-                sessionId, runId, completedTurnId);
+        List<RunInput> claimed =
+                effectiveSource.claimPendingInputs(sessionId, runId, completedTurnId);
         if (claimed == null || claimed.isEmpty()) {
             return Collections.emptyList();
         }
         for (RunInput input : claimed) {
             if (input == null || (!hasText(input.getContent()) && !hasImages(input.getImages()))) {
-                throw new IllegalStateException("A claimed run input must contain text or an image");
+                throw new IllegalStateException(
+                        "A claimed run input must contain text or an image");
             }
         }
         return new ArrayList<RunInput>(claimed);
     }
 
-    private List<AgentMessage> initialUserMessages(String sessionId,
-                                                   String content,
-                                                   List<MessageImage> images) {
+    private List<AgentMessage> initialUserMessages(
+            String sessionId, String content, List<MessageImage> images) {
         if (content == null && !hasImages(images)) {
             return Collections.emptyList();
         }
@@ -504,9 +599,7 @@ public class AgentRunner implements AgentHarness {
         return messages;
     }
 
-    private AgentMessage userMessage(String sessionId,
-                                     String content,
-                                     List<MessageImage> images) {
+    private AgentMessage userMessage(String sessionId, String content, List<MessageImage> images) {
         AgentMessage message = AgentMessage.user(sessionId, content);
         message.setImages(normalizedImages(images));
         return message;
@@ -574,9 +667,9 @@ public class AgentRunner implements AgentHarness {
             throw new IllegalArgumentException(
                     "Image " + (index + 1) + " must use a base64 image data URL");
         }
-        String mediaType = normalizedImageMediaType(
-                header.substring(0, header.length() - base64Suffix.length()),
-                index);
+        String mediaType =
+                normalizedImageMediaType(
+                        header.substring(0, header.length() - base64Suffix.length()), index);
         if (mediaType == null) {
             throw new IllegalArgumentException(
                     "Image " + (index + 1) + " data URL media type is required");
@@ -632,8 +725,7 @@ public class AgentRunner implements AgentHarness {
             }
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException(
-                    "Image " + (index + 1) + " URL must be a valid data, http, or https URL",
-                    e);
+                    "Image " + (index + 1) + " URL must be a valid data, http, or https URL", e);
         }
     }
 
@@ -708,10 +800,8 @@ public class AgentRunner implements AgentHarness {
         return images != null && !images.isEmpty();
     }
 
-    private void publishRunInputsApplied(String sessionId,
-                                         String runId,
-                                         String completedTurnId,
-                                         List<RunInput> inputs) {
+    private void publishRunInputsApplied(
+            String sessionId, String runId, String completedTurnId, List<RunInput> inputs) {
         List<String> inputIds = new ArrayList<String>();
         List<Map<String, Object>> inputPayloads = new ArrayList<Map<String, Object>>();
         for (RunInput input : inputs) {
@@ -736,12 +826,13 @@ public class AgentRunner implements AgentHarness {
         return payload;
     }
 
-    private void publishFailed(String sessionId,
-                               String runId,
-                               String turnId,
-                               int turnCount,
-                               RuntimeException error,
-                               boolean turnEnded) {
+    private void publishFailed(
+            String sessionId,
+            String runId,
+            String turnId,
+            int turnCount,
+            RuntimeException error,
+            boolean turnEnded) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("status", "failed");
         payload.put("turnCount", turnCount);
@@ -752,31 +843,34 @@ public class AgentRunner implements AgentHarness {
         publish(sessionId, runId, null, AgentEvent.AGENT_ERROR, payload);
     }
 
-    private ToolContext createToolContext(SessionRecord session,
-                                          String runId,
-                                          String turnId,
-                                          AgentRunOptions options) {
+    private ToolContext createToolContext(
+            SessionRecord session, String runId, String turnId, AgentRunOptions options) {
         ToolContext context = toolContextFactory.create(session, runId, turnId, options);
         if (context != null) {
-            return withConfigRoot(context);
+            context = withConfigRoot(context);
+            context.setClientCapabilities(options.getClientCapabilities());
+            return context;
         }
-        return withConfigRoot(new ToolContext(
-                session.getSessionId(),
-                runId,
-                turnId,
-                options.getTraceId(),
-                null,
-                null,
-                options.getAttributes(),
-                options.getStopSignal(),
-                options.getApprovalMode(),
-                options.getApprovalHandler(),
-                null,
-                null));
+        return withConfigRoot(
+                new ToolContext(
+                        session.getSessionId(),
+                        runId,
+                        turnId,
+                        options.getTraceId(),
+                        null,
+                        null,
+                        options.getAttributes(),
+                        options.getStopSignal(),
+                        options.getApprovalMode(),
+                        options.getApprovalHandler(),
+                        null,
+                        null));
     }
 
     private ToolContext withConfigRoot(ToolContext context) {
-        if (context == null || context.getConfigRoot() != null || settings.getConfigRoot() == null) {
+        if (context == null
+                || context.getConfigRoot() != null
+                || settings.getConfigRoot() == null) {
             return context;
         }
         return new ToolContext(
@@ -795,15 +889,17 @@ public class AgentRunner implements AgentHarness {
                 context.getProjectId());
     }
 
-    private AgentMessage appendStoppedAssistantMessage(String sessionId,
-                                                       String runId,
-                                                       String turnId,
-                                                       String content,
-                                                       String reasoningContent) {
-        AgentMessage message = AgentMessage.assistant(
-                sessionId,
-                content == null ? "" : content,
-                Collections.<ToolCall>emptyList());
+    private AgentMessage appendStoppedAssistantMessage(
+            String sessionId,
+            String runId,
+            String turnId,
+            String content,
+            String reasoningContent) {
+        AgentMessage message =
+                AgentMessage.assistant(
+                        sessionId,
+                        content == null ? "" : content,
+                        Collections.<ToolCall>emptyList());
         message.setReasoningContent(reasoningContent == null ? "" : reasoningContent);
         message.setRunId(runId);
         message.setTurnId(turnId);
@@ -814,19 +910,18 @@ public class AgentRunner implements AgentHarness {
         return message;
     }
 
-    private String appendStoppedToolMessages(String sessionId,
-                                             String runId,
-                                             String turnId,
-                                             List<ToolCall> toolCalls,
-                                             String parentMessageId) {
+    private String appendStoppedToolMessages(
+            String sessionId,
+            String runId,
+            String turnId,
+            List<ToolCall> toolCalls,
+            String parentMessageId) {
         String currentParentMessageId = parentMessageId;
         for (ToolCall call : toolCalls) {
             ToolExecutionResult result = ToolExecutionResult.error("Tool execution stopped");
-            AgentMessage toolMessage = AgentMessage.tool(
-                    sessionId,
-                    call.getToolCallId(),
-                    call.getName(),
-                    result.getContent());
+            AgentMessage toolMessage =
+                    AgentMessage.tool(
+                            sessionId, call.getToolCallId(), call.getName(), result.getContent());
             toolMessage.setRunId(runId);
             toolMessage.setTurnId(turnId);
             toolMessage.setParentMessageId(currentParentMessageId);
@@ -839,17 +934,23 @@ public class AgentRunner implements AgentHarness {
             payload.put("result", result.getContent());
             payload.put("stopped", true);
             publish(sessionId, runId, turnId, AgentEvent.TOOL_EXECUTION_END, payload);
-            publish(sessionId, runId, turnId, AgentEvent.MESSAGE_END, eventPayload("message", toolMessage));
+            publish(
+                    sessionId,
+                    runId,
+                    turnId,
+                    AgentEvent.MESSAGE_END,
+                    eventPayload("message", toolMessage));
         }
         return currentParentMessageId;
     }
 
-    private void publishStopped(String sessionId,
-                                String runId,
-                                String turnId,
-                                int turnCount,
-                                String messageId,
-                                boolean turnEnded) {
+    private void publishStopped(
+            String sessionId,
+            String runId,
+            String turnId,
+            int turnCount,
+            String messageId,
+            boolean turnEnded) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("status", "stopped");
         payload.put("stopReason", AgentMessage.STOP_REASON_ABORTED);
@@ -861,9 +962,8 @@ public class AgentRunner implements AgentHarness {
         publish(sessionId, runId, null, AgentEvent.AGENT_STOPPED, payload);
     }
 
-    private Map<String, Object> runPayload(String sessionId,
-                                           String runId,
-                                           AgentRunOptions options) {
+    private Map<String, Object> runPayload(
+            String sessionId, String runId, AgentRunOptions options) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("sessionId", sessionId);
         payload.put("runId", runId);
@@ -873,11 +973,8 @@ public class AgentRunner implements AgentHarness {
         return payload;
     }
 
-    private Map<String, Object> turnPayload(String sessionId,
-                                            String runId,
-                                            String turnId,
-                                            int turnIndex,
-                                            ToolContext context) {
+    private Map<String, Object> turnPayload(
+            String sessionId, String runId, String turnId, int turnIndex, ToolContext context) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("sessionId", sessionId);
         payload.put("runId", runId);
@@ -895,11 +992,8 @@ public class AgentRunner implements AgentHarness {
         }
     }
 
-    private void publishAssistantTextUpdate(String sessionId,
-                                            String runId,
-                                            String turnId,
-                                            String delta,
-                                            int index) {
+    private void publishAssistantTextUpdate(
+            String sessionId, String runId, String turnId, String delta, int index) {
         if (delta == null || delta.isEmpty()) {
             return;
         }
@@ -910,11 +1004,8 @@ public class AgentRunner implements AgentHarness {
         publish(sessionId, runId, turnId, AgentEvent.MESSAGE_UPDATE, payload);
     }
 
-    private void publishAssistantReasoningUpdate(String sessionId,
-                                                 String runId,
-                                                 String turnId,
-                                                 String delta,
-                                                 int index) {
+    private void publishAssistantReasoningUpdate(
+            String sessionId, String runId, String turnId, String delta, int index) {
         if (delta == null || delta.isEmpty()) {
             return;
         }
@@ -925,44 +1016,53 @@ public class AgentRunner implements AgentHarness {
         publish(sessionId, runId, turnId, AgentEvent.MESSAGE_REASONING_UPDATE, payload);
     }
 
-    private void publishContextUsage(String sessionId,
-                                     String runId,
-                                     String turnId,
-                                     ModelProvider provider,
-                                     ConversationContext conversationContext,
-                                     AgentMessage assistantMessage,
-                                     ModelResponse response) {
-        int contextWindowTokens = conversationContext.getContextWindowTokens() > 0
-                ? conversationContext.getContextWindowTokens()
-                : effectiveContextWindowTokens();
-        int thresholdTokens = conversationContext.getThresholdTokens() > 0
-                ? conversationContext.getThresholdTokens()
-                : compactionThresholdTokens(contextWindowTokens);
+    private void publishContextUsage(
+            String sessionId,
+            String runId,
+            String turnId,
+            ModelProvider provider,
+            ConversationContext conversationContext,
+            AgentMessage assistantMessage,
+            ModelResponse response) {
+        int contextWindowTokens =
+                conversationContext.getContextWindowTokens() > 0
+                        ? conversationContext.getContextWindowTokens()
+                        : effectiveContextWindowTokens();
+        int thresholdTokens =
+                conversationContext.getThresholdTokens() > 0
+                        ? conversationContext.getThresholdTokens()
+                        : compactionThresholdTokens(contextWindowTokens);
         String estimateSource = ModelCallUsage.ESTIMATE_SOURCE_FULL;
-        Integer estimatedTokens = estimateNextContextTokens(
-                conversationContext.getRawEstimatedTokens(),
-                assistantMessage);
+        Integer estimatedTokens =
+                estimateNextContextTokens(
+                        conversationContext.getRawEstimatedTokens(), assistantMessage);
 
         ModelCallUsage record = null;
-        if (response != null && response.getUsage() != null && response.getUsage().hasTokenCounts()) {
-            record = ModelCallUsage.fromUsage(
-                    sessionId,
-                    runId,
-                    turnId,
-                    assistantMessage.getMessageId(),
-                    provider == null ? "" : provider.getName(),
-                    settings.getModel(),
-                    contextWindowTokens,
-                    thresholdTokens,
-                    estimateSource,
-                    estimatedTokens,
-                    response.getUsage());
+        if (response != null
+                && response.getUsage() != null
+                && response.getUsage().hasTokenCounts()) {
+            record =
+                    ModelCallUsage.fromUsage(
+                            sessionId,
+                            runId,
+                            turnId,
+                            assistantMessage.getMessageId(),
+                            provider == null ? "" : provider.getName(),
+                            settings.getModel(),
+                            contextWindowTokens,
+                            thresholdTokens,
+                            estimateSource,
+                            estimatedTokens,
+                            response.getUsage());
             try {
                 modelCallUsageStore.append(record);
             } catch (RuntimeException e) {
-                LOGGER.log(Level.WARNING,
-                        "Failed to persist model usage for session " + sessionId
-                                + " and message " + assistantMessage.getMessageId(),
+                LOGGER.log(
+                        Level.WARNING,
+                        "Failed to persist model usage for session "
+                                + sessionId
+                                + " and message "
+                                + assistantMessage.getMessageId(),
                         e);
             }
         }
@@ -988,12 +1088,15 @@ public class AgentRunner implements AgentHarness {
         publish(sessionId, runId, turnId, AgentEvent.CONTEXT_USAGE, payload);
     }
 
-    private Integer estimateNextContextTokens(int requestEstimatedTokens, AgentMessage assistantMessage) {
+    private Integer estimateNextContextTokens(
+            int requestEstimatedTokens, AgentMessage assistantMessage) {
         if (requestEstimatedTokens <= 0) {
             return null;
         }
-        long estimatedTokens = (long) requestEstimatedTokens
-                + tokenEstimator.estimateMessages(Collections.singletonList(assistantMessage));
+        long estimatedTokens =
+                (long) requestEstimatedTokens
+                        + tokenEstimator.estimateMessages(
+                                Collections.singletonList(assistantMessage));
         return estimatedTokens >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) estimatedTokens;
     }
 
@@ -1002,20 +1105,18 @@ public class AgentRunner implements AgentHarness {
     }
 
     private int compactionThresholdTokens(int contextWindowTokens) {
-        double ratio = settings.getCompactionThresholdRatio() <= 0
-                ? 0.8d
-                : settings.getCompactionThresholdRatio();
+        double ratio =
+                settings.getCompactionThresholdRatio() <= 0
+                        ? 0.8d
+                        : settings.getCompactionThresholdRatio();
         if (ratio > 1.0d) {
             ratio = 1.0d;
         }
         return Math.max(1, (int) Math.floor(contextWindowTokens * ratio));
     }
 
-    private AgentEvent publish(String sessionId,
-                               String runId,
-                               String turnId,
-                               String type,
-                               Object payload) {
+    private AgentEvent publish(
+            String sessionId, String runId, String turnId, String type, Object payload) {
         return eventPublisher.publish(sessionId, runId, turnId, type, payload);
     }
 
@@ -1033,5 +1134,4 @@ public class AgentRunner implements AgentHarness {
         map.put(key, value);
         return map;
     }
-
 }

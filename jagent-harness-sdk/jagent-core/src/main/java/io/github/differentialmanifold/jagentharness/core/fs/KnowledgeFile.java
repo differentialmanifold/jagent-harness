@@ -16,23 +16,24 @@ public class KnowledgeFile {
     private Instant createdAt;
     private Instant updatedAt;
 
-    public KnowledgeFile() {
-    }
+    public KnowledgeFile() {}
 
-    public KnowledgeFile(String path,
-                         String nodeType,
-                         String content,
-                         String contentType,
-                         Instant createdAt,
-                         Instant updatedAt) {
+    public KnowledgeFile(
+            String path,
+            String nodeType,
+            String content,
+            String contentType,
+            Instant createdAt,
+            Instant updatedAt) {
         this.path = KnowledgeFilePaths.normalize(path);
         this.parentPath = KnowledgeFilePaths.parent(this.path);
         this.name = KnowledgeFilePaths.fileName(this.path);
         this.nodeType = nodeType == null || nodeType.trim().isEmpty() ? TYPE_FILE : nodeType.trim();
         this.content = content == null ? "" : content;
-        this.contentType = contentType == null || contentType.trim().isEmpty()
-                ? "text/markdown"
-                : contentType.trim();
+        this.contentType =
+                contentType == null || contentType.trim().isEmpty()
+                        ? "text/markdown"
+                        : contentType.trim();
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -52,9 +53,10 @@ public class KnowledgeFile {
     }
 
     public void setParentPath(String parentPath) {
-        this.parentPath = parentPath == null || parentPath.trim().isEmpty()
-                ? ""
-                : KnowledgeFilePaths.normalize(parentPath);
+        this.parentPath =
+                parentPath == null || parentPath.trim().isEmpty()
+                        ? ""
+                        : KnowledgeFilePaths.normalize(parentPath);
     }
 
     public String getName() {
@@ -106,6 +108,8 @@ public class KnowledgeFile {
     }
 
     public int getBytes() {
-        return content == null ? 0 : content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        return content == null
+                ? 0
+                : content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
     }
 }

@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 public final class ToolArguments {
 
-    private ToolArguments() {
-    }
+    private ToolArguments() {}
 
     public static String requiredText(JsonNode arguments, String name) {
         JsonNode node = arguments.path(name);

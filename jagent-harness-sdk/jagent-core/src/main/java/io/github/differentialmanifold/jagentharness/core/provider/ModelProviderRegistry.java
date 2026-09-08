@@ -11,8 +11,7 @@ public class ModelProviderRegistry {
 
     private final Map<String, ModelProvider> providers = new LinkedHashMap<String, ModelProvider>();
 
-    public ModelProviderRegistry() {
-    }
+    public ModelProviderRegistry() {}
 
     public ModelProviderRegistry(List<ModelProvider> providers) {
         if (providers != null) {
@@ -27,7 +26,8 @@ public class ModelProviderRegistry {
             throw new IllegalArgumentException("provider must not be null");
         }
         if (providers.containsKey(provider.getName())) {
-            throw new IllegalArgumentException("Provider already registered: " + provider.getName());
+            throw new IllegalArgumentException(
+                    "Provider already registered: " + provider.getName());
         }
         providers.put(provider.getName(), provider);
     }

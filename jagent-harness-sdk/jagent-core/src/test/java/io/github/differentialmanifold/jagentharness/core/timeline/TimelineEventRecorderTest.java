@@ -4,11 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import org.junit.jupiter.api.Test;
 
 class TimelineEventRecorderTest {
@@ -27,10 +26,8 @@ class TimelineEventRecorderTest {
         recorder.onEvent(messageEnd);
         recorder.onEvent(end);
 
-        assertEquals(Arrays.asList(
-                        AgentEvent.AGENT_START,
-                        AgentEvent.MESSAGE_END,
-                        AgentEvent.AGENT_END),
+        assertEquals(
+                Arrays.asList(AgentEvent.AGENT_START, AgentEvent.MESSAGE_END, AgentEvent.AGENT_END),
                 eventTypes(storedEvents));
         assertNull(storedEvents.get(0).getPayloadJson());
         assertSame(messageEnd, storedEvents.get(1));

@@ -14,8 +14,7 @@ public class VirtualFileResponse {
     private String createdAt;
     private String updatedAt;
 
-    public VirtualFileResponse() {
-    }
+    public VirtualFileResponse() {}
 
     public VirtualFileResponse(KnowledgeFile file) {
         this.path = file.getPath();

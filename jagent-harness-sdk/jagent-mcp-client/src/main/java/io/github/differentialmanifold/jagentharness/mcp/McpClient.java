@@ -1,5 +1,10 @@
 package io.github.differentialmanifold.jagentharness.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,12 +13,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
-import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 
 public class McpClient implements AutoCloseable {
 
@@ -31,14 +30,20 @@ public class McpClient implements AutoCloseable {
         this.config = config.copy();
         this.objectMapper = objectMapper;
         this.transport = new StreamableHttpTransport(this.config, objectMapper);
-        this.cancellationExecutor = Executors.newSingleThreadExecutor(new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable runnable) {
-                Thread thread = new Thread(runnable, "jagent-mcp-cancel-" + McpClient.this.config.getName());
-                thread.setDaemon(true);
-                return thread;
-            }
-        });
+        this.cancellationExecutor =
+                Executors.newSingleThreadExecutor(
+                        new ThreadFactory() {
+                            @Override
+                            public Thread newThread(Runnable runnable) {
+                                Thread thread =
+                                        new Thread(
+                                                runnable,
+                                                "jagent-mcp-cancel-"
+                                                        + McpClient.this.config.getName());
+                                thread.setDaemon(true);
+                                return thread;
+                            }
+                        });
     }
 
     public synchronized void initialize() throws IOException {
@@ -72,16 +77,20 @@ public class McpClient implements AutoCloseable {
             if (cursor != null) {
                 params.put("cursor", cursor);
             }
-            JsonNode result = requireResult(requestWithSessionRecovery("tools/list", params, StopSignal.none()), "tools/list");
+            JsonNode result =
+                    requireResult(
+                            requestWithSessionRecovery("tools/list", params, StopSignal.none()),
+                            "tools/list");
             JsonNode listed = result.path("tools");
             if (listed.isArray()) {
                 for (JsonNode tool : listed) {
                     String name = tool.path("name").asText("").trim();
                     if (!name.isEmpty()) {
-                        tools.add(new McpToolDescriptor(
-                                name,
-                                tool.path("description").asText(""),
-                                tool.get("inputSchema")));
+                        tools.add(
+                                new McpToolDescriptor(
+                                        name,
+                                        tool.path("description").asText(""),
+                                        tool.get("inputSchema")));
                     }
                 }
             }
@@ -93,12 +102,14 @@ public class McpClient implements AutoCloseable {
         return Collections.unmodifiableList(tools);
     }
 
-    public JsonNode callTool(String name, JsonNode arguments, StopSignal stopSignal) throws IOException {
+    public JsonNode callTool(String name, JsonNode arguments, StopSignal stopSignal)
+            throws IOException {
         initialize();
         ObjectNode params = objectMapper.createObjectNode();
         params.put("name", name);
         params.set("arguments", arguments == null ? objectMapper.createObjectNode() : arguments);
-        return requireResult(requestWithSessionRecovery("tools/call", params, stopSignal), "tools/call");
+        return requireResult(
+                requestWithSessionRecovery("tools/call", params, stopSignal), "tools/call");
     }
 
     public String getNegotiatedProtocolVersion() {
@@ -109,9 +120,8 @@ public class McpClient implements AutoCloseable {
         return transport.getSessionId();
     }
 
-    private JsonNode requestWithSessionRecovery(String method,
-                                                JsonNode params,
-                                                StopSignal stopSignal) throws IOException {
+    private JsonNode requestWithSessionRecovery(
+            String method, JsonNode params, StopSignal stopSignal) throws IOException {
         try {
             return requestOnce(method, params, stopSignal);
         } catch (McpSessionExpiredException e) {
@@ -125,7 +135,8 @@ public class McpClient implements AutoCloseable {
         }
     }
 
-    private JsonNode requestOnce(String method, JsonNode params, StopSignal stopSignal) throws IOException {
+    private JsonNode requestOnce(String method, JsonNode params, StopSignal stopSignal)
+            throws IOException {
         final long requestId = requestIds.incrementAndGet();
         final StopSignal signal = stopSignal == null ? StopSignal.none() : stopSignal;
         ObjectNode request = message(Long.valueOf(requestId), method, params);
@@ -140,19 +151,24 @@ public class McpClient implements AutoCloseable {
     }
 
     private void sendCancelled(final long requestId) {
-        cancellationExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                ObjectNode params = objectMapper.createObjectNode();
-                params.put("requestId", requestId);
-                params.put("reason", "Agent run was stopped");
-                try {
-                    transport.request(message(null, "notifications/cancelled", params), null, StopSignal.none());
-                } catch (Exception ignored) {
-                    // Cancellation notification is best effort; cancelling the active HTTP call is authoritative.
-                }
-            }
-        });
+        cancellationExecutor.execute(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        ObjectNode params = objectMapper.createObjectNode();
+                        params.put("requestId", requestId);
+                        params.put("reason", "Agent run was stopped");
+                        try {
+                            transport.request(
+                                    message(null, "notifications/cancelled", params),
+                                    null,
+                                    StopSignal.none());
+                        } catch (Exception ignored) {
+                            // Cancellation notification is best effort; cancelling the active HTTP
+                            // call is authoritative.
+                        }
+                    }
+                });
     }
 
     private ObjectNode message(Long id, String method, JsonNode params) {
@@ -174,8 +190,8 @@ public class McpClient implements AutoCloseable {
         }
         JsonNode error = response.get("error");
         if (error != null && !error.isNull()) {
-            throw new McpProtocolException("MCP " + method + " failed: "
-                    + error.path("message").asText(error.toString()));
+            throw new McpProtocolException(
+                    "MCP " + method + " failed: " + error.path("message").asText(error.toString()));
         }
         JsonNode result = response.get("result");
         if (result == null) {

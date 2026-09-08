@@ -1,0 +1,14 @@
+{
+  "sessionId": "sess_example",
+  "runId": "run_example",
+  "messages": [
+    {
+      "role": "tool",
+      "toolCallId": "call_example",
+      "status": "SUCCEEDED",
+      "content": {
+        "text": "Project readme"
+      }
+    }
+  ]
+}

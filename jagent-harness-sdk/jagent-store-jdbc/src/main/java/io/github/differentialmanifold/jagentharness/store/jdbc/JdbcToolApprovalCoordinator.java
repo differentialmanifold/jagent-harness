@@ -1,8 +1,5 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
@@ -10,6 +7,8 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalDecision;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalRequest;
+import java.util.List;
+import java.util.Map;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -25,26 +24,31 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
     private final ObjectMapper objectMapper;
     private final String applicationId;
     private final long pollIntervalMillis;
-    private final RowMapper<ApprovalRow> approvalRowMapper = (resultSet, rowNum) -> new ApprovalRow(
-            resultSet.getString("status"),
-            resultSet.getString("decision_reason"));
+    private final RowMapper<ApprovalRow> approvalRowMapper =
+            (resultSet, rowNum) ->
+                    new ApprovalRow(
+                            resultSet.getString("status"), resultSet.getString("decision_reason"));
 
-    public JdbcToolApprovalCoordinator(JdbcTemplate jdbcTemplate,
-                                       ObjectMapper objectMapper,
-                                       JdbcStoreProperties storeProperties,
-                                       JdbcToolApprovalProperties properties) {
+    public JdbcToolApprovalCoordinator(
+            JdbcTemplate jdbcTemplate,
+            ObjectMapper objectMapper,
+            JdbcStoreProperties storeProperties,
+            JdbcToolApprovalProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.applicationId = storeProperties.requireApplicationId();
-        this.pollIntervalMillis = positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
+        this.pollIntervalMillis =
+                positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
     }
 
     @Override
-    public ToolApprovalDecision awaitDecision(String runId,
-                                              String sessionId,
-                                              ToolApprovalRequest request,
-                                              StopSignal stopSignal,
-                                              Runnable onPending) throws Exception {
+    public ToolApprovalDecision awaitDecision(
+            String runId,
+            String sessionId,
+            ToolApprovalRequest request,
+            StopSignal stopSignal,
+            Runnable onPending)
+            throws Exception {
         insertApproval(runId, sessionId, request);
         try {
             if (onPending != null) {
@@ -68,14 +72,12 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
                     return ToolApprovalDecision.approved(row.decisionReason);
                 }
                 if (STATUS_DENIED.equals(row.status)) {
-                    return ToolApprovalDecision.denied(defaultReason(
-                            row.decisionReason,
-                            "Tool approval was denied"));
+                    return ToolApprovalDecision.denied(
+                            defaultReason(row.decisionReason, "Tool approval was denied"));
                 }
                 if (STATUS_CANCELLED.equals(row.status)) {
-                    return ToolApprovalDecision.denied(defaultReason(
-                            row.decisionReason,
-                            "Tool approval was cancelled"));
+                    return ToolApprovalDecision.denied(
+                            defaultReason(row.decisionReason, "Tool approval was cancelled"));
                 }
 
                 sleep();
@@ -96,18 +98,19 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
     @Override
     public boolean resolve(String runId, String approvalId, boolean approved, String reason) {
         long now = System.currentTimeMillis();
-        int updated = jdbcTemplate.update(
-                "update agent_approvals "
-                        + "set status = ?, decision_reason = ?, resolved_at = ?, updated_at = ? "
-                        + "where application_id = ? and run_id = ? and approval_id = ? and status = ?",
-                approved ? STATUS_APPROVED : STATUS_DENIED,
-                reason == null ? "" : reason,
-                now,
-                now,
-                applicationId,
-                runId,
-                approvalId,
-                STATUS_PENDING);
+        int updated =
+                jdbcTemplate.update(
+                        "update agent_approvals "
+                                + "set status = ?, decision_reason = ?, resolved_at = ?, updated_at = ? "
+                                + "where application_id = ? and run_id = ? and approval_id = ? and status = ?",
+                        approved ? STATUS_APPROVED : STATUS_DENIED,
+                        reason == null ? "" : reason,
+                        now,
+                        now,
+                        applicationId,
+                        runId,
+                        approvalId,
+                        STATUS_PENDING);
         return updated > 0;
     }
 
@@ -163,13 +166,14 @@ public class JdbcToolApprovalCoordinator implements ToolApprovalCoordinator {
     }
 
     private ApprovalRow findApproval(String runId, String approvalId) {
-        List<ApprovalRow> rows = jdbcTemplate.query(
-                "select status, decision_reason from agent_approvals "
-                        + "where application_id = ? and run_id = ? and approval_id = ?",
-                approvalRowMapper,
-                applicationId,
-                runId,
-                approvalId);
+        List<ApprovalRow> rows =
+                jdbcTemplate.query(
+                        "select status, decision_reason from agent_approvals "
+                                + "where application_id = ? and run_id = ? and approval_id = ?",
+                        approvalRowMapper,
+                        applicationId,
+                        runId,
+                        approvalId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 

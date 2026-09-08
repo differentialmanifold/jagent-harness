@@ -4,6 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInput;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInputReceipt;
+import io.github.differentialmanifold.jagentharness.core.agent.RunInputStatus;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,21 +19,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.core.agent.RunInput;
-import io.github.differentialmanifold.jagentharness.core.agent.RunInputReceipt;
-import io.github.differentialmanifold.jagentharness.core.agent.RunInputStatus;
-import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.sqlite.SQLiteDataSource;
 
 class JdbcRunInputCoordinatorTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void drainsAllPendingInputsInInsertionOrderAsOneBatch() {
@@ -40,18 +38,13 @@ class JdbcRunInputCoordinatorTest {
         inputs.submitInput("run-1", "second", "input-2");
         inputs.submitInput("run-1", "third", "input-3");
 
-        List<RunInput> batch = inputs.claimPendingInputs(
-                "session-1", "run-1", "turn-1");
+        List<RunInput> batch = inputs.claimPendingInputs("session-1", "run-1", "turn-1");
         assertInputIds(batch, "input-1", "input-2", "input-3");
         assertStatuses(
-                batch,
-                RunInputStatus.CLAIMED,
-                RunInputStatus.CLAIMED,
-                RunInputStatus.CLAIMED);
+                batch, RunInputStatus.CLAIMED, RunInputStatus.CLAIMED, RunInputStatus.CLAIMED);
 
         // A boundary is not replayed: only still-pending rows are returned.
-        assertTrue(inputs.claimPendingInputs(
-                "session-1", "run-1", "turn-1").isEmpty());
+        assertTrue(inputs.claimPendingInputs("session-1", "run-1", "turn-1").isEmpty());
         assertEquals(1, acceptingInputs(jdbcTemplate, "run-1"));
     }
 
@@ -64,12 +57,9 @@ class JdbcRunInputCoordinatorTest {
         inputs.submitInput("run-1", "first", "input-1");
         inputs.submitInput("run-2", "second", "input-2");
 
-        assertTrue(inputs.claimPendingInputs(
-                "session-2", "run-1", "turn-1").isEmpty());
-        assertInputIds(inputs.claimPendingInputs(
-                "session-1", "run-1", "turn-1"), "input-1");
-        assertInputIds(inputs.claimPendingInputs(
-                "session-2", "run-2", "turn-1"), "input-2");
+        assertTrue(inputs.claimPendingInputs("session-2", "run-1", "turn-1").isEmpty());
+        assertInputIds(inputs.claimPendingInputs("session-1", "run-1", "turn-1"), "input-1");
+        assertInputIds(inputs.claimPendingInputs("session-2", "run-2", "turn-1"), "input-2");
     }
 
     @Test
@@ -99,20 +89,25 @@ class JdbcRunInputCoordinatorTest {
         JdbcTemplate jdbcTemplate = createDatabase("image-input.db");
         JdbcRunInputCoordinator inputs = inputCoordinator(jdbcTemplate);
         inputs.activateRun("session-1", "run-1");
-        List<MessageImage> images = java.util.Collections.singletonList(
-                image("screen.png", "image/png", "data:image/png;base64,c2NyZWVu", "high"));
+        List<MessageImage> images =
+                java.util.Collections.singletonList(
+                        image("screen.png", "image/png", "data:image/png;base64,c2NyZWVu", "high"));
 
         inputs.submitInput("run-1", "", images, "input-1");
-        RunInputReceipt retry = inputs.submitInput(
-                "run-1",
-                "",
-                java.util.Collections.singletonList(
-                        image("screen.png", "image/png", "data:image/png;base64,c2NyZWVu", "high")),
-                "input-1");
+        RunInputReceipt retry =
+                inputs.submitInput(
+                        "run-1",
+                        "",
+                        java.util.Collections.singletonList(
+                                image(
+                                        "screen.png",
+                                        "image/png",
+                                        "data:image/png;base64,c2NyZWVu",
+                                        "high")),
+                        "input-1");
 
         assertEquals(RunInputStatus.ACCEPTED, retry.getStatus());
-        List<RunInput> claimed = inputs.claimPendingInputs(
-                "session-1", "run-1", "turn-1");
+        List<RunInput> claimed = inputs.claimPendingInputs("session-1", "run-1", "turn-1");
         assertEquals(1, claimed.size());
         assertEquals("", claimed.get(0).getContent());
         assertEquals(1, claimed.get(0).getImages().size());
@@ -120,12 +115,17 @@ class JdbcRunInputCoordinatorTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> inputs.submitInput(
-                        "run-1",
-                        "",
-                        java.util.Collections.singletonList(
-                                image("other.png", "image/png", "data:image/png;base64,b3RoZXI=", "high")),
-                        "input-1"));
+                () ->
+                        inputs.submitInput(
+                                "run-1",
+                                "",
+                                java.util.Collections.singletonList(
+                                        image(
+                                                "other.png",
+                                                "image/png",
+                                                "data:image/png;base64,b3RoZXI=",
+                                                "high")),
+                                "input-1"));
     }
 
     @Test
@@ -139,8 +139,7 @@ class JdbcRunInputCoordinatorTest {
 
         assertEquals(RunInputStatus.ACCEPTED, receipt.getStatus());
         assertEquals(0, count(jdbcTemplate, "agent_run_inputs"));
-        assertTrue(inputs.claimPendingInputs(
-                "session-1", "run-1", "turn-1").isEmpty());
+        assertTrue(inputs.claimPendingInputs("session-1", "run-1", "turn-1").isEmpty());
     }
 
     @Test
@@ -164,11 +163,9 @@ class JdbcRunInputCoordinatorTest {
         JdbcRunInputCoordinator inputs = inputCoordinator(jdbcTemplate);
         inputs.activateRun("session-1", "run-1");
         jdbcTemplate.update(
-                "update agent_active_runs set accepting_inputs = 0 where run_id = ?",
-                "run-1");
+                "update agent_active_runs set accepting_inputs = 0 where run_id = ?", "run-1");
 
-        RunInputReceipt receipt = inputs.submitInput(
-                "run-1", "best effort", "input-late");
+        RunInputReceipt receipt = inputs.submitInput("run-1", "best effort", "input-late");
 
         assertEquals(RunInputStatus.ACCEPTED, receipt.getStatus());
         assertEquals(0, count(jdbcTemplate, "agent_run_inputs"));
@@ -186,14 +183,18 @@ class JdbcRunInputCoordinatorTest {
 
         try {
             CountDownLatch start = new CountDownLatch(1);
-            Future<List<RunInput>> first = executor.submit(() -> {
-                start.await();
-                return inputs.claimPendingInputs("session-1", "run-1", "turn-a");
-            });
-            Future<List<RunInput>> second = executor.submit(() -> {
-                start.await();
-                return inputs.claimPendingInputs("session-1", "run-1", "turn-b");
-            });
+            Future<List<RunInput>> first =
+                    executor.submit(
+                            () -> {
+                                start.await();
+                                return inputs.claimPendingInputs("session-1", "run-1", "turn-a");
+                            });
+            Future<List<RunInput>> second =
+                    executor.submit(
+                            () -> {
+                                start.await();
+                                return inputs.claimPendingInputs("session-1", "run-1", "turn-b");
+                            });
             start.countDown();
 
             List<RunInput> allReturned = new ArrayList<RunInput>();
@@ -226,9 +227,10 @@ class JdbcRunInputCoordinatorTest {
         inputs.closeRun("session-1", "run-1");
 
         assertEquals(0, count(jdbcTemplate, "agent_active_runs"));
-        List<String> statuses = jdbcTemplate.query(
-                "select status from agent_run_inputs order by id",
-                (rs, rowNum) -> rs.getString("status"));
+        List<String> statuses =
+                jdbcTemplate.query(
+                        "select status from agent_run_inputs order by id",
+                        (rs, rowNum) -> rs.getString("status"));
         assertEquals(2, statuses.size());
         assertTrue(statuses.stream().allMatch("CANCELLED"::equals));
 

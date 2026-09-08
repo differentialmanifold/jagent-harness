@@ -9,14 +9,14 @@ public class ToolInfoResponse {
     private JsonNode parametersSchema;
     private boolean enabled;
 
-    public ToolInfoResponse() {
-    }
+    public ToolInfoResponse() {}
 
     public ToolInfoResponse(String name, String description, JsonNode parametersSchema) {
         this(name, description, parametersSchema, true);
     }
 
-    public ToolInfoResponse(String name, String description, JsonNode parametersSchema, boolean enabled) {
+    public ToolInfoResponse(
+            String name, String description, JsonNode parametersSchema, boolean enabled) {
         this.name = name;
         this.description = description;
         this.parametersSchema = parametersSchema;

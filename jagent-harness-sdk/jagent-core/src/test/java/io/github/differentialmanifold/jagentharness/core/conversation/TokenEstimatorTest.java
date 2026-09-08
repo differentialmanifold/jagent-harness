@@ -2,10 +2,9 @@ package io.github.differentialmanifold.jagentharness.core.conversation;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Collections;
-
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import java.util.Collections;
 import org.junit.jupiter.api.Test;
 
 class TokenEstimatorTest {
@@ -17,8 +16,9 @@ class TokenEstimatorTest {
             largeDataUrl.append('a');
         }
         AgentMessage message = AgentMessage.user("s1", "describe");
-        message.setImages(Collections.singletonList(new MessageImage(
-                "large.png", "image/png", largeDataUrl.toString())));
+        message.setImages(
+                Collections.singletonList(
+                        new MessageImage("large.png", "image/png", largeDataUrl.toString())));
 
         int estimate = new TokenEstimator().estimateMessages(Collections.singletonList(message));
 

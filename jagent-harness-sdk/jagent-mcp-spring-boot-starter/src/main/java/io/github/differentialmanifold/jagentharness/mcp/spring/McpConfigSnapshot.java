@@ -9,9 +9,10 @@ public class McpConfigSnapshot {
     private final Map<String, McpConfigEntry> effectiveServers;
     private final String fingerprint;
 
-    McpConfigSnapshot(Map<String, McpConfigEntry> effectiveServers,
-                      String fingerprint) {
-        this.effectiveServers = Collections.unmodifiableMap(new LinkedHashMap<String, McpConfigEntry>(effectiveServers));
+    McpConfigSnapshot(Map<String, McpConfigEntry> effectiveServers, String fingerprint) {
+        this.effectiveServers =
+                Collections.unmodifiableMap(
+                        new LinkedHashMap<String, McpConfigEntry>(effectiveServers));
         this.fingerprint = fingerprint;
     }
 

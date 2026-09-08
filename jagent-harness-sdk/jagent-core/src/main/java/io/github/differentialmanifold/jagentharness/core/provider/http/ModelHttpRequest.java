@@ -12,9 +12,10 @@ public class ModelHttpRequest {
 
     public ModelHttpRequest(String url, Map<String, String> headers, String body) {
         this.url = url;
-        this.headers = headers == null
-                ? Collections.emptyMap()
-                : Collections.unmodifiableMap(new LinkedHashMap<String, String>(headers));
+        this.headers =
+                headers == null
+                        ? Collections.emptyMap()
+                        : Collections.unmodifiableMap(new LinkedHashMap<String, String>(headers));
         this.body = body == null ? "" : body;
     }
 

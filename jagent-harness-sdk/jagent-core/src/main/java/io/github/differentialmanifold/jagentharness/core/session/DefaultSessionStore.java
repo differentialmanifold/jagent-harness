@@ -1,16 +1,16 @@
 package io.github.differentialmanifold.jagentharness.core.session;
 
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
+import java.util.List;
 
 public class DefaultSessionStore implements SessionStore {
 
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
 
-    public DefaultSessionStore(SessionRepository sessionRepository, MessageRepository messageRepository) {
+    public DefaultSessionStore(
+            SessionRepository sessionRepository, MessageRepository messageRepository) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
     }
@@ -32,6 +32,11 @@ public class DefaultSessionStore implements SessionStore {
     @Override
     public void appendMessage(AgentMessage message) {
         messageRepository.append(message);
+    }
+
+    @Override
+    public void appendMessages(List<AgentMessage> messages) {
+        messageRepository.appendAll(messages);
     }
 
     @Override

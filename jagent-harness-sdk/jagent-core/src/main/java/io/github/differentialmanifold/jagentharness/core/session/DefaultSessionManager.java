@@ -1,18 +1,18 @@
 package io.github.differentialmanifold.jagentharness.core.session;
 
-import java.util.Collections;
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.support.Ids;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
+import java.util.Collections;
+import java.util.List;
 
 public class DefaultSessionManager implements SessionManager {
 
     private final SessionRepository sessionRepository;
     private final TimelineEventRepository timelineEventStore;
 
-    public DefaultSessionManager(SessionRepository sessionRepository, TimelineEventRepository timelineEventStore) {
+    public DefaultSessionManager(
+            SessionRepository sessionRepository, TimelineEventRepository timelineEventStore) {
         this.sessionRepository = sessionRepository;
         this.timelineEventStore = timelineEventStore;
     }
@@ -32,7 +32,8 @@ public class DefaultSessionManager implements SessionManager {
     }
 
     @Override
-    public SessionRecord createSession(String title, String workspacePath, String projectName, String projectId) {
+    public SessionRecord createSession(
+            String title, String workspacePath, String projectName, String projectId) {
         String normalizedProjectId = projectId == null ? "" : projectId.trim();
         return sessionRepository.create(
                 title,
@@ -57,9 +58,10 @@ public class DefaultSessionManager implements SessionManager {
 
     @Override
     public SessionDetails getDetails(String sessionId) {
-        List<AgentEvent> events = timelineEventStore == null
-                ? Collections.emptyList()
-                : timelineEventStore.findBySessionId(sessionId);
+        List<AgentEvent> events =
+                timelineEventStore == null
+                        ? Collections.emptyList()
+                        : timelineEventStore.findBySessionId(sessionId);
         return new SessionDetails(requireSession(sessionId), events);
     }
 

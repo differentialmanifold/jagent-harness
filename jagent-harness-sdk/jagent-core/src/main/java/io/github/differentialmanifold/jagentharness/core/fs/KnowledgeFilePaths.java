@@ -5,8 +5,7 @@ import java.util.List;
 
 public final class KnowledgeFilePaths {
 
-    private KnowledgeFilePaths() {
-    }
+    private KnowledgeFilePaths() {}
 
     public static String normalize(String path) {
         String value = path == null ? "" : path.trim().replace('\\', '/');
@@ -25,7 +24,8 @@ public final class KnowledgeFilePaths {
                 continue;
             }
             if ("..".equals(part)) {
-                throw new IllegalArgumentException("Knowledge file path cannot contain '..': " + path);
+                throw new IllegalArgumentException(
+                        "Knowledge file path cannot contain '..': " + path);
             }
             normalized.add(part);
         }
@@ -57,7 +57,8 @@ public final class KnowledgeFilePaths {
     public static String skillKey(String skillFilePath) {
         String[] parts = normalize(skillFilePath).split("/");
         if (parts.length != 3 || !"skills".equals(parts[0]) || !"SKILL.md".equals(parts[2])) {
-            throw new IllegalArgumentException("Skill file path must look like skills/{skill}/SKILL.md: " + skillFilePath);
+            throw new IllegalArgumentException(
+                    "Skill file path must look like skills/{skill}/SKILL.md: " + skillFilePath);
         }
         return parts[1];
     }

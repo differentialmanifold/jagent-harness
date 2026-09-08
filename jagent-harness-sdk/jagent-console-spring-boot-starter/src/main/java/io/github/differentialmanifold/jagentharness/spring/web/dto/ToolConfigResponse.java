@@ -10,9 +10,8 @@ public class ToolConfigResponse {
     private final List<String> enabledTools;
     private final List<ToolInfoResponse> tools;
 
-    public ToolConfigResponse(boolean configured,
-                              List<String> enabledTools,
-                              List<ToolInfoResponse> tools) {
+    public ToolConfigResponse(
+            boolean configured, List<String> enabledTools, List<ToolInfoResponse> tools) {
         this.configured = configured;
         this.enabledTools = Collections.unmodifiableList(new ArrayList<String>(enabledTools));
         this.tools = Collections.unmodifiableList(new ArrayList<ToolInfoResponse>(tools));

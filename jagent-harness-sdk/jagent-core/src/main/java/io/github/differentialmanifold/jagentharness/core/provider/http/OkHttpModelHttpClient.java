@@ -1,13 +1,12 @@
 package io.github.differentialmanifold.jagentharness.core.provider.http;
 
+import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-
-import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
-import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
-import okhttp3.MediaType;
 import okhttp3.Call;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -22,11 +21,12 @@ public class OkHttpModelHttpClient implements ModelHttpClient {
 
     public OkHttpModelHttpClient(int timeoutSeconds) {
         int timeout = Math.max(1, timeoutSeconds);
-        this.client = new OkHttpClient.Builder()
-                .connectTimeout(timeout, TimeUnit.SECONDS)
-                .readTimeout(timeout, TimeUnit.SECONDS)
-                .writeTimeout(timeout, TimeUnit.SECONDS)
-                .build();
+        this.client =
+                new OkHttpClient.Builder()
+                        .connectTimeout(timeout, TimeUnit.SECONDS)
+                        .readTimeout(timeout, TimeUnit.SECONDS)
+                        .writeTimeout(timeout, TimeUnit.SECONDS)
+                        .build();
     }
 
     public OkHttpModelHttpClient(OkHttpClient client) {
@@ -39,11 +39,12 @@ public class OkHttpModelHttpClient implements ModelHttpClient {
     }
 
     @Override
-    public ModelHttpResponse postJson(ModelHttpRequest request, StopSignal stopSignal) throws IOException {
+    public ModelHttpResponse postJson(ModelHttpRequest request, StopSignal stopSignal)
+            throws IOException {
         StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         Call call = client.newCall(buildRequest(request));
         try (StopRegistration ignored = effectiveSignal.onStop(call::cancel);
-             Response response = call.execute()) {
+                Response response = call.execute()) {
             effectiveSignal.throwIfAborted();
             ResponseBody responseBody = response.body();
             String body = responseBody == null ? "" : responseBody.string();
@@ -56,18 +57,19 @@ public class OkHttpModelHttpClient implements ModelHttpClient {
     }
 
     @Override
-    public <T> T postStream(ModelHttpRequest request, ModelHttpStreamHandler<T> handler) throws IOException {
+    public <T> T postStream(ModelHttpRequest request, ModelHttpStreamHandler<T> handler)
+            throws IOException {
         return postStream(request, handler, StopSignal.none());
     }
 
     @Override
-    public <T> T postStream(ModelHttpRequest request,
-                            ModelHttpStreamHandler<T> handler,
-                            StopSignal stopSignal) throws IOException {
+    public <T> T postStream(
+            ModelHttpRequest request, ModelHttpStreamHandler<T> handler, StopSignal stopSignal)
+            throws IOException {
         StopSignal effectiveSignal = stopSignal == null ? StopSignal.none() : stopSignal;
         Call call = client.newCall(buildRequest(request));
         try (StopRegistration ignored = effectiveSignal.onStop(call::cancel);
-             Response response = call.execute()) {
+                Response response = call.execute()) {
             effectiveSignal.throwIfAborted();
             ResponseBody responseBody = response.body();
             if (!response.isSuccessful()) {
@@ -85,9 +87,7 @@ public class OkHttpModelHttpClient implements ModelHttpClient {
 
     private Request buildRequest(ModelHttpRequest request) {
         RequestBody body = RequestBody.create(request.getBody(), JSON);
-        Request.Builder builder = new Request.Builder()
-                .url(request.getUrl())
-                .post(body);
+        Request.Builder builder = new Request.Builder().url(request.getUrl()).post(body);
         for (Map.Entry<String, String> entry : request.getHeaders().entrySet()) {
             builder.header(entry.getKey(), entry.getValue());
         }

@@ -1,10 +1,9 @@
 package io.github.differentialmanifold.jagentharness.mcp.spring;
 
+import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 
 public class McpConfigEntry {
 
@@ -15,9 +14,10 @@ public class McpConfigEntry {
     McpConfigEntry(McpServerConfig config, String source, List<String> overriddenSources) {
         this.config = config;
         this.source = source;
-        this.overriddenSources = overriddenSources == null
-                ? Collections.<String>emptyList()
-                : Collections.unmodifiableList(new ArrayList<String>(overriddenSources));
+        this.overriddenSources =
+                overriddenSources == null
+                        ? Collections.<String>emptyList()
+                        : Collections.unmodifiableList(new ArrayList<String>(overriddenSources));
     }
 
     public McpServerConfig getConfig() {

@@ -6,10 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public final class ToolSchemas {
 
-    private ToolSchemas() {
-    }
+    private ToolSchemas() {}
 
-    public static ObjectNode objectSchema(ObjectMapper objectMapper, ObjectNode properties, String... required) {
+    public static ObjectNode objectSchema(
+            ObjectMapper objectMapper, ObjectNode properties, String... required) {
         ObjectNode schema = objectMapper.createObjectNode();
         schema.put("type", "object");
         schema.set("properties", properties);

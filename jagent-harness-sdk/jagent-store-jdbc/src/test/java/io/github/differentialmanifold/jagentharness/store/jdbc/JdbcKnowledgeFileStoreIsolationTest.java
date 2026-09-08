@@ -3,18 +3,16 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import java.nio.file.Path;
-
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.sqlite.SQLiteDataSource;
 
 class JdbcKnowledgeFileStoreIsolationTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void isolatesKnowledgeFilesAndSkillManifestsByApplicationId() {
@@ -32,7 +30,8 @@ class JdbcKnowledgeFileStoreIsolationTest {
                 "text/markdown");
 
         assertEquals("Coding instructions", content(coding, "skills/customer-support/SKILL.md"));
-        assertEquals("Business instructions", content(business, "skills/customer-support/SKILL.md"));
+        assertEquals(
+                "Business instructions", content(business, "skills/customer-support/SKILL.md"));
         assertEquals("Coding Skill", coding.listManifests().get(0).getName());
         assertEquals("Business Skill", business.listManifests().get(0).getName());
 
@@ -51,14 +50,22 @@ class JdbcKnowledgeFileStoreIsolationTest {
 
         store.writeFile(KnowledgeScope.global(), "AGENTS.md", "Global rules", "text/markdown");
         store.writeFile(project, "AGENTS.md", "Project rules", "text/markdown");
-        store.writeFile(KnowledgeScope.global(), "skills/review/SKILL.md",
-                "---\nname: Global Review\n---\n", "text/markdown");
-        store.writeFile(project, "skills/review/SKILL.md",
-                "---\nname: Project Review\n---\n", "text/markdown");
+        store.writeFile(
+                KnowledgeScope.global(),
+                "skills/review/SKILL.md",
+                "---\nname: Global Review\n---\n",
+                "text/markdown");
+        store.writeFile(
+                project,
+                "skills/review/SKILL.md",
+                "---\nname: Project Review\n---\n",
+                "text/markdown");
 
-        assertEquals("Global rules", store.readFile(KnowledgeScope.global(), "AGENTS.md").getContent());
+        assertEquals(
+                "Global rules", store.readFile(KnowledgeScope.global(), "AGENTS.md").getContent());
         assertEquals("Project rules", store.readFile(project, "AGENTS.md").getContent());
-        assertEquals("Global Review", store.listManifests(KnowledgeScope.global()).get(0).getName());
+        assertEquals(
+                "Global Review", store.listManifests(KnowledgeScope.global()).get(0).getName());
         assertEquals("Project Review", store.listManifests(project).get(0).getName());
     }
 

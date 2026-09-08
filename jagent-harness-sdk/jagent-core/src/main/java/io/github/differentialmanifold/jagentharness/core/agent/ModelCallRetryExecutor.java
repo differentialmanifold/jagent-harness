@@ -1,8 +1,5 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
@@ -10,6 +7,8 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class ModelCallRetryExecutor {
 
@@ -21,20 +20,23 @@ public class ModelCallRetryExecutor {
         this.eventPublisher = eventPublisher;
     }
 
-    public ModelResponse call(ModelProvider provider,
-                              ModelRequest request,
-                              ModelDeltaConsumer deltaConsumer,
-                              Runnable resetAttempt,
-                              StopSignal stopSignal,
-                              String sessionId,
-                              String runId,
-                              String turnId) {
+    public ModelResponse call(
+            ModelProvider provider,
+            ModelRequest request,
+            ModelDeltaConsumer deltaConsumer,
+            Runnable resetAttempt,
+            StopSignal stopSignal,
+            String sessionId,
+            String runId,
+            String turnId) {
         StopSignal effectiveStopSignal = stopSignal == null ? StopSignal.none() : stopSignal;
-        Runnable effectiveResetAttempt = resetAttempt == null ? new Runnable() {
-            @Override
-            public void run() {
-            }
-        } : resetAttempt;
+        Runnable effectiveResetAttempt =
+                resetAttempt == null
+                        ? new Runnable() {
+                            @Override
+                            public void run() {}
+                        }
+                        : resetAttempt;
         int maxAttempts = effectiveMaxAttempts();
         long delayMillis = effectiveInitialDelayMillis();
         int attempt = 1;
@@ -119,15 +121,16 @@ public class ModelCallRetryExecutor {
         stopSignal.throwIfAborted();
     }
 
-    private void publishRetry(String sessionId,
-                              String runId,
-                              String turnId,
-                              ModelProvider provider,
-                              int failedAttempt,
-                              int nextAttempt,
-                              int maxAttempts,
-                              long delayMillis,
-                              ModelProviderException exception) {
+    private void publishRetry(
+            String sessionId,
+            String runId,
+            String turnId,
+            ModelProvider provider,
+            int failedAttempt,
+            int nextAttempt,
+            int maxAttempts,
+            long delayMillis,
+            ModelProviderException exception) {
         if (eventPublisher == null) {
             return;
         }
@@ -139,7 +142,9 @@ public class ModelCallRetryExecutor {
         payload.put("provider", provider == null ? "" : provider.getName());
         payload.put("model", settings.getModel());
         payload.put("resetOutput", true);
-        payload.put("message", "Model request failed, retrying attempt " + nextAttempt + " of " + maxAttempts);
+        payload.put(
+                "message",
+                "Model request failed, retrying attempt " + nextAttempt + " of " + maxAttempts);
         payload.put("error", exception == null ? "" : exception.getMessage());
         eventPublisher.publish(sessionId, runId, turnId, AgentEvent.MODEL_RETRY, payload);
     }

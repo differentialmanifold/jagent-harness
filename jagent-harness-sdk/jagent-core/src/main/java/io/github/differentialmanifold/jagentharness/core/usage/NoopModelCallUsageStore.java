@@ -8,6 +8,5 @@ public class NoopModelCallUsageStore implements ModelCallUsageStore {
     }
 
     @Override
-    public void append(ModelCallUsage usage) {
-    }
+    public void append(ModelCallUsage usage) {}
 }

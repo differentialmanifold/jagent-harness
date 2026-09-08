@@ -1,11 +1,10 @@
 package io.github.differentialmanifold.jagentharness.core.conversation;
 
-import java.util.Collection;
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import java.util.Collection;
+import java.util.List;
 
 public class TokenEstimator {
 
@@ -52,7 +51,11 @@ public class TokenEstimator {
             total += 16;
             total += estimateText(tool.getName());
             total += estimateText(tool.getDescription());
-            total += estimateText(tool.getParametersSchema() == null ? null : tool.getParametersSchema().toString());
+            total +=
+                    estimateText(
+                            tool.getParametersSchema() == null
+                                    ? null
+                                    : tool.getParametersSchema().toString());
         }
         return total;
     }

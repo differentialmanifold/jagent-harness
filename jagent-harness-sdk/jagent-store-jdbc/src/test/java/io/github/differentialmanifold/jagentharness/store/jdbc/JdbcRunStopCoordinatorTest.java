@@ -5,22 +5,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Path;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-
 import io.github.differentialmanifold.jagentharness.core.agent.ActiveRunException;
 import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
+import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.sqlite.SQLiteDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.sqlite.SQLiteDataSource;
 
 class JdbcRunStopCoordinatorTest {
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @Test
     void propagatesStopBetweenInstancesForOneRun() throws Exception {
@@ -68,10 +66,11 @@ class JdbcRunStopCoordinatorTest {
         try {
             assertTrue(
                     jdbcTemplate.queryForObject(
-                            "select id from agent_runs where application_id = ? and run_id = ?",
-                            Long.class,
-                            "default",
-                            "run-1") > 0L);
+                                    "select id from agent_runs where application_id = ? and run_id = ?",
+                                    Long.class,
+                                    "default",
+                                    "run-1")
+                            > 0L);
             assertThrows(
                     ActiveRunException.class,
                     () -> secondCoordinator.register("run-1", "session-2"));

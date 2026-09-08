@@ -8,19 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
-import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
@@ -36,6 +28,13 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class AgentRunnerDynamicToolTest {
@@ -44,59 +43,69 @@ class AgentRunnerDynamicToolTest {
     void executesToolProvidedForCurrentAgentContext() {
         FakeSessionStore store = new FakeSessionStore();
         AtomicBoolean executed = new AtomicBoolean();
-        ToolDefinition dynamicTool = new ToolDefinition() {
-            @Override
-            public String getName() {
-                return "remote__ping";
-            }
+        ToolDefinition dynamicTool =
+                new ToolDefinition() {
+                    @Override
+                    public String getName() {
+                        return "remote__ping";
+                    }
 
-            @Override
-            public String getDescription() {
-                return "Returns pong.";
-            }
+                    @Override
+                    public String getDescription() {
+                        return "Returns pong.";
+                    }
 
-            @Override
-            public JsonNode getParametersSchema() {
-                return null;
-            }
+                    @Override
+                    public JsonNode getParametersSchema() {
+                        return null;
+                    }
 
-            @Override
-            public ToolExecutionResult execute(ToolContext context, JsonNode arguments) {
-                assertEquals("s1", context.getSessionId());
-                assertEquals("run-1", context.getRunId());
-                assertEquals("remote__ping", context.getCurrentToolName());
-                executed.set(true);
-                return ToolExecutionResult.of("pong");
-            }
-        };
-        ToolRegistry tools = new ToolRegistry(
-                Collections.<ToolDefinition>emptyList(),
-                Collections.singletonList(context -> context != null
-                        ? Collections.singletonList(dynamicTool)
-                        : Collections.<ToolDefinition>emptyList()));
+                    @Override
+                    public ToolExecutionResult execute(ToolContext context, JsonNode arguments) {
+                        assertEquals("s1", context.getSessionId());
+                        assertEquals("run-1", context.getRunId());
+                        assertEquals("remote__ping", context.getCurrentToolName());
+                        executed.set(true);
+                        return ToolExecutionResult.of("pong");
+                    }
+                };
+        ToolRegistry tools =
+                new ToolRegistry(
+                        Collections.<ToolDefinition>emptyList(),
+                        Collections.singletonList(
+                                context ->
+                                        context != null
+                                                ? Collections.singletonList(dynamicTool)
+                                                : Collections.<ToolDefinition>emptyList()));
         DynamicToolModelProvider provider = new DynamicToolModelProvider();
         ModelProviderRegistry providers = new ModelProviderRegistry();
         providers.register(provider);
         ObjectMapper objectMapper = new ObjectMapper();
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        RecordingRunInputSource runInputSource = new RecordingRunInputSource(
-                Collections.<List<RunInput>>emptyList());
+        RecordingRunInputSource runInputSource =
+                new RecordingRunInputSource(Collections.<List<RunInput>>emptyList());
 
-        AgentRunResult result = new AgentRunner(
-                settings(),
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                context -> "System prompt.",
-                tools,
-                providers,
-                new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
-                objectMapper)
-                .run("s1", "ping", AgentRunOptions.builder()
-                        .runId("run-1")
-                        .eventConsumer(events::add)
-                        .runInputSource(runInputSource)
-                        .build());
+        AgentRunResult result =
+                new AgentRunner(
+                                settings(),
+                                store,
+                                new DefaultAgentEventPublisher(objectMapper),
+                                context -> "System prompt.",
+                                tools,
+                                providers,
+                                new DefaultToolContextFactory(),
+                                request ->
+                                        new ConversationContext(
+                                                request.getSystemPrompt(), request.getMessages()),
+                                objectMapper)
+                        .run(
+                                "s1",
+                                "ping",
+                                AgentRunOptions.builder()
+                                        .runId("run-1")
+                                        .eventConsumer(events::add)
+                                        .runInputSource(runInputSource)
+                                        .build());
 
         assertEquals("done", result.getAnswer());
         assertEquals("run-1", result.getRunId());
@@ -104,9 +113,12 @@ class AgentRunnerDynamicToolTest {
         assertNotEquals(result.getFirstTurnId(), result.getLastTurnId());
         assertTrue(executed.get());
         assertEquals(2, provider.calls.get());
-        assertTrue(store.messages.stream()
-                .anyMatch(message -> "remote__ping".equals(message.getToolName())
-                        && "pong".equals(message.getContent())));
+        assertTrue(
+                store.messages.stream()
+                        .anyMatch(
+                                message ->
+                                        "remote__ping".equals(message.getToolName())
+                                                && "pong".equals(message.getContent())));
 
         assertEquals(4, store.messages.size());
         for (AgentMessage message : store.messages) {
@@ -126,9 +138,8 @@ class AgentRunnerDynamicToolTest {
         assertEquals("run-1", turnStarts.get(0).getRunId());
         assertNull(eventsOfType(events, AgentEvent.AGENT_START).get(0).getTurnId());
         assertNull(eventsOfType(events, AgentEvent.AGENT_END).get(0).getTurnId());
-        assertEquals(Arrays.asList(
-                        result.getFirstTurnId(),
-                        result.getLastTurnId()),
+        assertEquals(
+                Arrays.asList(result.getFirstTurnId(), result.getLastTurnId()),
                 runInputSource.completedTurnIds);
     }
 
@@ -140,36 +151,60 @@ class AgentRunnerDynamicToolTest {
         providers.register(provider);
         ObjectMapper objectMapper = new ObjectMapper();
         List<AgentEvent> events = new ArrayList<AgentEvent>();
-        RecordingRunInputSource runInputSource = new RecordingRunInputSource(Arrays.asList(
-                Arrays.asList(
-                        new RunInput("input-1", "s1", "run-inputs",
-                                "Do not change tests", RunInputStatus.CLAIMED),
-                        new RunInput("input-2", "s1", "run-inputs",
-                                "Keep public APIs small", RunInputStatus.CLAIMED)),
-                Arrays.asList(
-                        new RunInput("input-3", "s1", "run-inputs",
-                                "Also update the README", RunInputStatus.CLAIMED),
-                        new RunInput("input-4", "s1", "run-inputs",
-                                "Run the focused tests", RunInputStatus.CLAIMED))));
+        RecordingRunInputSource runInputSource =
+                new RecordingRunInputSource(
+                        Arrays.asList(
+                                Arrays.asList(
+                                        new RunInput(
+                                                "input-1",
+                                                "s1",
+                                                "run-inputs",
+                                                "Do not change tests",
+                                                RunInputStatus.CLAIMED),
+                                        new RunInput(
+                                                "input-2",
+                                                "s1",
+                                                "run-inputs",
+                                                "Keep public APIs small",
+                                                RunInputStatus.CLAIMED)),
+                                Arrays.asList(
+                                        new RunInput(
+                                                "input-3",
+                                                "s1",
+                                                "run-inputs",
+                                                "Also update the README",
+                                                RunInputStatus.CLAIMED),
+                                        new RunInput(
+                                                "input-4",
+                                                "s1",
+                                                "run-inputs",
+                                                "Run the focused tests",
+                                                RunInputStatus.CLAIMED))));
 
         AgentSettings settings = new AgentSettings();
         settings.setProvider("runtime-input-test");
         settings.setModel("test-model");
-        AgentRunResult result = new AgentRunner(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(objectMapper),
-                context -> "System prompt.",
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
-                objectMapper)
-                .run("s1", "start", AgentRunOptions.builder()
-                        .runId("run-inputs")
-                        .runInputSource(runInputSource)
-                        .eventConsumer(events::add)
-                        .build());
+        AgentRunResult result =
+                new AgentRunner(
+                                settings,
+                                store,
+                                new DefaultAgentEventPublisher(objectMapper),
+                                context -> "System prompt.",
+                                new ToolRegistry(),
+                                providers,
+                                new DefaultToolContextFactory(),
+                                request ->
+                                        new ConversationContext(
+                                                request.getSystemPrompt(), request.getMessages()),
+                                objectMapper)
+                        .run(
+                                "s1",
+                                "start",
+                                AgentRunOptions.builder()
+                                        .runId("run-inputs")
+                                        .runInputSource(runInputSource)
+                                        .eventConsumer(events::add)
+                                        .build());
 
         assertEquals("completed answer", result.getAnswer());
         assertEquals(3, result.getTurnCount());
@@ -208,42 +243,51 @@ class AgentRunnerDynamicToolTest {
         RuntimeInputModelProvider provider = new RuntimeInputModelProvider();
         ModelProviderRegistry providers = new ModelProviderRegistry();
         providers.register(provider);
-        MessageImage firstImage = new MessageImage(
-                " first.png ",
-                " IMAGE/PNG ",
-                " data:image/png;base64,Zmlyc3Q= ",
-                " HIGH ");
-        MessageImage secondImage = new MessageImage(
-                " second.jpg ",
-                " IMAGE/JPEG ",
-                " HTTPS://example.com/second.jpg ",
-                " LOW ");
-        RecordingRunInputSource runInputSource = new RecordingRunInputSource(Arrays.asList(
-                Collections.singletonList(new RunInput(
-                        "input-image",
-                        "s1",
-                        "run-images",
-                        "",
-                        Collections.singletonList(secondImage),
-                        RunInputStatus.CLAIMED))));
+        MessageImage firstImage =
+                new MessageImage(
+                        " first.png ", " IMAGE/PNG ", " data:image/png;base64,Zmlyc3Q= ", " HIGH ");
+        MessageImage secondImage =
+                new MessageImage(
+                        " second.jpg ",
+                        " IMAGE/JPEG ",
+                        " HTTPS://example.com/second.jpg ",
+                        " LOW ");
+        RecordingRunInputSource runInputSource =
+                new RecordingRunInputSource(
+                        Arrays.asList(
+                                Collections.singletonList(
+                                        new RunInput(
+                                                "input-image",
+                                                "s1",
+                                                "run-images",
+                                                "",
+                                                Collections.singletonList(secondImage),
+                                                RunInputStatus.CLAIMED))));
         AgentSettings settings = new AgentSettings();
         settings.setProvider("runtime-input-test");
         settings.setModel("test-model");
 
-        AgentRunResult result = new AgentRunner(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(new ObjectMapper()),
-                context -> "System prompt.",
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
-                new ObjectMapper())
-                .run("s1", "describe", Collections.singletonList(firstImage), AgentRunOptions.builder()
-                        .runId("run-images")
-                        .runInputSource(runInputSource)
-                        .build());
+        AgentRunResult result =
+                new AgentRunner(
+                                settings,
+                                store,
+                                new DefaultAgentEventPublisher(new ObjectMapper()),
+                                context -> "System prompt.",
+                                new ToolRegistry(),
+                                providers,
+                                new DefaultToolContextFactory(),
+                                request ->
+                                        new ConversationContext(
+                                                request.getSystemPrompt(), request.getMessages()),
+                                new ObjectMapper())
+                        .run(
+                                "s1",
+                                "describe",
+                                Collections.singletonList(firstImage),
+                                AgentRunOptions.builder()
+                                        .runId("run-images")
+                                        .runInputSource(runInputSource)
+                                        .build());
 
         assertEquals(2, result.getTurnCount());
         MessageImage storedFirstImage = store.messages.get(0).getImages().get(0);
@@ -269,25 +313,24 @@ class AgentRunnerDynamicToolTest {
 
     @Test
     void rejectsInvalidInitialImagesBeforePersistingTheUserMessage() {
-        List<MessageImage> invalidImages = Arrays.asList(
-                null,
-                new MessageImage("blank.png", "image/png", " "),
-                new MessageImage("remote.png", "image/png", "ftp://example.com/image.png"),
-                new MessageImage(
-                        "detail.png",
-                        "image/png",
-                        "data:image/png;base64,aGVsbG8=",
-                        "original"),
-                new MessageImage("media.png", "text/plain", "https://example.com/image.png"),
-                new MessageImage("bad\nname.png", "image/png", "https://example.com/image.png"),
-                new MessageImage(
-                        "mismatch.png",
-                        "image/jpeg",
-                        "data:image/png;base64,aGVsbG8="),
-                new MessageImage(
-                        "malformed.png",
-                        "image/png",
-                        "data:image/png;base64,not-base64"));
+        List<MessageImage> invalidImages =
+                Arrays.asList(
+                        null,
+                        new MessageImage("blank.png", "image/png", " "),
+                        new MessageImage("remote.png", "image/png", "ftp://example.com/image.png"),
+                        new MessageImage(
+                                "detail.png",
+                                "image/png",
+                                "data:image/png;base64,aGVsbG8=",
+                                "original"),
+                        new MessageImage(
+                                "media.png", "text/plain", "https://example.com/image.png"),
+                        new MessageImage(
+                                "bad\nname.png", "image/png", "https://example.com/image.png"),
+                        new MessageImage(
+                                "mismatch.png", "image/jpeg", "data:image/png;base64,aGVsbG8="),
+                        new MessageImage(
+                                "malformed.png", "image/png", "data:image/png;base64,not-base64"));
 
         for (MessageImage invalidImage : invalidImages) {
             FakeSessionStore store = new FakeSessionStore();
@@ -297,24 +340,28 @@ class AgentRunnerDynamicToolTest {
             AgentSettings settings = new AgentSettings();
             settings.setProvider("runtime-input-test");
             settings.setModel("test-model");
-            AgentRunner runner = new AgentRunner(
-                    settings,
-                    store,
-                    new DefaultAgentEventPublisher(new ObjectMapper()),
-                    context -> "System prompt.",
-                    new ToolRegistry(),
-                    providers,
-                    new DefaultToolContextFactory(),
-                    request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
-                    new ObjectMapper());
+            AgentRunner runner =
+                    new AgentRunner(
+                            settings,
+                            store,
+                            new DefaultAgentEventPublisher(new ObjectMapper()),
+                            context -> "System prompt.",
+                            new ToolRegistry(),
+                            providers,
+                            new DefaultToolContextFactory(),
+                            request ->
+                                    new ConversationContext(
+                                            request.getSystemPrompt(), request.getMessages()),
+                            new ObjectMapper());
 
             assertThrows(
                     IllegalArgumentException.class,
-                    () -> runner.run(
-                            "s1",
-                            "describe",
-                            Collections.singletonList(invalidImage),
-                            AgentRunOptions.empty()));
+                    () ->
+                            runner.run(
+                                    "s1",
+                                    "describe",
+                                    Collections.singletonList(invalidImage),
+                                    AgentRunOptions.empty()));
             assertTrue(store.messages.isEmpty());
             assertEquals(0, provider.calls);
         }
@@ -326,36 +373,46 @@ class AgentRunnerDynamicToolTest {
         RuntimeInputModelProvider provider = new RuntimeInputModelProvider();
         ModelProviderRegistry providers = new ModelProviderRegistry();
         providers.register(provider);
-        MessageImage invalidImage = new MessageImage(
-                "remote.png", "image/png", "ftp://example.com/image.png");
-        RecordingRunInputSource runInputSource = new RecordingRunInputSource(Collections.singletonList(
-                Collections.singletonList(new RunInput(
-                        "invalid-image",
-                        "s1",
-                        "run-invalid-image",
-                        "",
-                        Collections.singletonList(invalidImage),
-                        RunInputStatus.CLAIMED))));
+        MessageImage invalidImage =
+                new MessageImage("remote.png", "image/png", "ftp://example.com/image.png");
+        RecordingRunInputSource runInputSource =
+                new RecordingRunInputSource(
+                        Collections.singletonList(
+                                Collections.singletonList(
+                                        new RunInput(
+                                                "invalid-image",
+                                                "s1",
+                                                "run-invalid-image",
+                                                "",
+                                                Collections.singletonList(invalidImage),
+                                                RunInputStatus.CLAIMED))));
         AgentSettings settings = new AgentSettings();
         settings.setProvider("runtime-input-test");
         settings.setModel("test-model");
-        AgentRunner runner = new AgentRunner(
-                settings,
-                store,
-                new DefaultAgentEventPublisher(new ObjectMapper()),
-                context -> "System prompt.",
-                new ToolRegistry(),
-                providers,
-                new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
-                new ObjectMapper());
+        AgentRunner runner =
+                new AgentRunner(
+                        settings,
+                        store,
+                        new DefaultAgentEventPublisher(new ObjectMapper()),
+                        context -> "System prompt.",
+                        new ToolRegistry(),
+                        providers,
+                        new DefaultToolContextFactory(),
+                        request ->
+                                new ConversationContext(
+                                        request.getSystemPrompt(), request.getMessages()),
+                        new ObjectMapper());
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> runner.run("s1", "start", AgentRunOptions.builder()
-                        .runId("run-invalid-image")
-                        .runInputSource(runInputSource)
-                        .build()));
+                () ->
+                        runner.run(
+                                "s1",
+                                "start",
+                                AgentRunOptions.builder()
+                                        .runId("run-invalid-image")
+                                        .runInputSource(runInputSource)
+                                        .build()));
 
         assertEquals(2, store.messages.size());
         assertTrue(store.messages.get(0).getImages().isEmpty());
@@ -386,10 +443,11 @@ class AgentRunnerDynamicToolTest {
         assertEquals(runId, message.getRunId());
     }
 
-    private static void assertBatchBetweenTurns(List<AgentEvent> events,
-                                                AgentEvent batch,
-                                                AgentEvent completedTurn,
-                                                AgentEvent nextTurn) {
+    private static void assertBatchBetweenTurns(
+            List<AgentEvent> events,
+            AgentEvent batch,
+            AgentEvent completedTurn,
+            AgentEvent nextTurn) {
         assertTrue(events.indexOf(completedTurn) < events.indexOf(batch));
         assertTrue(events.indexOf(batch) < events.indexOf(nextTurn));
     }
@@ -408,15 +466,15 @@ class AgentRunnerDynamicToolTest {
         }
 
         @Override
-        public ModelResponse chat(ModelRequest request,
-                                  ModelDeltaConsumer deltaConsumer,
-                                  StopSignal stopSignal) {
-            assertTrue(request.getTools().stream()
-                    .anyMatch(tool -> "remote__ping".equals(tool.getName())));
+        public ModelResponse chat(
+                ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
+            assertTrue(
+                    request.getTools().stream()
+                            .anyMatch(tool -> "remote__ping".equals(tool.getName())));
             ModelResponse response = new ModelResponse();
             if (calls.incrementAndGet() == 1) {
-                response.setToolCalls(Collections.singletonList(
-                        new ToolCall("call-1", "remote__ping", "{}")));
+                response.setToolCalls(
+                        Collections.singletonList(new ToolCall("call-1", "remote__ping", "{}")));
             } else {
                 response.setContent("done");
                 response.setToolCalls(Collections.<ToolCall>emptyList());
@@ -439,9 +497,10 @@ class AgentRunnerDynamicToolTest {
             calls++;
             requests.add(request);
             ModelResponse response = new ModelResponse();
-            response.setContent(calls == 1
-                    ? "first answer"
-                    : calls == 2 ? "revised answer" : "completed answer");
+            response.setContent(
+                    calls == 1
+                            ? "first answer"
+                            : calls == 2 ? "revised answer" : "completed answer");
             response.setToolCalls(Collections.<ToolCall>emptyList());
             return response;
         }
@@ -457,9 +516,8 @@ class AgentRunnerDynamicToolTest {
         }
 
         @Override
-        public List<RunInput> claimPendingInputs(String sessionId,
-                                                String runId,
-                                                String completedTurnId) {
+        public List<RunInput> claimPendingInputs(
+                String sessionId, String runId, String completedTurnId) {
             completedTurnIds.add(completedTurnId);
             if (batchIndex < batches.size()) {
                 return batches.get(batchIndex++);

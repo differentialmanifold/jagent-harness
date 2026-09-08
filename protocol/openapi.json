@@ -1,0 +1,225 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "JAgent conversation API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:18181/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/chat": {
+      "post": {
+        "operationId": "chat",
+        "summary": "Append user or tool-result messages and execute the agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/ChatResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: response\ndata: {\"sessionId\":\"sess_example\",\"runId\":\"run_example\",\"status\":\"COMPLETED\",\"toolCalls\":[]}\n\n"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid message, tool catalog or history association"
+          },
+          "401": {
+            "description": "Invalid bearer token"
+          },
+          "409": {
+            "description": "Another request is modifying this session"
+          },
+          "413": {
+            "description": "Request too large"
+          },
+          "503": {
+            "description": "Capacity exhausted"
+          }
+        },
+        "description": "Ordinary multi-turn conversation. No idempotency or automatic replay. Tool results reference unanswered toolCallId values in session history. Remaining calls are returned without another model request when results are partial."
+      }
+    },
+    "/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "workspacePath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "projectName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session record including sessionId"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "description": "Session records"
+          }
+        }
+      }
+    },
+    "/sessions/{sessionId}/state": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "sessionId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSessionState",
+        "responses": {
+          "200": {
+            "description": "Current run state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/ChatResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session has no run"
+          }
+        }
+      }
+    },
+    "/runs/{runId}/stop": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "stopRun",
+        "responses": {
+          "200": {
+            "description": "Cancellation requested"
+          }
+        }
+      }
+    },
+    "/runs/{runId}/inputs": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "queueRunInput",
+        "description": "Additional user input consumed at the next model boundary; never a tool-result continuation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inputId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "schema.json#/definitions/Image"
+                    }
+                  }
+                },
+                "required": [
+                  "inputId",
+                  "content"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Input receipt (inputId, status)"
+          }
+        }
+      }
+    }
+  }
+}

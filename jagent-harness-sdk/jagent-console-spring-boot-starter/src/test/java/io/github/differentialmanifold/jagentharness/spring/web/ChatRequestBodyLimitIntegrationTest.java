@@ -3,6 +3,8 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,9 +12,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -34,38 +33,33 @@ import org.springframework.web.bind.annotation.RestController;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         classes = ChatRequestBodyLimitIntegrationTest.TestApplication.class,
         properties = {
-                "harness.console.enabled=false",
-                "harness.console.max-chat-request-body-size=128B",
-                "spring.autoconfigure.exclude="
-                        + "io.github.differentialmanifold.jagentharness.spring.AgentHarnessAutoConfiguration,"
-                        + "io.github.differentialmanifold.jagentharness.mcp.spring.McpAutoConfiguration,"
-                        + "io.github.differentialmanifold.jagentharness.spring.web.AgentConsoleWebConfiguration"
+            "agent.enabled=false",
+            "agent.http.enabled=false",
+            "agent.http.max-chat-request-body-size=128B"
         })
 class ChatRequestBodyLimitIntegrationTest {
 
-    @LocalServerPort
-    private int port;
+    @LocalServerPort private int port;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @Autowired private ObjectMapper objectMapper;
 
     @Test
     void rejectsChunkedStreamRequestWithNoContentLength() throws Exception {
-        Response response = chunkedPost("/api/chat/stream", oversizedJson());
+        Response response = chunkedPost("/api/v1/chat", oversizedJson());
 
         assertPayloadTooLarge(response);
     }
 
     @Test
     void rejectsChunkedRunningMessageWithNoContentLength() throws Exception {
-        Response response = chunkedPost("/api/chat/runs/run-1/messages", oversizedJson());
+        Response response = chunkedPost("/api/v1/runs/run-1/inputs", oversizedJson());
 
         assertPayloadTooLarge(response);
     }
 
     @Test
     void preservesTheSseResponseForAnAcceptedStreamRequest() throws Exception {
-        Response response = chunkedPost("/api/chat/stream", "{\"content\":\"small\"}");
+        Response response = chunkedPost("/api/v1/chat", "{\"content\":\"small\"}");
 
         assertEquals(200, response.status);
         assertTrue(response.contentType.startsWith(MediaType.TEXT_EVENT_STREAM_VALUE));
@@ -74,7 +68,7 @@ class ChatRequestBodyLimitIntegrationTest {
 
     @Test
     void doesNotApplyTheLimitToOtherChatRequests() throws Exception {
-        Response response = chunkedPost("/api/chat/runs/run-1/stop", oversizedJson());
+        Response response = chunkedPost("/api/v1/runs/run-1/stop", oversizedJson());
 
         assertEquals(200, response.status);
         assertEquals("stopped", response.body);
@@ -88,8 +82,8 @@ class ChatRequestBodyLimitIntegrationTest {
     }
 
     private Response chunkedPost(String path, String body) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(
-                "http://127.0.0.1:" + port + path).openConnection();
+        HttpURLConnection connection =
+                (HttpURLConnection) new URL("http://127.0.0.1:" + port + path).openConnection();
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", MediaType.APPLICATION_JSON_VALUE);
@@ -98,9 +92,8 @@ class ChatRequestBodyLimitIntegrationTest {
         connection.getOutputStream().close();
 
         int status = connection.getResponseCode();
-        InputStream responseStream = status >= 400
-                ? connection.getErrorStream()
-                : connection.getInputStream();
+        InputStream responseStream =
+                status >= 400 ? connection.getErrorStream() : connection.getInputStream();
         String responseBody = responseStream == null ? "" : readString(responseStream);
         String contentType = connection.getContentType() == null ? "" : connection.getContentType();
         connection.disconnect();
@@ -132,19 +125,18 @@ class ChatRequestBodyLimitIntegrationTest {
     @SpringBootConfiguration
     @EnableAutoConfiguration
     @EnableConfigurationProperties(ConsoleProperties.class)
-    @Import({TestController.class, AgentConsoleExceptionHandler.class})
+    @Import({TestController.class, ApiExceptionHandler.class})
     static class TestApplication {
 
         @Bean
         FilterRegistrationBean<ChatRequestBodyLimitFilter> chatRequestBodyLimitFilterRegistration(
-                ConsoleProperties properties,
-                ObjectMapper objectMapper) {
-            ChatRequestBodyLimitFilter filter = new ChatRequestBodyLimitFilter(
-                    properties.getMaxChatRequestBodySize().toBytes(),
-                    objectMapper);
+                ConsoleProperties properties, ObjectMapper objectMapper) {
+            ChatRequestBodyLimitFilter filter =
+                    new ChatRequestBodyLimitFilter(
+                            properties.getMaxChatRequestBodySize().toBytes(), objectMapper);
             FilterRegistrationBean<ChatRequestBodyLimitFilter> registration =
                     new FilterRegistrationBean<ChatRequestBodyLimitFilter>(filter);
-            registration.addUrlPatterns("/api/chat/*");
+            registration.addUrlPatterns("/api/v1/chat", "/api/v1/runs/*");
             return registration;
         }
     }
@@ -152,22 +144,23 @@ class ChatRequestBodyLimitIntegrationTest {
     @RestController
     static class TestController {
 
-        @PostMapping(path = "/api/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+        @PostMapping(path = "/api/v1/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
         ResponseEntity<String> stream(@RequestBody Map<String, Object> request) {
             return ResponseEntity.ok()
                     .contentType(MediaType.TEXT_EVENT_STREAM)
                     .body("data: ok\n\n");
         }
 
-        @PostMapping("/api/chat/runs/{runId}/messages")
-        Map<String, Object> message(@PathVariable("runId") String runId,
-                                    @RequestBody Map<String, Object> request) {
+        @PostMapping("/api/v1/runs/{runId}/inputs")
+        Map<String, Object> message(
+                @PathVariable("runId") String runId, @RequestBody Map<String, Object> request) {
             return request;
         }
 
-        @PostMapping("/api/chat/runs/{runId}/stop")
-        String stop(@PathVariable("runId") String runId,
-                    @RequestBody(required = false) String request) {
+        @PostMapping("/api/v1/runs/{runId}/stop")
+        String stop(
+                @PathVariable("runId") String runId,
+                @RequestBody(required = false) String request) {
             return "stopped";
         }
     }

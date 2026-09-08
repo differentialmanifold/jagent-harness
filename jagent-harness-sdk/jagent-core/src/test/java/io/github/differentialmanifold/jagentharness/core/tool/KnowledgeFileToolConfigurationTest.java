@@ -5,15 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import org.junit.jupiter.api.Test;
 
 class KnowledgeFileToolConfigurationTest {
@@ -35,12 +34,15 @@ class KnowledgeFileToolConfigurationTest {
         configuration.save(Arrays.asList("read", "grep", "read"));
 
         ToolSelectionSnapshot snapshot = configuration.load();
-        Collection<ToolDefinition> filtered = configuration.filter(
-                Arrays.<ToolDefinition>asList(new StubTool("read"), new StubTool("bash")),
-                null);
+        Collection<ToolDefinition> filtered =
+                configuration.filter(
+                        Arrays.<ToolDefinition>asList(new StubTool("read"), new StubTool("bash")),
+                        null);
 
         assertTrue(snapshot.isConfigured());
-        assertEquals(new LinkedHashSet<String>(Arrays.asList("read", "grep")), snapshot.getEnabledTools());
+        assertEquals(
+                new LinkedHashSet<String>(Arrays.asList("read", "grep")),
+                snapshot.getEnabledTools());
         assertEquals(1, filtered.size());
         assertEquals("read", filtered.iterator().next().getName());
     }

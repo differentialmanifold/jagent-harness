@@ -1,31 +1,19 @@
-name: Publish SDK
-
+name: Publish Maven artifacts
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - 'v*'
-
+    tags: ['v*']
 permissions:
   contents: read
-
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
-
-defaults:
-  run:
-    shell: sh
-
 jobs:
   publish:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 8
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
@@ -33,18 +21,26 @@ jobs:
           server-id: central
           server-username: CENTRAL_USERNAME
           server-password: CENTRAL_PASSWORD
-
-      - name: Verify tag matches SDK version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require a release version matching the tag
+        env:
+          RELEASE_REF: ${{ github.ref }}
         run: |
-          version="$(mvn -q -f jagent-harness-sdk/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$version" != "$tag" ]; then
-            echo "Tag v$tag does not match SDK version $version"
-            exit 1
-          fi
-
-      - name: Publish SDK to Maven Central
-        run: mvn -B -f jagent-harness-sdk/pom.xml -P release deploy
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+          const version = readFileSync('pom.xml', 'utf8').match(/<version>([^<]+)<\/version>/)?.[1]
+          assert(version && !version.includes('SNAPSHOT'), 'Set a release version before publishing')
+          const ref = process.env.RELEASE_REF || ''
+          if (ref.startsWith('refs/tags/')) assert.equal(ref, 'refs/tags/v' + version, 'Tag must match the Maven version')
+          NODE
+      - run: mvn -B install
+      - run: npm ci --prefix protocol && npm test --prefix protocol
+      - run: npm ci --prefix console && npm test --prefix console && npm run build --prefix console
+      - name: Publish framework artifacts (examples excluded)
+        run: mvn -B -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}

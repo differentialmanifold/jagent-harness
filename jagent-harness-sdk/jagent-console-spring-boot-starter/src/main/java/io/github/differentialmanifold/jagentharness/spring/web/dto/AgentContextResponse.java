@@ -10,14 +10,14 @@ public class AgentContextResponse {
     private String configRoot;
     private String workspaceRoot;
 
-    public AgentContextResponse() {
-    }
+    public AgentContextResponse() {}
 
-    public AgentContextResponse(List<ToolInfoResponse> tools,
-                                List<PromptFileResponse> promptFiles,
-                                List<SkillInfoResponse> skills,
-                                String configRoot,
-                                String workspaceRoot) {
+    public AgentContextResponse(
+            List<ToolInfoResponse> tools,
+            List<PromptFileResponse> promptFiles,
+            List<SkillInfoResponse> skills,
+            String configRoot,
+            String workspaceRoot) {
         this.tools = tools;
         this.promptFiles = promptFiles;
         this.skills = skills;

@@ -1,10 +1,9 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
-import java.util.Collection;
-import java.util.Collections;
-
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import java.util.Collection;
+import java.util.Collections;
 
 public class PromptContext {
 

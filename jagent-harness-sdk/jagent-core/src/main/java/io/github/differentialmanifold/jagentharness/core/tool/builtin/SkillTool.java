@@ -40,10 +40,12 @@ public class SkillTool implements ToolDefinition {
     @Override
     public JsonNode getParametersSchema() {
         ObjectNode properties = objectMapper.createObjectNode();
-        properties.set("path", ToolSchemas.stringProperty(
-                objectMapper,
-                "Skill resource path under skills/{skill}/. Use the SKILL.md path shown in Available skills. "
-                        + "For relative references in SKILL.md, resolve them against the SKILL.md directory and pass the full resolved skill path to the skill tool."));
+        properties.set(
+                "path",
+                ToolSchemas.stringProperty(
+                        objectMapper,
+                        "Skill resource path under skills/{skill}/. Use the SKILL.md path shown in Available skills. "
+                                + "For relative references in SKILL.md, resolve them against the SKILL.md directory and pass the full resolved skill path to the skill tool."));
         return ToolSchemas.objectSchema(objectMapper, properties, "path");
     }
 
@@ -73,8 +75,12 @@ public class SkillTool implements ToolDefinition {
             return null;
         }
         KnowledgeFile file = null;
-        if (context != null && context.getProjectId() != null && !context.getProjectId().trim().isEmpty()) {
-            file = knowledgeFileStore.readFile(KnowledgeScope.project(context.getProjectId()), input);
+        if (context != null
+                && context.getProjectId() != null
+                && !context.getProjectId().trim().isEmpty()) {
+            file =
+                    knowledgeFileStore.readFile(
+                            KnowledgeScope.project(context.getProjectId()), input);
         }
         if (file == null) {
             file = knowledgeFileStore.readFile(KnowledgeScope.global(), input);
@@ -91,10 +97,10 @@ public class SkillTool implements ToolDefinition {
         result.put("type", "text");
         result.put("skillDirectory", KnowledgeFilePaths.parent(path));
         result.put("resourceTool", getName());
-        result.put("resourceInstruction",
+        result.put(
+                "resourceInstruction",
                 "Resolve relative resource paths against skillDirectory and load them with the skill tool, not the read tool.");
         result.put("content", content);
         return ToolExecutionResult.of(result.toString());
     }
-
 }

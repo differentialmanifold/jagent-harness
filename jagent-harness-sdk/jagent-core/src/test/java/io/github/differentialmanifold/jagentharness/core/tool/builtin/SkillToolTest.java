@@ -4,33 +4,34 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SkillToolTest {
 
-    @TempDir
-    Path workspaceRoot;
+    @TempDir Path workspaceRoot;
 
-    @TempDir
-    Path configRoot;
+    @TempDir Path configRoot;
 
     @Test
     void readsProjectSkillByLogicalPath() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile(KnowledgeScope.project("project-1"), "skills/java-review/SKILL.md", "# Project Review\n", "text/markdown");
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "skills/java-review/SKILL.md",
+                "# Project Review\n",
+                "text/markdown");
         SkillTool tool = new SkillTool(objectMapper, store);
 
         JsonNode result = execute(objectMapper, tool, "skills/java-review/SKILL.md");
@@ -47,8 +48,16 @@ class SkillToolTest {
     void projectSkillOverridesGlobalSkillWithSamePath() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile(KnowledgeScope.global(), "skills/java-review/SKILL.md", "# Global Review\n", "text/markdown");
-        store.writeFile(KnowledgeScope.project("project-1"), "skills/java-review/SKILL.md", "# Project Review\n", "text/markdown");
+        store.writeFile(
+                KnowledgeScope.global(),
+                "skills/java-review/SKILL.md",
+                "# Global Review\n",
+                "text/markdown");
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "skills/java-review/SKILL.md",
+                "# Project Review\n",
+                "text/markdown");
         SkillTool tool = new SkillTool(objectMapper, store);
 
         JsonNode result = execute(objectMapper, tool, "skills/java-review/SKILL.md");
@@ -60,7 +69,11 @@ class SkillToolTest {
     void fallsBackToGlobalSkillForLogicalPath() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile(KnowledgeScope.global(), "skills/java-review/SKILL.md", "# Global Review\n", "text/markdown");
+        store.writeFile(
+                KnowledgeScope.global(),
+                "skills/java-review/SKILL.md",
+                "# Global Review\n",
+                "text/markdown");
         SkillTool tool = new SkillTool(objectMapper, store);
 
         JsonNode result = execute(objectMapper, tool, "skills/java-review/SKILL.md");
@@ -75,7 +88,9 @@ class SkillToolTest {
         Path resource = configRoot.resolve("skills/java-review/checklist.md");
         write(resource, "# Checklist\n");
 
-        assertThrows(IllegalArgumentException.class, () -> execute(objectMapper, tool, resource.toString()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> execute(objectMapper, tool, resource.toString()));
     }
 
     @Test
@@ -87,8 +102,7 @@ class SkillToolTest {
         ObjectNode arguments = objectMapper.createObjectNode();
         arguments.put("path", "example.py");
 
-        assertThrows(IllegalArgumentException.class,
-                () -> tool.execute(toolContext(), arguments));
+        assertThrows(IllegalArgumentException.class, () -> tool.execute(toolContext(), arguments));
     }
 
     @Test
@@ -101,8 +115,7 @@ class SkillToolTest {
         ObjectNode arguments = objectMapper.createObjectNode();
         arguments.put("path", file.toString());
 
-        assertThrows(IllegalArgumentException.class,
-                () -> tool.execute(toolContext(), arguments));
+        assertThrows(IllegalArgumentException.class, () -> tool.execute(toolContext(), arguments));
     }
 
     @Test
@@ -111,13 +124,12 @@ class SkillToolTest {
         SkillTool tool = new SkillTool(objectMapper, new TestKnowledgeFileStore());
         Path file = workspaceRoot.resolve("skills/review/blob.bin");
         Files.createDirectories(file.getParent());
-        Files.write(file, new byte[] { 0, 1, 2, 3 });
+        Files.write(file, new byte[] {0, 1, 2, 3});
 
         ObjectNode arguments = objectMapper.createObjectNode();
         arguments.put("path", "skills/review/blob.bin");
 
-        assertThrows(IllegalArgumentException.class,
-                () -> tool.execute(toolContext(), arguments));
+        assertThrows(IllegalArgumentException.class, () -> tool.execute(toolContext(), arguments));
     }
 
     @Test
@@ -137,8 +149,16 @@ class SkillToolTest {
     void projectDatabaseSkillOverridesGlobalDatabaseSkillWithSamePath() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         TestKnowledgeFileStore store = new TestKnowledgeFileStore();
-        store.writeFile(KnowledgeScope.global(), "skills/review/SKILL.md", "# Global Review\n", "text/markdown");
-        store.writeFile(KnowledgeScope.project("project-1"), "skills/review/SKILL.md", "# Project Review\n", "text/markdown");
+        store.writeFile(
+                KnowledgeScope.global(),
+                "skills/review/SKILL.md",
+                "# Global Review\n",
+                "text/markdown");
+        store.writeFile(
+                KnowledgeScope.project("project-1"),
+                "skills/review/SKILL.md",
+                "# Project Review\n",
+                "text/markdown");
         SkillTool tool = new SkillTool(objectMapper, store);
 
         JsonNode result = execute(objectMapper, tool, "skills/review/SKILL.md");
@@ -146,7 +166,8 @@ class SkillToolTest {
         assertEquals("# Project Review\n", result.path("content").asText());
     }
 
-    private JsonNode execute(ObjectMapper objectMapper, SkillTool tool, String path) throws Exception {
+    private JsonNode execute(ObjectMapper objectMapper, SkillTool tool, String path)
+            throws Exception {
         ObjectNode arguments = objectMapper.createObjectNode();
         arguments.put("path", path);
         ToolExecutionResult executionResult = tool.execute(toolContext(), arguments);

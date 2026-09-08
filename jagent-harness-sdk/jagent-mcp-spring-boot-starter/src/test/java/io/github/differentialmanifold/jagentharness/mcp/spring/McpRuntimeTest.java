@@ -3,6 +3,15 @@ package io.github.differentialmanifold.jagentharness.mcp.spring;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -14,16 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
-import io.github.differentialmanifold.jagentharness.mcp.McpServerConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,8 +32,7 @@ class McpRuntimeTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @TempDir
-    java.nio.file.Path tempDir;
+    @TempDir java.nio.file.Path tempDir;
 
     private HttpServer server;
     private String endpoint;
@@ -55,8 +53,8 @@ class McpRuntimeTest {
 
     @Test
     void exposesToolDetailsAndCallsToolForConsoleDebugging() throws Exception {
-        McpConfigurationManager manager = new McpConfigurationManager(
-                tempDir, "mcp.json", null, objectMapper);
+        McpConfigurationManager manager =
+                new McpConfigurationManager(tempDir, "mcp.json", null, objectMapper);
         McpRuntime runtime = new McpRuntime(manager, objectMapper);
         McpServerConfig config = new McpServerConfig();
         config.setUrl(endpoint);
@@ -64,20 +62,29 @@ class McpRuntimeTest {
         McpTestResult tested = runtime.test("demo", config);
         assertTrue(tested.isSuccess());
         assertEquals("Echo the provided value", tested.getToolDetails().get(0).getDescription());
-        assertEquals("string", tested.getToolDetails().get(0)
-                .getInputSchema().path("properties").path("value").path("type").asText());
+        assertEquals(
+                "string",
+                tested.getToolDetails()
+                        .get(0)
+                        .getInputSchema()
+                        .path("properties")
+                        .path("value")
+                        .path("type")
+                        .asText());
 
-        McpToolCallResult called = runtime.call(
-                "demo", config, "echo", objectMapper.readTree("{\"value\":\"hello\"}"));
+        McpToolCallResult called =
+                runtime.call(
+                        "demo", config, "echo", objectMapper.readTree("{\"value\":\"hello\"}"));
         assertTrue(called.isSuccess());
-        assertEquals("echo: hello", called.getResult().path("content").get(0).path("text").asText());
+        assertEquals(
+                "echo: hello", called.getResult().path("content").get(0).path("text").asText());
     }
 
     @Test
     void refreshesStatusesAfterConfigurationChanges() {
         MemoryStore store = new MemoryStore();
-        McpConfigurationManager manager = new McpConfigurationManager(
-                tempDir, "mcp.json", store, objectMapper);
+        McpConfigurationManager manager =
+                new McpConfigurationManager(tempDir, "mcp.json", store, objectMapper);
         McpRuntime runtime = new McpRuntime(manager, objectMapper);
 
         manager.saveDatabase(config(true, null));
@@ -128,26 +135,41 @@ class McpRuntimeTest {
                 return;
             }
             if ("initialize".equals(method)) {
-                respond(exchange, request, "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},"
-                        + "\"serverInfo\":{\"name\":\"test\",\"version\":\"1\"}}");
+                respond(
+                        exchange,
+                        request,
+                        "{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},"
+                                + "\"serverInfo\":{\"name\":\"test\",\"version\":\"1\"}}");
                 return;
             }
             if ("tools/list".equals(method)) {
-                respond(exchange, request, "{\"tools\":[{\"name\":\"echo\","
-                        + "\"description\":\"Echo the provided value\","
-                        + "\"inputSchema\":{\"type\":\"object\",\"properties\":{"
-                        + "\"value\":{\"type\":\"string\"}}}}]}");
+                respond(
+                        exchange,
+                        request,
+                        "{\"tools\":[{\"name\":\"echo\","
+                                + "\"description\":\"Echo the provided value\","
+                                + "\"inputSchema\":{\"type\":\"object\",\"properties\":{"
+                                + "\"value\":{\"type\":\"string\"}}}}]}");
                 return;
             }
             String value = request.path("params").path("arguments").path("value").asText();
-            respond(exchange, request, "{\"content\":[{\"type\":\"text\",\"text\":\"echo: "
-                    + value + "\"}],\"isError\":false}");
+            respond(
+                    exchange,
+                    request,
+                    "{\"content\":[{\"type\":\"text\",\"text\":\"echo: "
+                            + value
+                            + "\"}],\"isError\":false}");
         }
 
-        private void respond(HttpExchange exchange, JsonNode request, String result) throws IOException {
-            byte[] body = ("{\"jsonrpc\":\"2.0\",\"id\":"
-                    + request.path("id").asLong() + ",\"result\":" + result + "}")
-                    .getBytes(StandardCharsets.UTF_8);
+        private void respond(HttpExchange exchange, JsonNode request, String result)
+                throws IOException {
+            byte[] body =
+                    ("{\"jsonrpc\":\"2.0\",\"id\":"
+                                    + request.path("id").asLong()
+                                    + ",\"result\":"
+                                    + result
+                                    + "}")
+                            .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream output = exchange.getResponseBody()) {
@@ -182,7 +204,9 @@ class McpRuntimeTest {
         @Override
         public List<KnowledgeFile> listFiles(String prefix) {
             KnowledgeFile file = readFile(prefix);
-            return file == null ? Collections.<KnowledgeFile>emptyList() : Collections.singletonList(file);
+            return file == null
+                    ? Collections.<KnowledgeFile>emptyList()
+                    : Collections.singletonList(file);
         }
 
         @Override
@@ -191,9 +215,16 @@ class McpRuntimeTest {
         }
 
         @Override
-        public KnowledgeFile writeFile(KnowledgeScope scope, String path, String content, String contentType) {
-            KnowledgeFile file = new KnowledgeFile(
-                    path, KnowledgeFile.TYPE_FILE, content, contentType, Instant.now(), Instant.now());
+        public KnowledgeFile writeFile(
+                KnowledgeScope scope, String path, String content, String contentType) {
+            KnowledgeFile file =
+                    new KnowledgeFile(
+                            path,
+                            KnowledgeFile.TYPE_FILE,
+                            content,
+                            contentType,
+                            Instant.now(),
+                            Instant.now());
             files.put(scope.getType() + ":" + scope.getId() + ":" + path, file);
             return file;
         }

@@ -1,0 +1,26 @@
+{
+  "sessionId": "sess_example",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Read the local project"
+    }
+  ],
+  "clientTools": [
+    {
+      "name": "read",
+      "description": "Read local files",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "eventId": "event_example",
+  "sessionId": "sess_example",
+  "runId": "run_example",
+  "turnId": "turn_example",
+  "createdAt": "2026-09-07T00:00:00Z",
+  "type": "message_update",
+  "payload": {
+    "delta": "Hello"
+  }
+}

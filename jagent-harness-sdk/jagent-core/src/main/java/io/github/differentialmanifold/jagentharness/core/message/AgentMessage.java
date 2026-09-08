@@ -1,11 +1,10 @@
 package io.github.differentialmanifold.jagentharness.core.message;
 
+import io.github.differentialmanifold.jagentharness.core.support.Ids;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-
-import io.github.differentialmanifold.jagentharness.core.support.Ids;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 
 public class AgentMessage {
 
@@ -36,7 +35,8 @@ public class AgentMessage {
         return message;
     }
 
-    public static AgentMessage assistant(String sessionId, String content, List<ToolCall> toolCalls) {
+    public static AgentMessage assistant(
+            String sessionId, String content, List<ToolCall> toolCalls) {
         AgentMessage message = base(sessionId, ROLE_ASSISTANT, content);
         if (toolCalls != null) {
             message.setToolCalls(toolCalls);
@@ -44,7 +44,8 @@ public class AgentMessage {
         return message;
     }
 
-    public static AgentMessage tool(String sessionId, String toolCallId, String toolName, String content) {
+    public static AgentMessage tool(
+            String sessionId, String toolCallId, String toolName, String content) {
         AgentMessage message = base(sessionId, ROLE_TOOL, content);
         message.setToolCallId(toolCallId);
         message.setToolName(toolName);
@@ -154,9 +155,10 @@ public class AgentMessage {
     }
 
     public void setImages(List<MessageImage> images) {
-        this.images = images == null
-                ? new ArrayList<MessageImage>()
-                : new ArrayList<MessageImage>(images);
+        this.images =
+                images == null
+                        ? new ArrayList<MessageImage>()
+                        : new ArrayList<MessageImage>(images);
     }
 
     public String getStopReason() {

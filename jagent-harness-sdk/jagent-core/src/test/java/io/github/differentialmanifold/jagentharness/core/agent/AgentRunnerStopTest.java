@@ -4,12 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.function.Consumer;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.conversation.ConversationContext;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
@@ -25,6 +19,11 @@ import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
 import io.github.differentialmanifold.jagentharness.core.tool.DefaultToolContextFactory;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 
 class AgentRunnerStopTest {
@@ -42,13 +41,14 @@ class AgentRunnerStopTest {
 
         assertThrows(
                 StopRequestedException.class,
-                () -> runner.run(
-                        "s1",
-                        "stop this",
-                        AgentRunOptions.builder()
-                                .eventConsumer(events::add)
-                                .stopSignal(control)
-                                .build()));
+                () ->
+                        runner.run(
+                                "s1",
+                                "stop this",
+                                AgentRunOptions.builder()
+                                        .eventConsumer(events::add)
+                                        .stopSignal(control)
+                                        .build()));
 
         assertEquals(2, store.messages.size());
         assertEquals(AgentMessage.ROLE_USER, store.messages.get(0).getRole());
@@ -67,17 +67,25 @@ class AgentRunnerStopTest {
         List<AgentEvent> events = new ArrayList<AgentEvent>();
 
         AgentRunner runner = createRunner(store, providers, objectMapper);
-        AgentRunResult result = runner.run(
-                "s1",
-                "reason about this",
-                AgentRunOptions.builder().eventConsumer(events::add).build());
+        AgentRunResult result =
+                runner.run(
+                        "s1",
+                        "reason about this",
+                        AgentRunOptions.builder().eventConsumer(events::add).build());
 
         AgentMessage assistantMessage = store.messages.get(store.messages.size() - 1);
         assertEquals("final answer", result.getAnswer());
         assertEquals("think first", assistantMessage.getReasoningContent());
         assertEquals("final answer", assistantMessage.getContent());
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.MESSAGE_REASONING_UPDATE.equals(event.getType())));
-        assertTrue(events.stream().anyMatch(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType())));
+        assertTrue(
+                events.stream()
+                        .anyMatch(
+                                event ->
+                                        AgentEvent.MESSAGE_REASONING_UPDATE.equals(
+                                                event.getType())));
+        assertTrue(
+                events.stream()
+                        .anyMatch(event -> AgentEvent.MESSAGE_UPDATE.equals(event.getType())));
     }
 
     @Test
@@ -94,13 +102,14 @@ class AgentRunnerStopTest {
 
         assertThrows(
                 StopRequestedException.class,
-                () -> runner.run(
-                        "s1",
-                        "stop this",
-                        AgentRunOptions.builder()
-                                .eventConsumer(events::add)
-                                .stopSignal(control)
-                                .build()));
+                () ->
+                        runner.run(
+                                "s1",
+                                "stop this",
+                                AgentRunOptions.builder()
+                                        .eventConsumer(events::add)
+                                        .stopSignal(control)
+                                        .build()));
 
         assertEquals(2, store.messages.size());
         assertEquals(AgentMessage.ROLE_USER, store.messages.get(0).getRole());
@@ -112,28 +121,34 @@ class AgentRunnerStopTest {
         assertStoppedEvent(events, stoppedMessage, objectMapper);
     }
 
-    private void assertStoppedEvent(List<AgentEvent> events,
-                                    AgentMessage stoppedMessage,
-                                    ObjectMapper objectMapper) {
-        AgentEvent stoppedEvent = events.stream()
-                .filter(event -> AgentEvent.AGENT_STOPPED.equals(event.getType()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("agent_stopped event was not published"));
+    private void assertStoppedEvent(
+            List<AgentEvent> events, AgentMessage stoppedMessage, ObjectMapper objectMapper) {
+        AgentEvent stoppedEvent =
+                events.stream()
+                        .filter(event -> AgentEvent.AGENT_STOPPED.equals(event.getType()))
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new AssertionError("agent_stopped event was not published"));
         try {
             assertEquals(
                     AgentMessage.STOP_REASON_ABORTED,
-                    objectMapper.readTree(stoppedEvent.getPayloadJson()).path("stopReason").asText());
+                    objectMapper
+                            .readTree(stoppedEvent.getPayloadJson())
+                            .path("stopReason")
+                            .asText());
             assertEquals(
                     stoppedMessage.getMessageId(),
-                    objectMapper.readTree(stoppedEvent.getPayloadJson()).path("messageId").asText());
+                    objectMapper
+                            .readTree(stoppedEvent.getPayloadJson())
+                            .path("messageId")
+                            .asText());
         } catch (Exception e) {
             throw new AssertionError(e);
         }
     }
 
-    private AgentRunner createRunner(FakeSessionStore store,
-                                     ModelProviderRegistry providers,
-                                     ObjectMapper objectMapper) {
+    private AgentRunner createRunner(
+            FakeSessionStore store, ModelProviderRegistry providers, ObjectMapper objectMapper) {
         return new AgentRunner(
                 settings(),
                 store,
@@ -142,7 +157,8 @@ class AgentRunnerStopTest {
                 new ToolRegistry(),
                 providers,
                 new DefaultToolContextFactory(),
-                request -> new ConversationContext(request.getSystemPrompt(), request.getMessages()),
+                request ->
+                        new ConversationContext(request.getSystemPrompt(), request.getMessages()),
                 objectMapper);
     }
 
@@ -194,7 +210,8 @@ class AgentRunnerStopTest {
         }
 
         @Override
-        public ModelResponse chat(ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
+        public ModelResponse chat(
+                ModelRequest request, ModelDeltaConsumer deltaConsumer, StopSignal stopSignal) {
             deltaConsumer.onReasoningDelta("think ");
             deltaConsumer.onReasoningDelta("first");
             deltaConsumer.onContentDelta("final ");

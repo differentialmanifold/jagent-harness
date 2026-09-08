@@ -1,9 +1,8 @@
 package io.github.differentialmanifold.jagentharness.core.session;
 
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import java.util.List;
 
 public class SessionDetails {
 

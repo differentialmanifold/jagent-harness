@@ -5,21 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -35,6 +20,20 @@ import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttp
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpResponse;
 import io.github.differentialmanifold.jagentharness.core.provider.http.ModelHttpStreamHandler;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class OpenAiCompatibleProviderTest {
@@ -43,36 +42,47 @@ class OpenAiCompatibleProviderTest {
     void serializesTextMessagesAsStringsAndImageMessagesAsOpenAiContentParts() throws Exception {
         RecordingHttpClient httpClient = new RecordingHttpClient();
         ObjectMapper objectMapper = new ObjectMapper();
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
-                config(false), objectMapper, httpClient);
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config(false), objectMapper, httpClient);
 
         ModelRequest textRequest = request();
         textRequest.setMessages(Collections.singletonList(AgentMessage.user("s1", "plain text")));
         provider.chat(textRequest);
 
         AgentMessage multimodal = AgentMessage.user("s1", "describe this");
-        multimodal.setImages(Collections.singletonList(new MessageImage(
-                "screen.png",
-                "image/png",
-                "data:image/png;base64,aGVsbG8=",
-                "high")));
+        multimodal.setImages(
+                Collections.singletonList(
+                        new MessageImage(
+                                "screen.png",
+                                "image/png",
+                                "data:image/png;base64,aGVsbG8=",
+                                "high")));
         ModelRequest imageRequest = request();
         imageRequest.setMessages(Collections.singletonList(multimodal));
         provider.chat(imageRequest);
 
-        JsonNode plainContent = objectMapper.readTree(httpClient.requestBodies.get(0))
-                .path("messages").path(0).path("content");
+        JsonNode plainContent =
+                objectMapper
+                        .readTree(httpClient.requestBodies.get(0))
+                        .path("messages")
+                        .path(0)
+                        .path("content");
         assertTrue(plainContent.isTextual());
         assertEquals("plain text", plainContent.asText());
 
-        JsonNode parts = objectMapper.readTree(httpClient.requestBodies.get(1))
-                .path("messages").path(0).path("content");
+        JsonNode parts =
+                objectMapper
+                        .readTree(httpClient.requestBodies.get(1))
+                        .path("messages")
+                        .path(0)
+                        .path("content");
         assertTrue(parts.isArray());
         assertEquals(2, parts.size());
         assertEquals("text", parts.path(0).path("type").asText());
         assertEquals("describe this", parts.path(0).path("text").asText());
         assertEquals("image_url", parts.path(1).path("type").asText());
-        assertEquals("data:image/png;base64,aGVsbG8=",
+        assertEquals(
+                "data:image/png;base64,aGVsbG8=",
                 parts.path(1).path("image_url").path("url").asText());
         assertEquals("high", parts.path(1).path("image_url").path("detail").asText());
     }
@@ -81,18 +91,24 @@ class OpenAiCompatibleProviderTest {
     void supportsImageOnlyUserMessages() throws Exception {
         RecordingHttpClient httpClient = new RecordingHttpClient();
         ObjectMapper objectMapper = new ObjectMapper();
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
-                config(false), objectMapper, httpClient);
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config(false), objectMapper, httpClient);
         AgentMessage message = AgentMessage.user("s1", "");
-        message.setImages(Collections.singletonList(new MessageImage(
-                "photo.jpg", "image/jpeg", "data:image/jpeg;base64,aGVsbG8=")));
+        message.setImages(
+                Collections.singletonList(
+                        new MessageImage(
+                                "photo.jpg", "image/jpeg", "data:image/jpeg;base64,aGVsbG8=")));
         ModelRequest request = request();
         request.setMessages(Collections.singletonList(message));
 
         provider.chat(request);
 
-        JsonNode parts = objectMapper.readTree(httpClient.requestBodies.get(0))
-                .path("messages").path(0).path("content");
+        JsonNode parts =
+                objectMapper
+                        .readTree(httpClient.requestBodies.get(0))
+                        .path("messages")
+                        .path(0)
+                        .path("content");
         assertEquals(1, parts.size());
         assertEquals("image_url", parts.path(0).path("type").asText());
     }
@@ -102,22 +118,23 @@ class OpenAiCompatibleProviderTest {
         OpenAiCompatibleProviderConfig config = config(false);
         config.setApiKey("configured-token");
         RecordingHttpClient httpClient = new RecordingHttpClient();
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper(), httpClient);
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config, new ObjectMapper(), httpClient);
 
         provider.chat(request());
 
-        assertEquals(Collections.singletonList("Bearer configured-token"), httpClient.authorizationHeaders);
+        assertEquals(
+                Collections.singletonList("Bearer configured-token"),
+                httpClient.authorizationHeaders);
     }
 
     @Test
     void resolvesAccessTokenForEveryRequestAndOmitsBlankToken() {
         AtomicReference<String> token = new AtomicReference<String>("first-token");
         RecordingHttpClient httpClient = new RecordingHttpClient();
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
-                config(false),
-                new ObjectMapper(),
-                httpClient,
-                token::get);
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(
+                        config(false), new ObjectMapper(), httpClient, token::get);
 
         provider.chat(request());
         token.set("second-token");
@@ -136,13 +153,13 @@ class OpenAiCompatibleProviderTest {
         RecordingHttpClient httpClient = new RecordingHttpClient();
         OpenAiCompatibleProviderConfig baseConfig = config(false);
         baseConfig.setBaseUrl("http://model.example/v1/?api-version=2026-08-01");
-        OpenAiCompatibleProvider baseProvider = new OpenAiCompatibleProvider(
-                baseConfig, new ObjectMapper(), httpClient);
+        OpenAiCompatibleProvider baseProvider =
+                new OpenAiCompatibleProvider(baseConfig, new ObjectMapper(), httpClient);
         OpenAiCompatibleProviderConfig endpointConfig = config(false);
         endpointConfig.setBaseUrl(
                 "http://model.example/v1/chat/completions?api-version=2026-08-01");
-        OpenAiCompatibleProvider endpointProvider = new OpenAiCompatibleProvider(
-                endpointConfig, new ObjectMapper(), httpClient);
+        OpenAiCompatibleProvider endpointProvider =
+                new OpenAiCompatibleProvider(endpointConfig, new ObjectMapper(), httpClient);
 
         baseProvider.chat(request());
         endpointProvider.chat(request());
@@ -159,23 +176,28 @@ class OpenAiCompatibleProviderTest {
     void streamDisabledUsesNonStreamingRequestAndEmitsSingleDelta() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/v1/chat/completions", exchange -> {
-            requestBody.set(new String(readAll(exchange.getRequestBody()), StandardCharsets.UTF_8));
-            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}]}")
-                    .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.length);
-            try (OutputStream outputStream = exchange.getResponseBody()) {
-                outputStream.write(response);
-            }
-        });
+        server.createContext(
+                "/v1/chat/completions",
+                exchange -> {
+                    requestBody.set(
+                            new String(readAll(exchange.getRequestBody()), StandardCharsets.UTF_8));
+                    byte[] response =
+                            ("{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}]}")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, response.length);
+                    try (OutputStream outputStream = exchange.getResponseBody()) {
+                        outputStream.write(response);
+                    }
+                });
         server.start();
         try {
             OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
             config.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
             config.setStreamEnabled(false);
 
-            OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper());
+            OpenAiCompatibleProvider provider =
+                    new OpenAiCompatibleProvider(config, new ObjectMapper());
             ModelRequest request = new ModelRequest();
             request.setModel("test-model");
             request.setMessages(Collections.emptyList());
@@ -193,15 +215,14 @@ class OpenAiCompatibleProviderTest {
 
     @Test
     void parsesNestedUsageFromNonStreamingResponse() throws Exception {
-        UsageHttpClient httpClient = new UsageHttpClient(
-                "{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}],"
-                        + "\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
-                        + "\"completion_tokens_details\":{\"reasoning_tokens\":239},"
-                        + "\"prompt_tokens_details\":{\"cached_tokens\":3},\"total_tokens\":275}}");
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
-                config(false),
-                new ObjectMapper(),
-                httpClient);
+        UsageHttpClient httpClient =
+                new UsageHttpClient(
+                        "{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}],"
+                                + "\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
+                                + "\"completion_tokens_details\":{\"reasoning_tokens\":239},"
+                                + "\"prompt_tokens_details\":{\"cached_tokens\":3},\"total_tokens\":275}}");
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config(false), new ObjectMapper(), httpClient);
 
         ModelResponse response = provider.chat(request());
 
@@ -215,14 +236,13 @@ class OpenAiCompatibleProviderTest {
 
     @Test
     void parsesFlatUsageFromNonStreamingResponse() throws Exception {
-        UsageHttpClient httpClient = new UsageHttpClient(
-                "{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}],"
-                        + "\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
-                        + "\"reasoning_tokens\":239,\"cached_tokens\":3,\"total_tokens\":275}}");
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(
-                config(false),
-                new ObjectMapper(),
-                httpClient);
+        UsageHttpClient httpClient =
+                new UsageHttpClient(
+                        "{\"choices\":[{\"message\":{\"content\":\"hello\",\"tool_calls\":[]}}],"
+                                + "\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
+                                + "\"reasoning_tokens\":239,\"cached_tokens\":3,\"total_tokens\":275}}");
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config(false), new ObjectMapper(), httpClient);
 
         ModelResponse response = provider.chat(request());
 
@@ -235,44 +255,52 @@ class OpenAiCompatibleProviderTest {
     void streamingResponseCapturesReasoningContentAndEmitsReasoningDeltas() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/v1/chat/completions", exchange -> {
-            requestBody.set(new String(readAll(exchange.getRequestBody()), StandardCharsets.UTF_8));
-            byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think \"}}]}\n\n"
-                    + "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"
-                    + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
-                    + "\"reasoning_tokens\":239,\"cached_tokens\":0,\"total_tokens\":275}}\n\n"
-                    + "data: [DONE]\n\n")
-                    .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-            exchange.sendResponseHeaders(200, response.length);
-            try (OutputStream outputStream = exchange.getResponseBody()) {
-                outputStream.write(response);
-            }
-        });
+        server.createContext(
+                "/v1/chat/completions",
+                exchange -> {
+                    requestBody.set(
+                            new String(readAll(exchange.getRequestBody()), StandardCharsets.UTF_8));
+                    byte[] response =
+                            ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think \"}}]}\n\n"
+                                            + "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"
+                                            + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":251,"
+                                            + "\"reasoning_tokens\":239,\"cached_tokens\":0,\"total_tokens\":275}}\n\n"
+                                            + "data: [DONE]\n\n")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, response.length);
+                    try (OutputStream outputStream = exchange.getResponseBody()) {
+                        outputStream.write(response);
+                    }
+                });
         server.start();
         try {
             OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
             config.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
             config.setStreamEnabled(true);
 
-            OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper());
+            OpenAiCompatibleProvider provider =
+                    new OpenAiCompatibleProvider(config, new ObjectMapper());
             ModelRequest request = new ModelRequest();
             request.setModel("test-model");
             request.setMessages(Collections.emptyList());
             List<String> reasoningDeltas = new ArrayList<String>();
             List<String> contentDeltas = new ArrayList<String>();
 
-            ModelResponse response = provider.chat(request, new ModelDeltaConsumer() {
-                @Override
-                public void onContentDelta(String delta) {
-                    contentDeltas.add(delta);
-                }
+            ModelResponse response =
+                    provider.chat(
+                            request,
+                            new ModelDeltaConsumer() {
+                                @Override
+                                public void onContentDelta(String delta) {
+                                    contentDeltas.add(delta);
+                                }
 
-                @Override
-                public void onReasoningDelta(String delta) {
-                    reasoningDeltas.add(delta);
-                }
-            });
+                                @Override
+                                public void onReasoningDelta(String delta) {
+                                    reasoningDeltas.add(delta);
+                                }
+                            });
 
             assertEquals("think ", response.getReasoningContent());
             assertEquals("answer", response.getContent());
@@ -289,51 +317,59 @@ class OpenAiCompatibleProviderTest {
     @Test
     void cancelsStreamingHttpCallWhenStopRequested() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/v1/chat/completions", exchange -> {
-            readAll(exchange.getRequestBody());
-            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-            exchange.sendResponseHeaders(200, 0);
-            try (OutputStream outputStream = exchange.getResponseBody()) {
-                for (int index = 0; index < 100; index++) {
-                    String event = "data: {\"choices\":[{\"delta\":{\"content\":\"chunk\"}}]}\n\n";
-                    outputStream.write(event.getBytes(StandardCharsets.UTF_8));
-                    outputStream.flush();
-                    Thread.sleep(100);
-                }
-            } catch (IOException ignored) {
-                // The client closes the response body when Call.cancel() is invoked.
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        server.createContext(
+                "/v1/chat/completions",
+                exchange -> {
+                    readAll(exchange.getRequestBody());
+                    exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, 0);
+                    try (OutputStream outputStream = exchange.getResponseBody()) {
+                        for (int index = 0; index < 100; index++) {
+                            String event =
+                                    "data: {\"choices\":[{\"delta\":{\"content\":\"chunk\"}}]}\n\n";
+                            outputStream.write(event.getBytes(StandardCharsets.UTF_8));
+                            outputStream.flush();
+                            Thread.sleep(100);
+                        }
+                    } catch (IOException ignored) {
+                        // The client closes the response body when Call.cancel() is invoked.
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
         server.start();
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
         config.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
         config.setStreamEnabled(true);
-        OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper());
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config, new ObjectMapper());
         ModelRequest request = new ModelRequest();
         request.setModel("test-model");
         request.setMessages(Collections.emptyList());
         MutableStopSignal control = new MutableStopSignal();
         CountDownLatch firstDelta = new CountDownLatch(1);
         List<String> deltas = Collections.synchronizedList(new ArrayList<String>());
-        Future<ModelResponse> responseFuture = executor.submit(() -> provider.chat(
-                request,
-                delta -> {
-                    deltas.add(delta);
-                    firstDelta.countDown();
-                },
-                control));
+        Future<ModelResponse> responseFuture =
+                executor.submit(
+                        () ->
+                                provider.chat(
+                                        request,
+                                        delta -> {
+                                            deltas.add(delta);
+                                            firstDelta.countDown();
+                                        },
+                                        control));
 
         try {
             assertTrue(firstDelta.await(3, TimeUnit.SECONDS));
             assertTrue(control.requestStop());
 
-            ExecutionException exception = assertThrows(
-                    ExecutionException.class,
-                    () -> responseFuture.get(3, TimeUnit.SECONDS));
+            ExecutionException exception =
+                    assertThrows(
+                            ExecutionException.class,
+                            () -> responseFuture.get(3, TimeUnit.SECONDS));
             assertTrue(exception.getCause() instanceof StopRequestedException);
             assertFalse(deltas.isEmpty());
         } finally {
@@ -345,40 +381,43 @@ class OpenAiCompatibleProviderTest {
 
     @Test
     void marksRetryableHttpFailures() throws Exception {
-        ModelProviderException exception = assertThrows(
-                ModelProviderException.class,
-                () -> callServerReturningStatus(503));
+        ModelProviderException exception =
+                assertThrows(ModelProviderException.class, () -> callServerReturningStatus(503));
 
         assertTrue(exception.isRetryable());
     }
 
     @Test
     void marksClientHttpFailuresAsNonRetryable() throws Exception {
-        ModelProviderException exception = assertThrows(
-                ModelProviderException.class,
-                () -> callServerReturningStatus(400));
+        ModelProviderException exception =
+                assertThrows(ModelProviderException.class, () -> callServerReturningStatus(400));
 
         assertFalse(exception.isRetryable());
     }
 
     private void callServerReturningStatus(int statusCode) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/v1/chat/completions", exchange -> {
-            readAll(exchange.getRequestBody());
-            byte[] response = ("{\"error\":\"status " + statusCode + "\"}").getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(statusCode, response.length);
-            try (OutputStream outputStream = exchange.getResponseBody()) {
-                outputStream.write(response);
-            }
-        });
+        server.createContext(
+                "/v1/chat/completions",
+                exchange -> {
+                    readAll(exchange.getRequestBody());
+                    byte[] response =
+                            ("{\"error\":\"status " + statusCode + "\"}")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(statusCode, response.length);
+                    try (OutputStream outputStream = exchange.getResponseBody()) {
+                        outputStream.write(response);
+                    }
+                });
         server.start();
         try {
             OpenAiCompatibleProviderConfig config = new OpenAiCompatibleProviderConfig();
             config.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
             config.setStreamEnabled(false);
 
-            OpenAiCompatibleProvider provider = new OpenAiCompatibleProvider(config, new ObjectMapper());
+            OpenAiCompatibleProvider provider =
+                    new OpenAiCompatibleProvider(config, new ObjectMapper());
             ModelRequest request = new ModelRequest();
             request.setModel("test-model");
             request.setMessages(Collections.emptyList());
@@ -425,8 +464,7 @@ class OpenAiCompatibleProviderTest {
             requestBodies.add(request.getBody());
             requestUrls.add(request.getUrl());
             return new ModelHttpResponse(
-                    200,
-                    "{\"choices\":[{\"message\":{\"content\":\"ok\",\"tool_calls\":[]}}]}");
+                    200, "{\"choices\":[{\"message\":{\"content\":\"ok\",\"tool_calls\":[]}}]}");
         }
 
         @Override
@@ -453,5 +491,4 @@ class OpenAiCompatibleProviderTest {
             throw new UnsupportedOperationException();
         }
     }
-
 }

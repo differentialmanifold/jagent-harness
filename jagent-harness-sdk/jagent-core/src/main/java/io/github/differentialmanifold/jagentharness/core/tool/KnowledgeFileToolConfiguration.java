@@ -1,12 +1,5 @@
 package io.github.differentialmanifold.jagentharness.core.tool;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,6 +8,12 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public class KnowledgeFileToolConfiguration implements ToolAvailabilityPolicy {
 
@@ -23,7 +22,8 @@ public class KnowledgeFileToolConfiguration implements ToolAvailabilityPolicy {
     private final KnowledgeFileStore knowledgeFileStore;
     private final ObjectMapper objectMapper;
 
-    public KnowledgeFileToolConfiguration(KnowledgeFileStore knowledgeFileStore, ObjectMapper objectMapper) {
+    public KnowledgeFileToolConfiguration(
+            KnowledgeFileStore knowledgeFileStore, ObjectMapper objectMapper) {
         if (knowledgeFileStore == null) {
             throw new IllegalArgumentException("knowledgeFileStore must not be null");
         }
@@ -42,7 +42,10 @@ public class KnowledgeFileToolConfiguration implements ToolAvailabilityPolicy {
         try {
             JsonNode root = objectMapper.readTree(file.getContent());
             JsonNode enabledTools = root == null ? null : root.get("enabledTools");
-            if (root == null || !root.isObject() || enabledTools == null || !enabledTools.isArray()) {
+            if (root == null
+                    || !root.isObject()
+                    || enabledTools == null
+                    || !enabledTools.isArray()) {
                 throw invalidConfiguration();
             }
             Set<String> names = new LinkedHashSet<String>();
@@ -91,7 +94,8 @@ public class KnowledgeFileToolConfiguration implements ToolAvailabilityPolicy {
     }
 
     @Override
-    public Collection<ToolDefinition> filter(Collection<ToolDefinition> tools, AgentContext context) {
+    public Collection<ToolDefinition> filter(
+            Collection<ToolDefinition> tools, AgentContext context) {
         ToolSelectionSnapshot selection = load();
         if (!selection.isConfigured()) {
             return tools;

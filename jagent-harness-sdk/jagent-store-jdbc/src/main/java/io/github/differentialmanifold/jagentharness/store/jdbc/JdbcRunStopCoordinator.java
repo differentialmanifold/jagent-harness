@@ -1,5 +1,11 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
+import io.github.differentialmanifold.jagentharness.core.agent.ActiveRunException;
+import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
+import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
+import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -9,13 +15,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import io.github.differentialmanifold.jagentharness.core.agent.ActiveRunException;
-import io.github.differentialmanifold.jagentharness.core.agent.RunStopCoordinator;
-import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
-import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
-import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
-import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -29,16 +28,17 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     private final long pollIntervalMillis;
     private final ScheduledExecutorService listenerExecutor;
 
-    public JdbcRunStopCoordinator(JdbcTemplate jdbcTemplate,
-                                  JdbcStoreProperties storeProperties,
-                                  JdbcRunStopProperties properties) {
+    public JdbcRunStopCoordinator(
+            JdbcTemplate jdbcTemplate,
+            JdbcStoreProperties storeProperties,
+            JdbcRunStopProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.applicationId = storeProperties.requireApplicationId();
-        this.pollIntervalMillis = positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
+        this.pollIntervalMillis =
+                positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
         int listenerThreads = positive(properties.getListenerThreads(), "listenerThreads");
-        this.listenerExecutor = Executors.newScheduledThreadPool(
-                listenerThreads,
-                new ListenerThreadFactory());
+        this.listenerExecutor =
+                Executors.newScheduledThreadPool(listenerThreads, new ListenerThreadFactory());
     }
 
     @Override
@@ -70,14 +70,15 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     @Override
     public StopRequestResult requestStop(String runId) {
         long now = System.currentTimeMillis();
-        int updated = jdbcTemplate.update(
-                "update agent_runs set status = ?, updated_at = ? "
-                        + "where application_id = ? and run_id = ? and status = ?",
-                STATUS_STOP_REQUESTED,
-                now,
-                applicationId,
-                runId,
-                STATUS_NORMAL);
+        int updated =
+                jdbcTemplate.update(
+                        "update agent_runs set status = ?, updated_at = ? "
+                                + "where application_id = ? and run_id = ? and status = ?",
+                        STATUS_STOP_REQUESTED,
+                        now,
+                        applicationId,
+                        runId,
+                        STATUS_NORMAL);
         if (updated > 0) {
             return StopRequestResult.REQUESTED;
         }
@@ -97,11 +98,12 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     }
 
     private String findStatus(String runId) {
-        List<String> rows = jdbcTemplate.query(
-                "select status from agent_runs where application_id = ? and run_id = ?",
-                (resultSet, rowNum) -> resultSet.getString("status"),
-                applicationId,
-                runId);
+        List<String> rows =
+                jdbcTemplate.query(
+                        "select status from agent_runs where application_id = ? and run_id = ?",
+                        (resultSet, rowNum) -> resultSet.getString("status"),
+                        applicationId,
+                        runId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -135,11 +137,9 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         }
 
         private void start() {
-            listenerTask = listenerExecutor.scheduleWithFixedDelay(
-                    this::refresh,
-                    0L,
-                    pollIntervalMillis,
-                    TimeUnit.MILLISECONDS);
+            listenerTask =
+                    listenerExecutor.scheduleWithFixedDelay(
+                            this::refresh, 0L, pollIntervalMillis, TimeUnit.MILLISECONDS);
         }
 
         @Override
@@ -167,8 +167,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         @Override
         public StopRegistration onStop(Runnable action) {
             if (action == null) {
-                return () -> {
-                };
+                return () -> {};
             }
             synchronized (listenersMonitor) {
                 if (!isAborted() && !closed.get()) {
@@ -179,8 +178,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
             if (isAborted()) {
                 runQuietly(action);
             }
-            return () -> {
-            };
+            return () -> {};
         }
 
         @Override
@@ -245,7 +243,8 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
 
         @Override
         public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "jagent-stop-listener-" + sequence.incrementAndGet());
+            Thread thread =
+                    new Thread(runnable, "jagent-stop-listener-" + sequence.incrementAndGet());
             thread.setDaemon(true);
             return thread;
         }

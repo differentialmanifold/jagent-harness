@@ -3,26 +3,25 @@ package io.github.differentialmanifold.jagentharness.core.prompt;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
 import org.yaml.snakeyaml.Yaml;
 
 public final class SkillFileParser {
 
-    private SkillFileParser() {
-    }
+    private SkillFileParser() {}
 
-    public static SkillDescriptor readDescriptor(String content,
-                                                 String defaultName,
-                                                 String filePath) {
+    public static SkillDescriptor readDescriptor(
+            String content, String defaultName, String filePath) {
         SkillFile skillFile = parseSkillFile(content);
         MarkdownDescriptor markdownDescriptor = readMarkdownDescriptor(skillFile.getBody());
-        String name = firstNonBlank(
-                metadataString(skillFile.getMetadata(), "name"),
-                markdownDescriptor.getName(),
-                defaultName);
-        String description = firstNonBlank(
-                metadataString(skillFile.getMetadata(), "description"),
-                markdownDescriptor.getDescription());
+        String name =
+                firstNonBlank(
+                        metadataString(skillFile.getMetadata(), "name"),
+                        markdownDescriptor.getName(),
+                        defaultName);
+        String description =
+                firstNonBlank(
+                        metadataString(skillFile.getMetadata(), "description"),
+                        markdownDescriptor.getDescription());
         return new SkillDescriptor(name, description, filePath);
     }
 

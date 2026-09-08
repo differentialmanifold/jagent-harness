@@ -46,8 +46,7 @@ public class MutableStopSignal implements StopSignal {
             }
         }
         action.run();
-        return () -> {
-        };
+        return () -> {};
     }
 
     private void removeListener(Runnable action) {

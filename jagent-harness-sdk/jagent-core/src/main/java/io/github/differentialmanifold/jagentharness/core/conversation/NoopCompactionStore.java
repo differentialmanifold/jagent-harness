@@ -8,6 +8,5 @@ public class NoopCompactionStore implements CompactionStore {
     }
 
     @Override
-    public void save(String sessionId, String summary, String cursorMessageId) {
-    }
+    public void save(String sessionId, String summary, String cursorMessageId) {}
 }

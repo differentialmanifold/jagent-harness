@@ -20,15 +20,17 @@ class ProviderControllerTest {
     @Test
     void reportsMissingOrUnavailableTokenAsNotConfigured() {
         assertFalse(controller(() -> "  ").list().isApiKeyConfigured());
-        assertFalse(controller(() -> {
-            throw new IllegalStateException("token unavailable");
-        }).list().isApiKeyConfigured());
+        assertFalse(
+                controller(
+                                () -> {
+                                    throw new IllegalStateException("token unavailable");
+                                })
+                        .list()
+                        .isApiKeyConfigured());
     }
 
     private ProviderController controller(ModelAccessTokenProvider accessTokenProvider) {
         return new ProviderController(
-                new ModelProviderRegistry(),
-                new HarnessProperties(),
-                accessTokenProvider);
+                new ModelProviderRegistry(), new HarnessProperties(), accessTokenProvider);
     }
 }

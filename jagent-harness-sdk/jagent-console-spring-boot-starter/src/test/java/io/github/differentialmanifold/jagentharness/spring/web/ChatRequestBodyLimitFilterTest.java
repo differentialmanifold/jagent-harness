@@ -3,15 +3,13 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import javax.servlet.ServletInputStream;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -22,18 +20,18 @@ class ChatRequestBodyLimitFilterTest {
 
     @Test
     void limitsUnknownLengthStreamRequestWhileItIsRead() throws Exception {
-        assertUnknownLengthRequestRejected("/api/chat/stream");
+        assertUnknownLengthRequestRejected("/api/v1/chat");
     }
 
     @Test
     void limitsUnknownLengthRunningMessageWhileItIsRead() throws Exception {
-        assertUnknownLengthRequestRejected("/api/chat/runs/run-1/messages");
+        assertUnknownLengthRequestRejected("/api/v1/runs/run-1/inputs");
     }
 
     @Test
     void rejectsKnownOversizedBodyBeforeInvokingTheControllerChain() throws Exception {
         ChatRequestBodyLimitFilter filter = new ChatRequestBodyLimitFilter(8L, objectMapper);
-        MockHttpServletRequest request = request("/api/chat/stream", "012345678");
+        MockHttpServletRequest request = request("/api/v1/chat", "012345678");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean invoked = new AtomicBoolean();
 
@@ -47,17 +45,20 @@ class ChatRequestBodyLimitFilterTest {
     @Test
     void permitsARequestWhoseUnknownLengthBodyExactlyMatchesTheLimit() throws Exception {
         ChatRequestBodyLimitFilter filter = new ChatRequestBodyLimitFilter(8L, objectMapper);
-        MockHttpServletRequest request = unknownLengthRequest("/api/chat/stream", "01234567");
+        MockHttpServletRequest request = unknownLengthRequest("/api/v1/chat", "01234567");
         MockHttpServletResponse response = new MockHttpServletResponse();
         ByteArrayOutputStream received = new ByteArrayOutputStream();
 
-        filter.doFilter(request, response, (limitedRequest, ignoredResponse) -> {
-            ServletInputStream input = limitedRequest.getInputStream();
-            int value;
-            while ((value = input.read()) >= 0) {
-                received.write(value);
-            }
-        });
+        filter.doFilter(
+                request,
+                response,
+                (limitedRequest, ignoredResponse) -> {
+                    ServletInputStream input = limitedRequest.getInputStream();
+                    int value;
+                    while ((value = input.read()) >= 0) {
+                        received.write(value);
+                    }
+                });
 
         assertEquals(200, response.getStatus());
         assertEquals("01234567", new String(received.toByteArray(), StandardCharsets.UTF_8));
@@ -66,7 +67,7 @@ class ChatRequestBodyLimitFilterTest {
     @Test
     void doesNotLimitOtherChatActions() throws Exception {
         ChatRequestBodyLimitFilter filter = new ChatRequestBodyLimitFilter(8L, objectMapper);
-        MockHttpServletRequest request = request("/api/chat/runs/run-1/stop", "012345678");
+        MockHttpServletRequest request = request("/api/v1/runs/run-1/stop", "012345678");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean invoked = new AtomicBoolean();
 
@@ -81,12 +82,15 @@ class ChatRequestBodyLimitFilterTest {
         MockHttpServletRequest request = unknownLengthRequest(path, "012345678");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        filter.doFilter(request, response, (limitedRequest, ignoredResponse) -> {
-            byte[] buffer = new byte[32];
-            while (limitedRequest.getInputStream().read(buffer) >= 0) {
-                // Consume the request as an HTTP message converter would.
-            }
-        });
+        filter.doFilter(
+                request,
+                response,
+                (limitedRequest, ignoredResponse) -> {
+                    byte[] buffer = new byte[32];
+                    while (limitedRequest.getInputStream().read(buffer) >= 0) {
+                        // Consume the request as an HTTP message converter would.
+                    }
+                });
 
         assertEquals(413, response.getStatus());
         assertPayloadTooLarge(response);
@@ -106,17 +110,18 @@ class ChatRequestBodyLimitFilterTest {
     }
 
     private MockHttpServletRequest unknownLengthRequest(String path, String body) {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", path) {
-            @Override
-            public int getContentLength() {
-                return -1;
-            }
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", path) {
+                    @Override
+                    public int getContentLength() {
+                        return -1;
+                    }
 
-            @Override
-            public long getContentLengthLong() {
-                return -1L;
-            }
-        };
+                    @Override
+                    public long getContentLengthLong() {
+                        return -1L;
+                    }
+                };
         request.setContentType("application/json");
         request.setContent(body.getBytes(StandardCharsets.UTF_8));
         return request;

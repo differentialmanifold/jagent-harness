@@ -1,8 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
-import java.util.List;
-
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import java.util.List;
 
 public interface SkillManifestStore {
 

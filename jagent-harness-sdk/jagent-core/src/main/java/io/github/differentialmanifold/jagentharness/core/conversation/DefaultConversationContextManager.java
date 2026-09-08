@@ -1,5 +1,22 @@
 package io.github.differentialmanifold.jagentharness.core.conversation;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.agent.ModelCallRetryExecutor;
+import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
+import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
+import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -8,24 +25,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.core.agent.ModelCallRetryExecutor;
-import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
-import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
-import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
-import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
-import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
-import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
-import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
-import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
-import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
 
 public class DefaultConversationContextManager implements ConversationContextManager {
 
@@ -47,47 +46,58 @@ public class DefaultConversationContextManager implements ConversationContextMan
     private final ModelCallRetryExecutor modelCallRetryExecutor;
     private final TokenEstimator tokenEstimator = new TokenEstimator();
 
-    public DefaultConversationContextManager(AgentSettings settings,
-                                             CompactionStore compactionStore,
-                                             AgentEventPublisher eventPublisher,
-                                             ObjectMapper objectMapper) {
-        this(settings, compactionStore, eventPublisher, objectMapper, new NoopModelCallUsageStore());
+    public DefaultConversationContextManager(
+            AgentSettings settings,
+            CompactionStore compactionStore,
+            AgentEventPublisher eventPublisher,
+            ObjectMapper objectMapper) {
+        this(
+                settings,
+                compactionStore,
+                eventPublisher,
+                objectMapper,
+                new NoopModelCallUsageStore());
     }
 
-    public DefaultConversationContextManager(AgentSettings settings,
-                                             CompactionStore compactionStore,
-                                             AgentEventPublisher eventPublisher,
-                                             ObjectMapper objectMapper,
-                                             ModelCallUsageStore modelCallUsageStore) {
+    public DefaultConversationContextManager(
+            AgentSettings settings,
+            CompactionStore compactionStore,
+            AgentEventPublisher eventPublisher,
+            ObjectMapper objectMapper,
+            ModelCallUsageStore modelCallUsageStore) {
         this.settings = settings;
         this.compactionStore = compactionStore;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
-        this.modelCallUsageStore = modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
+        this.modelCallUsageStore =
+                modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
         this.modelCallRetryExecutor = new ModelCallRetryExecutor(settings, eventPublisher);
     }
 
     @Override
     public ConversationContext prepare(ConversationContextRequest request) {
         request.getStopSignal().throwIfAborted();
-        List<AgentMessage> messages = request.getMessages() == null
-                ? new ArrayList<AgentMessage>()
-                : new ArrayList<AgentMessage>(request.getMessages());
+        List<AgentMessage> messages =
+                request.getMessages() == null
+                        ? new ArrayList<AgentMessage>()
+                        : new ArrayList<AgentMessage>(request.getMessages());
         CompactionState state = compactionStore.findBySessionId(request.getSessionId());
         String summary = state == null ? null : state.getSummary();
         String cursorMessageId = state == null ? null : state.getCursorMessageId();
         Instant usageBaselineNotBefore = state == null ? null : state.getUpdatedAt();
         List<AgentMessage> contextMessages = messagesAfterCursor(messages, cursorMessageId);
-        String systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
+        String systemPromptWithSummary =
+                appendCompactionSummary(request.getSystemPrompt(), summary);
         List<AgentMessage> modelMessages = messagesForModel(contextMessages);
         boolean usageBaselineValid = true;
-        EstimateSnapshot estimate = estimateRequestTokens(
-                request.getSessionId(),
-                systemPromptWithSummary,
-                modelMessages,
-                request.getTools(),
-                usageBaselineValid,
-                usageBaselineNotBefore);
+        EstimateSnapshot estimate =
+                estimateRequestTokens(
+                        request.getSessionId(),
+                        systemPromptWithSummary,
+                        modelMessages,
+                        request.getTools(),
+                        usageBaselineValid,
+                        usageBaselineNotBefore);
         int thresholdTokens = estimate.thresholdTokens;
 
         if (shouldCompact(estimate.estimatedTokens, thresholdTokens, contextMessages)) {
@@ -96,8 +106,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
             List<AgentMessage> recentMessages = recentSelection.messages;
             int compactMessageCount = recentSelection.startIndex;
             if (compactMessageCount > 0) {
-                List<AgentMessage> messagesToCompact = new ArrayList<AgentMessage>(
-                        contextMessages.subList(0, compactMessageCount));
+                List<AgentMessage> messagesToCompact =
+                        new ArrayList<AgentMessage>(
+                                contextMessages.subList(0, compactMessageCount));
                 Map<String, Object> startPayload = new LinkedHashMap<String, Object>();
                 startPayload.put("estimatedTokens", estimate.estimatedTokens);
                 startPayload.put("rawEstimatedTokens", estimate.rawEstimatedTokens);
@@ -108,55 +119,69 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 startPayload.put("recentMessageCount", recentMessages.size());
                 startPayload.put("compactTurnCount", recentSelection.compactTurnCount);
                 startPayload.put("recentTurnCount", recentSelection.recentTurnCount);
-                publish(request.getSessionId(), request.getRunId(), request.getTurnId(),
-                        AgentEvent.COMPACTION_START, startPayload);
-
-                summary = compactConversation(
-                        request.getProvider(),
-                        summary,
-                        messagesToCompact,
-                        request.getStopSignal(),
+                publish(
                         request.getSessionId(),
                         request.getRunId(),
-                        request.getTurnId());
+                        request.getTurnId(),
+                        AgentEvent.COMPACTION_START,
+                        startPayload);
+
+                summary =
+                        compactConversation(
+                                request.getProvider(),
+                                summary,
+                                messagesToCompact,
+                                request.getStopSignal(),
+                                request.getSessionId(),
+                                request.getRunId(),
+                                request.getTurnId());
                 request.getStopSignal().throwIfAborted();
-                cursorMessageId = messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
+                cursorMessageId =
+                        messagesToCompact.get(messagesToCompact.size() - 1).getMessageId();
                 compactionStore.save(request.getSessionId(), summary, cursorMessageId);
                 usageBaselineValid = false;
 
                 contextMessages = recentMessages;
-                systemPromptWithSummary = appendCompactionSummary(request.getSystemPrompt(), summary);
+                systemPromptWithSummary =
+                        appendCompactionSummary(request.getSystemPrompt(), summary);
                 modelMessages = messagesForModel(contextMessages);
-                estimate = estimateRequestTokens(
-                        request.getSessionId(),
-                        systemPromptWithSummary,
-                        modelMessages,
-                        request.getTools(),
-                        usageBaselineValid,
-                        usageBaselineNotBefore);
+                estimate =
+                        estimateRequestTokens(
+                                request.getSessionId(),
+                                systemPromptWithSummary,
+                                modelMessages,
+                                request.getTools(),
+                                usageBaselineValid,
+                                usageBaselineNotBefore);
                 Map<String, Object> endPayload = new LinkedHashMap<String, Object>();
                 endPayload.put("estimatedTokensBefore", beforeCompactionEstimate.estimatedTokens);
-                endPayload.put("rawEstimatedTokensBefore", beforeCompactionEstimate.rawEstimatedTokens);
+                endPayload.put(
+                        "rawEstimatedTokensBefore", beforeCompactionEstimate.rawEstimatedTokens);
                 endPayload.put("estimatedTokensAfter", estimate.estimatedTokens);
                 endPayload.put("rawEstimatedTokensAfter", estimate.rawEstimatedTokens);
                 endPayload.put("thresholdTokens", estimate.thresholdTokens);
                 endPayload.put("estimateSource", estimate.estimateSource);
                 endPayload.put("summaryTokens", tokenEstimator.estimateText(summary));
                 endPayload.put("cursorMessageId", cursorMessageId);
-                publish(request.getSessionId(), request.getRunId(), request.getTurnId(),
-                        AgentEvent.COMPACTION_END, endPayload);
+                publish(
+                        request.getSessionId(),
+                        request.getRunId(),
+                        request.getTurnId(),
+                        AgentEvent.COMPACTION_END,
+                        endPayload);
             }
         }
 
         request.getStopSignal().throwIfAborted();
         modelMessages = messagesForModel(contextMessages);
-        estimate = estimateRequestTokens(
-                request.getSessionId(),
-                systemPromptWithSummary,
-                modelMessages,
-                request.getTools(),
-                usageBaselineValid,
-                usageBaselineNotBefore);
+        estimate =
+                estimateRequestTokens(
+                        request.getSessionId(),
+                        systemPromptWithSummary,
+                        modelMessages,
+                        request.getTools(),
+                        usageBaselineValid,
+                        usageBaselineNotBefore);
         return new ConversationContext(
                 systemPromptWithSummary,
                 modelMessages,
@@ -167,9 +192,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 estimate.estimateSource);
     }
 
-    private boolean shouldCompact(int estimatedTokens,
-                                  int thresholdTokens,
-                                  List<AgentMessage> contextMessages) {
+    private boolean shouldCompact(
+            int estimatedTokens, int thresholdTokens, List<AgentMessage> contextMessages) {
         return settings.isCompactionEnabled()
                 && thresholdTokens > 0
                 && estimatedTokens >= thresholdTokens
@@ -177,12 +201,13 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 && contextMessages.size() > Math.max(1, effectiveRecentMessages());
     }
 
-    private EstimateSnapshot estimateRequestTokens(String sessionId,
-                                                   String systemPrompt,
-                                                   List<AgentMessage> messages,
-                                                   Collection<ToolDefinition> tools,
-                                                   boolean usageBaselineValid,
-                                                   Instant usageBaselineNotBefore) {
+    private EstimateSnapshot estimateRequestTokens(
+            String sessionId,
+            String systemPrompt,
+            List<AgentMessage> messages,
+            Collection<ToolDefinition> tools,
+            boolean usageBaselineValid,
+            Instant usageBaselineNotBefore) {
         int rawEstimatedTokens = rawEstimateRequestTokens(systemPrompt, messages, tools);
         int contextWindowTokens = effectiveContextWindowTokens();
         int thresholdTokens = compactionThresholdTokens(contextWindowTokens);
@@ -191,9 +216,11 @@ public class DefaultConversationContextManager implements ConversationContextMan
             if (isUsageBaselineUsable(latestUsage, usageBaselineNotBefore)) {
                 int baselineIndex = indexOfMessage(messages, latestUsage.getMessageId());
                 if (baselineIndex >= 0) {
-                    List<AgentMessage> deltaMessages = messages.subList(baselineIndex + 1, messages.size());
-                    int estimatedTokens = latestUsage.getActualContextTokens()
-                            + tokenEstimator.estimateMessages(deltaMessages);
+                    List<AgentMessage> deltaMessages =
+                            messages.subList(baselineIndex + 1, messages.size());
+                    int estimatedTokens =
+                            latestUsage.getActualContextTokens()
+                                    + tokenEstimator.estimateMessages(deltaMessages);
                     return new EstimateSnapshot(
                             Math.max(1, estimatedTokens),
                             rawEstimatedTokens,
@@ -218,27 +245,26 @@ public class DefaultConversationContextManager implements ConversationContextMan
         if (usageBaselineNotBefore == null) {
             return true;
         }
-        return usage.getCreatedAt() != null && !usage.getCreatedAt().isBefore(usageBaselineNotBefore);
+        return usage.getCreatedAt() != null
+                && !usage.getCreatedAt().isBefore(usageBaselineNotBefore);
     }
 
-    private int rawEstimateRequestTokens(String systemPrompt,
-                                         List<AgentMessage> messages,
-                                         Collection<ToolDefinition> tools) {
+    private int rawEstimateRequestTokens(
+            String systemPrompt, List<AgentMessage> messages, Collection<ToolDefinition> tools) {
         return tokenEstimator.estimateText(systemPrompt)
                 + tokenEstimator.estimateMessages(messages)
                 + tokenEstimator.estimateTools(tools);
     }
 
     private int effectiveContextWindowTokens() {
-        return settings.getContextWindowTokens() <= 0
-                ? 128000
-                : settings.getContextWindowTokens();
+        return settings.getContextWindowTokens() <= 0 ? 128000 : settings.getContextWindowTokens();
     }
 
     private int compactionThresholdTokens(int contextWindowTokens) {
-        double ratio = settings.getCompactionThresholdRatio() <= 0
-                ? 0.8d
-                : settings.getCompactionThresholdRatio();
+        double ratio =
+                settings.getCompactionThresholdRatio() <= 0
+                        ? 0.8d
+                        : settings.getCompactionThresholdRatio();
         if (ratio > 1.0d) {
             ratio = 1.0d;
         }
@@ -258,7 +284,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
         return -1;
     }
 
-    private List<AgentMessage> messagesAfterCursor(List<AgentMessage> messages, String cursorMessageId) {
+    private List<AgentMessage> messagesAfterCursor(
+            List<AgentMessage> messages, String cursorMessageId) {
         if (messages == null || messages.isEmpty()) {
             return new ArrayList<AgentMessage>();
         }
@@ -283,11 +310,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
 
     private RecentSelection selectRecentMessages(List<AgentMessage> messages) {
         if (messages == null || messages.isEmpty()) {
-            return new RecentSelection(
-                    0,
-                    new ArrayList<AgentMessage>(),
-                    0,
-                    0);
+            return new RecentSelection(0, new ArrayList<AgentMessage>(), 0, 0);
         }
         List<TurnRange> turns = turnRanges(messages);
         int startIndex = Math.max(0, messages.size() - effectiveRecentMessages());
@@ -323,13 +346,15 @@ public class DefaultConversationContextManager implements ConversationContextMan
         for (int i = 1; i < messages.size(); i++) {
             AgentMessage message = messages.get(i);
             String nextTurnId = normalizedTurnId(message);
-            boolean explicitTurnChanged = currentTurnId != null || nextTurnId != null
-                    ? !sameValue(currentTurnId, nextTurnId)
-                    : false;
-            boolean legacyTurnStarted = currentTurnId == null
-                    && nextTurnId == null
-                    && AgentMessage.ROLE_USER.equals(message.getRole());
-            if (explicitTurnChanged || legacyTurnStarted) {
+            boolean explicitTurnChanged =
+                    currentTurnId != null || nextTurnId != null
+                            ? !sameValue(currentTurnId, nextTurnId)
+                            : false;
+            boolean implicitTurnStarted =
+                    currentTurnId == null
+                            && nextTurnId == null
+                            && AgentMessage.ROLE_USER.equals(message.getRole());
+            if (explicitTurnChanged || implicitTurnStarted) {
                 turns.add(new TurnRange(startIndex, i));
                 startIndex = i;
                 currentTurnId = nextTurnId;
@@ -340,7 +365,9 @@ public class DefaultConversationContextManager implements ConversationContextMan
     }
 
     private String normalizedTurnId(AgentMessage message) {
-        if (message == null || message.getTurnId() == null || message.getTurnId().trim().isEmpty()) {
+        if (message == null
+                || message.getTurnId() == null
+                || message.getTurnId().trim().isEmpty()) {
             return null;
         }
         return message.getTurnId().trim();
@@ -362,30 +389,34 @@ public class DefaultConversationContextManager implements ConversationContextMan
         return content.substring(0, prefixLength) + TOOL_RESULT_TRUNCATED_SUFFIX;
     }
 
-    private String compactConversation(ModelProvider provider,
-                                       String previousSummary,
-                                       List<AgentMessage> messagesToCompact,
-                                       StopSignal stopSignal,
-                                       String sessionId,
-                                       String runId,
-                                       String turnId) {
+    private String compactConversation(
+            ModelProvider provider,
+            String previousSummary,
+            List<AgentMessage> messagesToCompact,
+            StopSignal stopSignal,
+            String sessionId,
+            String runId,
+            String turnId) {
         ModelRequest request = new ModelRequest();
         request.setModel(settings.getModel());
         request.setSystemPrompt(compactionSystemPrompt());
-        request.setMessages(Collections.singletonList(AgentMessage.user(
-                "compaction",
-                compactionUserPrompt(previousSummary, messagesToCompact))));
+        request.setMessages(
+                Collections.singletonList(
+                        AgentMessage.user(
+                                "compaction",
+                                compactionUserPrompt(previousSummary, messagesToCompact))));
         request.setTools(Collections.<ToolDefinition>emptyList());
 
-        ModelResponse response = modelCallRetryExecutor.call(
-                provider,
-                request,
-                (ModelDeltaConsumer) null,
-                null,
-                stopSignal,
-                sessionId,
-                runId,
-                turnId);
+        ModelResponse response =
+                modelCallRetryExecutor.call(
+                        provider,
+                        request,
+                        (ModelDeltaConsumer) null,
+                        null,
+                        stopSignal,
+                        sessionId,
+                        runId,
+                        turnId);
         String summary = response == null ? null : response.getContent();
         if (summary == null || summary.trim().isEmpty()) {
             throw new ModelProviderException("Compaction returned an empty summary", null, false);
@@ -402,20 +433,23 @@ public class DefaultConversationContextManager implements ConversationContextMan
     private String compactionSystemPrompt() {
         return "You compact long agent conversations for future context. "
                 + "Produce a concise but complete summary under about "
-                + effectiveCompactionTargetTokens() + " tokens. "
+                + effectiveCompactionTargetTokens()
+                + " tokens. "
                 + "Preserve durable facts, user intent, decisions, constraints, file paths, code changes, "
                 + "tool results, unresolved tasks, and current next steps. "
                 + "Do not invent details. Do not include generic filler.";
     }
 
-    private String compactionUserPrompt(String previousSummary, List<AgentMessage> messagesToCompact) {
+    private String compactionUserPrompt(
+            String previousSummary, List<AgentMessage> messagesToCompact) {
         StringBuilder prompt = new StringBuilder();
         if (previousSummary != null && !previousSummary.trim().isEmpty()) {
             prompt.append("Previous compacted summary:\n")
                     .append(previousSummary.trim())
                     .append("\n\n");
         }
-        prompt.append("Compact this conversation segment and merge it with the previous summary if present.\n\n");
+        prompt.append(
+                "Compact this conversation segment and merge it with the previous summary if present.\n\n");
         prompt.append(renderMessagesForCompaction(messagesToCompact));
         return prompt.toString();
     }
@@ -438,20 +472,20 @@ public class DefaultConversationContextManager implements ConversationContextMan
             }
             rendered.append("\n");
             if (message.getContent() != null && !message.getContent().isEmpty()) {
-                String content = isOversizedToolResult(message)
-                        ? truncatedToolResult(message.getContent())
-                        : message.getContent();
+                String content =
+                        isOversizedToolResult(message)
+                                ? truncatedToolResult(message.getContent())
+                                : message.getContent();
                 rendered.append(content).append("\n");
             }
             if (message.getImages() != null) {
                 for (MessageImage image : message.getImages()) {
-                    rendered.append("[image attached: ")
-                            .append(imageLabel(image))
-                            .append("]\n");
+                    rendered.append("[image attached: ").append(imageLabel(image)).append("]\n");
                 }
             }
             if (isAbortedAssistant(message)) {
-                rendered.append("The user interrupted this assistant response before completion.\n");
+                rendered.append(
+                        "The user interrupted this assistant response before completion.\n");
             }
             if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
                 try {
@@ -493,7 +527,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
             if (hasAssistantContent(message)) {
                 modelMessages.add(message);
             }
-            AgentMessage interrupted = AgentMessage.user(message.getSessionId(), ABORTED_RESPONSE_CONTEXT);
+            AgentMessage interrupted =
+                    AgentMessage.user(message.getSessionId(), ABORTED_RESPONSE_CONTEXT);
             interrupted.setRunId(message.getRunId());
             interrupted.setTurnId(message.getTurnId());
             interrupted.setParentMessageId(message.getMessageId());
@@ -525,11 +560,8 @@ public class DefaultConversationContextManager implements ConversationContextMan
         return value == null ? "" : value;
     }
 
-    private AgentEvent publish(String sessionId,
-                               String runId,
-                               String turnId,
-                               String type,
-                               Object payload) {
+    private AgentEvent publish(
+            String sessionId, String runId, String turnId, String type, Object payload) {
         return eventPublisher.publish(sessionId, runId, turnId, type, payload);
     }
 
@@ -540,11 +572,12 @@ public class DefaultConversationContextManager implements ConversationContextMan
         private final int thresholdTokens;
         private final String estimateSource;
 
-        private EstimateSnapshot(int estimatedTokens,
-                                 int rawEstimatedTokens,
-                                 int contextWindowTokens,
-                                 int thresholdTokens,
-                                 String estimateSource) {
+        private EstimateSnapshot(
+                int estimatedTokens,
+                int rawEstimatedTokens,
+                int contextWindowTokens,
+                int thresholdTokens,
+                String estimateSource) {
             this.estimatedTokens = estimatedTokens;
             this.rawEstimatedTokens = rawEstimatedTokens;
             this.contextWindowTokens = contextWindowTokens;
@@ -569,10 +602,11 @@ public class DefaultConversationContextManager implements ConversationContextMan
         private final int compactTurnCount;
         private final int recentTurnCount;
 
-        private RecentSelection(int startIndex,
-                                List<AgentMessage> messages,
-                                int compactTurnCount,
-                                int recentTurnCount) {
+        private RecentSelection(
+                int startIndex,
+                List<AgentMessage> messages,
+                int compactTurnCount,
+                int recentTurnCount) {
             this.startIndex = startIndex;
             this.messages = messages;
             this.compactTurnCount = compactTurnCount;

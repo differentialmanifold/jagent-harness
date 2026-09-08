@@ -6,8 +6,7 @@ public class VirtualFileContentResponse extends VirtualFileResponse {
 
     private String content;
 
-    public VirtualFileContentResponse() {
-    }
+    public VirtualFileContentResponse() {}
 
     public VirtualFileContentResponse(KnowledgeFile file) {
         super(file);

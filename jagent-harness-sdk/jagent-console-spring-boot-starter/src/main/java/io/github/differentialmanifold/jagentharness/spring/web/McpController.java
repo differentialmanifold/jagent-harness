@@ -1,13 +1,8 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
-import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigEntry;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpConfigurationManager;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpRuntime;
@@ -20,6 +15,10 @@ import io.github.differentialmanifold.jagentharness.spring.web.dto.McpConfigResp
 import io.github.differentialmanifold.jagentharness.spring.web.dto.McpServerResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.McpTestRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.McpToolCallRequest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,31 +29,34 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/mcp")
+@RequestMapping("/api/v1/mcp")
 public class McpController {
 
     private final McpConfigurationManager configurationManager;
     private final McpRuntime runtime;
     private final SessionManager sessionManager;
 
-    public McpController(McpConfigurationManager configurationManager,
-                         McpRuntime runtime,
-                         SessionManager sessionManager) {
+    public McpController(
+            McpConfigurationManager configurationManager,
+            McpRuntime runtime,
+            SessionManager sessionManager) {
         this.configurationManager = configurationManager;
         this.runtime = runtime;
         this.sessionManager = sessionManager;
     }
 
     @GetMapping("/config")
-    public McpConfigResponse config(@RequestParam(required = false) String sessionId,
-                                    @RequestParam(required = false) String scope) {
+    public McpConfigResponse config(
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String scope) {
         return response(session(sessionId), scope);
     }
 
     @PutMapping("/config")
-    public McpConfigResponse save(@RequestBody McpConfigRequest request,
-                                  @RequestParam(required = false) String sessionId,
-                                  @RequestParam(required = false) String scope) {
+    public McpConfigResponse save(
+            @RequestBody McpConfigRequest request,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String scope) {
         if (request == null || request.getContent() == null) {
             throw new IllegalArgumentException("MCP configuration content is required");
         }
@@ -64,8 +66,9 @@ public class McpController {
     }
 
     @DeleteMapping("/config")
-    public McpConfigResponse delete(@RequestParam(required = false) String sessionId,
-                                    @RequestParam(required = false) String scope) {
+    public McpConfigResponse delete(
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String scope) {
         SessionRecord session = session(sessionId);
         configurationManager.deleteDatabase(scope(scope, session));
         return response(session, scope);
@@ -86,7 +89,8 @@ public class McpController {
                 || request.getConfig() == null
                 || request.getToolName() == null
                 || request.getToolName().trim().isEmpty()) {
-            throw new IllegalArgumentException("MCP server, configuration, and tool name are required");
+            throw new IllegalArgumentException(
+                    "MCP server, configuration, and tool name are required");
         }
         if (request.getArguments() != null && !request.getArguments().isObject()) {
             throw new IllegalArgumentException("MCP tool arguments must be a JSON object");
@@ -107,21 +111,22 @@ public class McpController {
         List<McpServerResponse> servers = new ArrayList<McpServerResponse>();
         for (Map.Entry<String, McpConfigEntry> entry : snapshot.getServers().entrySet()) {
             McpServerRuntimeStatus status = statuses.get(entry.getKey());
-            servers.add(new McpServerResponse(
-                    entry.getKey(),
-                    entry.getValue().getConfig(),
-                    entry.getValue().getSource(),
-                    entry.getValue().getOverriddenSources(),
-                    status == null ? "not_loaded" : status.getStatus(),
-                    status == null ? null : status.getError(),
-                    status == null ? null : status.getProtocolVersion(),
-                    status == null ? Collections.<String>emptyList() : status.getTools(),
-                    status == null ? Collections.<String>emptyList() : status.getAvailableTools(),
-                    status == null ? Collections.emptyList() : status.getToolDetails()));
+            servers.add(
+                    new McpServerResponse(
+                            entry.getKey(),
+                            entry.getValue().getConfig(),
+                            entry.getValue().getSource(),
+                            entry.getValue().getOverriddenSources(),
+                            status == null ? "not_loaded" : status.getStatus(),
+                            status == null ? null : status.getError(),
+                            status == null ? null : status.getProtocolVersion(),
+                            status == null ? Collections.<String>emptyList() : status.getTools(),
+                            status == null
+                                    ? Collections.<String>emptyList()
+                                    : status.getAvailableTools(),
+                            status == null ? Collections.emptyList() : status.getToolDetails()));
         }
-        return new McpConfigResponse(
-                snapshot.getDatabaseConfig(),
-                servers);
+        return new McpConfigResponse(snapshot.getDatabaseConfig(), servers);
     }
 
     private SessionRecord session(String sessionId) {

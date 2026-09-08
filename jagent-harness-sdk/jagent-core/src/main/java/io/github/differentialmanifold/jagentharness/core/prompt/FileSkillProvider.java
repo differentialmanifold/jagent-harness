@@ -1,19 +1,18 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
+import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
+import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
-
-import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
-import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 
 public class FileSkillProvider implements SkillProvider {
 
@@ -25,8 +24,13 @@ public class FileSkillProvider implements SkillProvider {
     }
 
     public FileSkillProvider(Path configRoot, String skillsDir) {
-        this.configRoot = normalize(configRoot == null ? PathsSupport.expandUserHome(PathsSupport.DEFAULT_CONFIG_ROOT) : configRoot);
-        this.skillsDir = skillsDir == null || skillsDir.trim().isEmpty() ? "skills" : skillsDir.trim();
+        this.configRoot =
+                normalize(
+                        configRoot == null
+                                ? PathsSupport.expandUserHome(PathsSupport.DEFAULT_CONFIG_ROOT)
+                                : configRoot);
+        this.skillsDir =
+                skillsDir == null || skillsDir.trim().isEmpty() ? "skills" : skillsDir.trim();
     }
 
     public List<SkillDescriptor> listSkills() {
@@ -39,9 +43,10 @@ public class FileSkillProvider implements SkillProvider {
 
     @Override
     public List<SkillDescriptor> listSkills(AgentContext context) {
-        Path effectiveConfigRoot = context == null || context.getConfigRoot() == null
-                ? configRoot
-                : normalize(context.getConfigRoot());
+        Path effectiveConfigRoot =
+                context == null || context.getConfigRoot() == null
+                        ? configRoot
+                        : normalize(context.getConfigRoot());
         Path workspaceRoot = context == null ? null : normalize(context.getWorkspaceRoot());
         return listSkillsAtRoots(effectiveConfigRoot, workspaceRoot);
     }
@@ -84,14 +89,12 @@ public class FileSkillProvider implements SkillProvider {
     }
 
     private SkillDescriptor readDescriptor(Path path) {
-        String defaultName = path.getParent() == null ? "skill" : path.getParent().getFileName().toString();
+        String defaultName =
+                path.getParent() == null ? "skill" : path.getParent().getFileName().toString();
         String content = readFile(path);
         Path normalizedPath = normalize(path);
 
-        return SkillFileParser.readDescriptor(
-                content,
-                defaultName,
-                normalizedPath.toString());
+        return SkillFileParser.readDescriptor(content, defaultName, normalizedPath.toString());
     }
 
     private String readFile(Path path) {
