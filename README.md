@@ -4,26 +4,7 @@
 
 JAgentHarness separates the agent loop from the environment where actions happen. Your application embeds a lightweight tool-execution SDK; a server runs the harness, calls the model, and maintains the conversation. A shared protocol connects them.
 
-```mermaid
-flowchart LR
-    subgraph device["DEVICE / YOUR APPLICATION"]
-        direction TB
-        sdk["Lightweight client SDK<br/>Advertise tools · Execute calls · Return results"]
-        tools["Your native tools<br/>Device APIs · UI actions · Files · Shell"]
-        sdk <-->|"Local calls and results"| tools
-    end
-    subgraph remote["CLOUD / YOUR SERVER"]
-        direction TB
-        harness["Agent Harness<br/>Agent loop · Context · Conversation state"]
-        model["Language model"]
-        harness <-->|"Model requests and responses"| model
-    end
-    sdk -->|"HTTP request: chat, tool catalog, results"| harness
-    harness -->|"HTTP response: tool calls or answer"| sdk
-    style sdk fill:#e8edff,stroke:#4f46e5,color:#172554
-    style tools fill:#e6f7f1,stroke:#0f766e,color:#134e4a
-    style harness fill:#e8edff,stroke:#4f46e5,color:#172554
-```
+![Architecture: a lightweight client SDK executes native tools locally and exchanges chat, tool calls, and results with a remote Agent Harness over HTTP/JSON.](assets/architecture.svg)
 
 The client initiates every connection. The server returns tool calls in its responses, so the device does not need to expose a callback endpoint.
 
