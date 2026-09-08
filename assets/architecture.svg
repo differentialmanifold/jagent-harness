@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560" role="img" aria-labelledby="title description">
+  <title id="title">Remote agent harness, local tool execution</title>
+  <desc id="description">The application embeds a lightweight SDK and executes native tools locally. It sends chat messages and tool descriptions to the remote harness over HTTP and JSON. The harness calls the language model and returns tool calls or an answer. The SDK sends tool results through the same chat API. Every connection is initiated by the client.</desc>
+  <defs>
+    <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#4763cb"/></marker>
+    <marker id="gray-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#64748b"/></marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+      .label { font-size: 16px; font-weight: 700; letter-spacing: 1.5px; }
+      .heading { font-size: 25px; font-weight: 700; fill: #17243b; }
+      .body { font-size: 19px; fill: #475569; }
+      .flow { font-size: 19px; font-weight: 600; fill: #344ca2; }
+    </style>
+  </defs>
+  <rect width="1120" height="560" rx="16" fill="#ffffff"/>
+  <!-- Fixed columns keep the ownership boundary clear in GitHub's README view. -->
+  <rect x="24" y="24" width="340" height="448" rx="16" fill="#f0faf7" stroke="#bbddd2"/>
+  <rect x="756" y="24" width="340" height="448" rx="16" fill="#f3f5ff" stroke="#cbd3f3"/>
+  <text x="48" y="62" class="label" fill="#18735e">DEVICE / YOUR APPLICATION</text>
+  <text x="48" y="100" class="heading">Execute tools locally</text>
+  <text x="780" y="62" class="label" fill="#4763cb">CLOUD / YOUR SERVER</text>
+  <text x="780" y="100" class="heading">Run the agent harness</text>
+
+  <rect x="48" y="140" width="292" height="184" rx="12" fill="#ffffff" stroke="#92c6b7" stroke-width="2"/>
+  <text x="72" y="181" class="heading">Lightweight SDK</text>
+  <text x="72" y="217" class="body">Advertise available tools</text>
+  <text x="72" y="247" class="body">Execute calls locally</text>
+  <text x="72" y="277" class="body">Return tool results</text>
+
+  <rect x="780" y="140" width="292" height="184" rx="12" fill="#ffffff" stroke="#a7b5eb" stroke-width="2"/>
+  <text x="804" y="181" class="heading">Agent Harness</text>
+  <text x="804" y="217" class="body">Agent loop</text>
+  <text x="804" y="247" class="body">Context management</text>
+  <text x="804" y="277" class="body">Conversation state</text>
+
+  <!-- Responses use the client's connection; there is no server-to-device callback. -->
+  <text x="560" y="136" text-anchor="middle" class="label" fill="#64748b">HTTP / JSON</text>
+  <text x="560" y="181" text-anchor="middle" class="flow">1. Chat + tool catalog</text>
+  <path d="M 354 196 H 766" fill="none" stroke="#4763cb" stroke-width="2" marker-end="url(#blue-arrow)"/>
+  <text x="560" y="239" text-anchor="middle" class="flow">2. Tool calls or answer</text>
+  <path d="M 766 254 H 354" fill="none" stroke="#4763cb" stroke-width="2" marker-end="url(#blue-arrow)"/>
+  <text x="560" y="297" text-anchor="middle" class="flow">3. Tool results</text>
+  <path d="M 354 312 H 766" fill="none" stroke="#4763cb" stroke-width="2" marker-end="url(#blue-arrow)"/>
+  <text x="560" y="348" text-anchor="middle" class="body">Repeat until the answer is ready</text>
+
+  <path d="M 194 330 V 364" fill="none" stroke="#64748b" stroke-width="2" marker-start="url(#gray-arrow)" marker-end="url(#gray-arrow)"/>
+  <path d="M 926 330 V 364" fill="none" stroke="#64748b" stroke-width="2" marker-start="url(#gray-arrow)" marker-end="url(#gray-arrow)"/>
+  <rect x="48" y="370" width="292" height="78" rx="12" fill="#def2ea"/>
+  <text x="194" y="400" text-anchor="middle" font-size="22" font-weight="700" fill="#185b4b">Your native tools</text>
+  <text x="194" y="430" text-anchor="middle" font-size="17" fill="#306858">Device APIs · UI · Files · Shell</text>
+  <rect x="780" y="370" width="292" height="78" rx="12" fill="#e5eaff"/>
+  <text x="926" y="417" text-anchor="middle" font-size="22" font-weight="700" fill="#344ca2">Language model</text>
+
+  <text x="560" y="511" text-anchor="middle" font-size="21" font-weight="700" fill="#17243b">One shared protocol. Tools stay in their native environment.</text>
+  <text x="560" y="541" text-anchor="middle" class="body">Every connection starts from the client. No inbound endpoint required on the device.</text>
+</svg>
