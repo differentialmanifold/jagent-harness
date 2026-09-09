@@ -15,8 +15,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -131,28 +131,17 @@ public class VirtualFileController {
             throw new IllegalArgumentException("Skills zip file is required.");
         }
 
-        int imported = 0;
         KnowledgeScope knowledgeScope = scope(scope, sessionId);
-        ZipInputStream zip = new ZipInputStream(file.getInputStream(), StandardCharsets.UTF_8);
-        try {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if (!entry.isDirectory()) {
-                    String path = normalizeImportedSkillPath(entry.getName());
-                    if (path != null) {
-                        String content = readZipEntry(zip);
-                        knowledgeFileStore.writeFile(
-                                knowledgeScope, path, content, contentType(path));
-                        imported += 1;
-                    }
-                }
-                zip.closeEntry();
-            }
-        } finally {
-            zip.close();
+        Map<String, String> files = SkillArchive.read(file.getInputStream(), file.getOriginalFilename());
+        // Validate the complete archive before writing any files.
+        for (String path : files.keySet()) {
+            normalizeSkillPath(path);
         }
-
-        return new VirtualFileImportResponse(imported);
+        for (Map.Entry<String, String> entry : files.entrySet()) {
+            knowledgeFileStore.writeFile(
+                    knowledgeScope, entry.getKey(), entry.getValue(), contentType(entry.getKey()));
+        }
+        return new VirtualFileImportResponse(files.size());
     }
 
     private KnowledgeScope scope(String scope, String sessionId) {
@@ -193,20 +182,6 @@ public class VirtualFileController {
         }
     }
 
-    private String normalizeImportedSkillPath(String zipEntryName) {
-        String name = zipEntryName == null ? "" : zipEntryName.trim().replace('\\', '/');
-        while (name.startsWith("/")) {
-            name = name.substring(1);
-        }
-        if (name.isEmpty() || name.startsWith("__MACOSX/") || name.endsWith(".DS_Store")) {
-            return null;
-        }
-        if (!name.startsWith("skills/")) {
-            name = "skills/" + name;
-        }
-        return normalizeSkillPath(name);
-    }
-
     private String normalizeSkillPath(String path) {
         String normalized = KnowledgeFilePaths.normalize(path);
         if (!normalized.startsWith("skills/")) {
@@ -214,16 +189,6 @@ public class VirtualFileController {
         }
         validateSkillFilePath(normalized);
         return normalized;
-    }
-
-    private String readZipEntry(ZipInputStream zip) throws IOException {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int read;
-        while ((read = zip.read(buffer)) >= 0) {
-            output.write(buffer, 0, read);
-        }
-        return new String(output.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private String contentType(String path) {

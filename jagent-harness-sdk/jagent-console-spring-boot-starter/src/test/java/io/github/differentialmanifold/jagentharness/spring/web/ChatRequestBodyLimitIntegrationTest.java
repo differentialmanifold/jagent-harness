@@ -33,9 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         classes = ChatRequestBodyLimitIntegrationTest.TestApplication.class,
         properties = {
-            "agent.enabled=false",
-            "agent.http.enabled=false",
-            "agent.http.max-chat-request-body-size=128B"
+            "harness.enabled=false",
+            "harness.console.enabled=false",
+            "harness.console.max-chat-request-body-size=128B"
         })
 class ChatRequestBodyLimitIntegrationTest {
 

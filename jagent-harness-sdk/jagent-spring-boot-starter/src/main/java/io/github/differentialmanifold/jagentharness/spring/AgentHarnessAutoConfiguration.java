@@ -53,7 +53,7 @@ import org.springframework.context.annotation.Bean;
             "org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration"
         })
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
-        prefix = "agent",
+        prefix = "harness",
         name = "enabled",
         havingValue = "true",
         matchIfMissing = true)

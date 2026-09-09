@@ -28,11 +28,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
         properties = {
             "spring.datasource.url=jdbc:sqlite:file:conversation-tests?mode=memory&cache=shared",
             "spring.datasource.driver-class-name=org.sqlite.JDBC",
-            "agent.model.provider=scripted",
-            "agent.model.model=test",
-            "agent.compaction.enabled=false",
-            "agent.protocol.token=test-token",
-            "agent.store.jdbc.application-id=protocol-tests"
+            "harness.model.provider=scripted",
+            "harness.model.model=test",
+            "harness.compaction.enabled=false",
+            "harness.protocol.token=test-token",
+            "harness.store.jdbc.application-id=protocol-tests"
         })
 @Import(ConversationProtocolTest.Fixtures.class)
 class ConversationProtocolTest {

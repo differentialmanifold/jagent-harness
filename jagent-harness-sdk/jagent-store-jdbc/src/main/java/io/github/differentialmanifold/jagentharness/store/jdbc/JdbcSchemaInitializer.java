@@ -67,8 +67,8 @@ public class JdbcSchemaInitializer {
             throw new IllegalStateException(
                     "No bundled schema for database '"
                             + name
-                            + "'. Set agent.store.jdbc.schema-locations to compatible SQL scripts, or set "
-                            + "agent.store.jdbc.initialize-schema=false and manage the schema in your application.");
+                            + "'. Set harness.store.jdbc.schema-locations to compatible SQL scripts, or set "
+                            + "harness.store.jdbc.initialize-schema=false and manage the schema in your application.");
         }
         return name;
     }

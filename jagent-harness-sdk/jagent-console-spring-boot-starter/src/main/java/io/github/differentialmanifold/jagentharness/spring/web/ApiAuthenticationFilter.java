@@ -16,13 +16,13 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
     private final String token;
 
     public ApiAuthenticationFilter(
-            @Value("${agent.protocol.token:}") String token,
+            @Value("${harness.protocol.token:}") String token,
             @Value("${server.address:0.0.0.0}") String bind) {
         this.token = token;
         if (token.isEmpty()
                 && !("127.0.0.1".equals(bind) || "::1".equals(bind) || "localhost".equals(bind)))
             throw new IllegalArgumentException(
-                    "agent.protocol.token is required for a non-loopback server binding");
+                    "harness.protocol.token is required for a non-loopback server binding");
     }
 
     @Override

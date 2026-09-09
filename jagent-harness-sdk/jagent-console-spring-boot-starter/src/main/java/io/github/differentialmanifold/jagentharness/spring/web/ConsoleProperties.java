@@ -5,15 +5,24 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
 
-@ConfigurationProperties(prefix = "agent.http")
+@ConfigurationProperties(prefix = "harness.console")
 public class ConsoleProperties {
 
+    private boolean enabled = true;
     private List<String> allowedOrigins = new ArrayList<String>();
     private DataSize maxChatRequestBodySize = DataSize.ofMegabytes(32);
 
     public ConsoleProperties() {
         allowedOrigins.add("http://localhost:5175");
         allowedOrigins.add("http://127.0.0.1:5175");
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     public List<String> getAllowedOrigins() {

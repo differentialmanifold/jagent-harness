@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-harness</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
   <packaging>pom</packaging>
   <name>JAgentHarness</name>
   <description>Protocol-first Agent service and language-specific client SDKs</description>

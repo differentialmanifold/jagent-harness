@@ -20,4 +20,4 @@ The application uses [jagent-client-java](../../sdk/java/README.md). Its `Coding
 
 `CodingGateway` exposes the API used by the shared console. It invokes the SDK, forwards conversation events, and proxies server management APIs. Tool execution and approval remain local. You can replace the gateway and console with your own UI while using the same SDK.
 
-The application JAR is `target/jagent-coding-java-1.0.0.jar`. It listens on `127.0.0.1:18180` by default; configure `CODING_CLIENT_PORT`, `JAGENT_SERVER_URL`, and `JAGENT_CLIENT_TOKEN` for standalone use. Direct JAR launches read process environment variables, not `.env.local`.
+The application JAR is `target/jagent-coding-java-1.1.0.jar`. It listens on `127.0.0.1:18180` by default; configure `CODING_CLIENT_PORT`, `JAGENT_SERVER_URL`, and `JAGENT_CLIENT_TOKEN` for standalone use. Direct JAR launches read process environment variables, not `.env.local`.
