@@ -14,7 +14,7 @@ For local source builds, run `mvn install` in the framework root first. From thi
 
 ```sh
 mvn package
-java -jar target/server-demo-1.0.0.jar
+java -jar target/server-demo-1.1.0.jar
 ```
 
 Provide `JAGENT_MODEL`, `JAGENT_OPENAI_BASE_URL`, and `JAGENT_OPENAI_API_KEY` as process environment variables. Direct JAR launches do not read the framework's `.env.local`.

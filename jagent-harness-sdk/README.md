@@ -12,12 +12,12 @@ Add these dependencies to a Spring Boot application:
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-store-jdbc</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>
@@ -39,7 +39,7 @@ spring:
   datasource:
     url: jdbc:sqlite:agent.db
     driver-class-name: org.sqlite.JDBC
-agent:
+harness:
   protocol:
     token: ${JAGENT_CLIENT_TOKEN:}
   model:
@@ -57,7 +57,7 @@ The server owns the agent loop, model calls, and conversation history. Client ap
 
 The host may also register server-side tools as `ToolDefinition` beans or use `ToolProvider`. Client tools implement the same Java contract but stay in their own application. Tool names must be unique across the combined catalog.
 
-Optional skills are Markdown instructions stored through the console or knowledge-file API. They guide tool use; they do not contain tool implementations.
+Optional skills are Markdown instructions stored through the console or knowledge-file API. Import a ZIP containing `skills/{name}/SKILL.md`, a skill directory, or `SKILL.md` directly at the archive root. Supporting files keep their paths relative to `SKILL.md`. For a root-level skill, its descriptor name (or ZIP filename when unnamed) determines the destination directory. Skills guide tool use; they do not contain tool implementations.
 
 ## Select modules and extension points
 
@@ -71,7 +71,9 @@ Optional skills are Markdown instructions stored through the console or knowledg
 | `jagent-mcp-client` | MCP client support |
 | `jagent-mcp-spring-boot-starter` | Optional MCP auto-configuration |
 
-Use `SystemPromptContributor` for business instructions, `ModelProvider` for model integrations, `ToolContextFactory` for execution context, and `AgentEventListener` for events. Storage interfaces can be replaced with your own implementations. Default beans yield to supported user-provided components; `agent.enabled=false` disables the default agent auto-configuration.
+Use `SystemPromptContributor` for business instructions, `ModelProvider` for model integrations, `ToolContextFactory` for execution context, and `AgentEventListener` for events. Storage interfaces can be replaced with your own implementations. Default beans yield to supported user-provided components; `harness.enabled=false` disables the default agent auto-configuration.
+
+Server settings use `harness.*`. Set `harness.console.enabled=false` to disable the chat and console HTTP endpoints while keeping the harness available to your host application. CORS and request limits use `harness.console.*`; the client API token uses `harness.protocol.token`.
 
 ## Storage
 
@@ -79,10 +81,10 @@ The demo uses SQLite. The JDBC library does not supply a database driver: your a
 
 | Property | Purpose |
 | --- | --- |
-| `agent.store.jdbc.application-id` | Namespace for application data in a shared database |
-| `agent.store.jdbc.platform` | `auto` detects SQLite, H2, or PostgreSQL; can also be set explicitly |
-| `agent.store.jdbc.initialize-schema` | Set to `false` when managing schema creation yourself |
-| `agent.store.jdbc.schema-locations` | List of custom initialization scripts |
+| `harness.store.jdbc.application-id` | Namespace for application data in a shared database |
+| `harness.store.jdbc.platform` | `auto` detects SQLite, H2, or PostgreSQL; can also be set explicitly |
+| `harness.store.jdbc.initialize-schema` | Set to `false` when managing schema creation yourself |
+| `harness.store.jdbc.schema-locations` | List of custom initialization scripts |
 
 To use another database, replace the SQLite driver in your application, configure the connection, and select or provide its schema. SQLite and H2 are covered by integration tests. PostgreSQL DDL is included but has not been verified against a live instance. Other databases may need DDL and SQL adaptations or custom storage implementations.
 

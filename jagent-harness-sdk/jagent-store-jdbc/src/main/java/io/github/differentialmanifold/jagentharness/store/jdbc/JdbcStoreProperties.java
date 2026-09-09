@@ -2,7 +2,7 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "agent.store.jdbc")
+@ConfigurationProperties(prefix = "harness.store.jdbc")
 public class JdbcStoreProperties {
 
     private boolean initializeSchema = true;
@@ -46,11 +46,11 @@ public class JdbcStoreProperties {
     public String requireApplicationId() {
         String value = applicationId == null ? "" : applicationId.trim();
         if (value.isEmpty()) {
-            throw new IllegalArgumentException("agent.store.jdbc.application-id is required");
+            throw new IllegalArgumentException("harness.store.jdbc.application-id is required");
         }
         if (value.length() > 128) {
             throw new IllegalArgumentException(
-                    "agent.store.jdbc.application-id must contain 1-128 characters");
+                    "harness.store.jdbc.application-id must contain 1-128 characters");
         }
         return value;
     }

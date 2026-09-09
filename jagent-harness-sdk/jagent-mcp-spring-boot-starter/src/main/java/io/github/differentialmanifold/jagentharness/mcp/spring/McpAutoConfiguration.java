@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Bean;
         })
 @EnableConfigurationProperties(McpProperties.class)
 @ConditionalOnProperty(
-        prefix = "agent",
+        prefix = "harness",
         name = {"enabled", "mcp.enabled"},
         havingValue = "true",
         matchIfMissing = true)

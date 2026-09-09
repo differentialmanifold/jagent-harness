@@ -1,8 +1,10 @@
 # JAgentHarness
 
+**English** | [简体中文](README.zh-CN.md)
+
 **Run the agent harness remotely. Execute tools locally.**
 
-JAgentHarness separates the agent loop from the environment where actions happen. Your application embeds a lightweight tool-execution SDK; a server runs the harness, calls the model, and maintains the conversation. A shared protocol connects them.
+JAgentHarness is an agent harness designed for server deployment, with tool execution separated from the agent runtime. Your application embeds a lightweight tool-execution SDK; a server runs the harness, calls the model, and maintains the conversation. A shared protocol connects them.
 
 ![Architecture: a lightweight client SDK executes native tools locally and exchanges chat, tool calls, and results with a remote Agent Harness over HTTP/JSON.](assets/architecture.svg)
 
@@ -13,8 +15,6 @@ The client initiates every connection. The server returns tool calls in its resp
 A robot controller, a phone app, and a desktop application each have their own runtime, dependencies, and native APIs. The tools must run there, but embedding a full agent harness can tie the application to a different language, framework, or dependency stack. Reimplementing the agent loop for each environment adds another system to maintain.
 
 JAgentHarness puts a protocol at that boundary. **The device implements its capabilities; the server runs the agent.** Model integration, context management, and conversation state live on the server. Local code owns tool implementations, permissions, and execution. Agent behavior can evolve independently of those device integrations.
-
-The current Java SDK uses the JDK HTTP stack and Jackson. It does not bring Spring, JDBC, model clients, or the agent runtime into the host application. Other languages can implement the same HTTP/JSON protocol without adopting the server's Java stack.
 
 ## Where this fits
 
@@ -27,16 +27,13 @@ The current Java SDK uses the JDK HTTP stack and Jackson. It does not bring Spri
 
 **Available today:** a Java server, lightweight Java client SDK, and a working coding demo. Robot and phone integrations illustrate applications of the design; their platform tools and adapters are not included. A complete JavaScript SDK is not yet provided.
 
-## How it works
+## Features
 
-1. The client sends a user message and descriptions of its available tools.
-2. The harness runs until it needs a client tool, then returns the calls and releases the request.
-3. The SDK executes those tools locally and submits their results through the same chat API.
-4. The harness continues from the conversation history until it has an answer or needs another tool.
-
-The UI can present these exchanges as one continuous interaction. Tool implementations and local dependencies stay in the application; messages, tool arguments, and returned results cross the network. Your application chooses which capabilities to expose and what data its tools return.
-
-Server-side tools are also supported. In Java, both sides implement `ToolDefinition`; registration determines where execution happens. See the [protocol](protocol/README.md) for the wire format and failure semantics.
+- **Built for servers:** a deployable Java agent with model integration, streaming, context compaction, and tool orchestration.
+- **Database-backed state:** persist conversations, execution events, and usage through JDBC, with your choice of database.
+- **Virtual file system:** manage prompts, skills, and supporting files in the database, with global and project scopes.
+- **Lightweight client SDK:** embed native tools into existing applications with just JDK HTTP and Jackson; connect through a language-neutral protocol.
+- **Extensible by design:** combine server, client, and MCP tools; customize model providers, prompts, and storage through Maven libraries.
 
 ## Try it locally
 
@@ -79,7 +76,7 @@ See [Quick start](QUICK_START.md) for configuration and troubleshooting.
 - [Server integration](jagent-harness-sdk/README.md): host and configure the harness using Maven libraries.
 - [Coding client](examples/coding-java/README.md) and [server host](examples/server-demo/README.md): the two applications behind the demo.
 
-The current release is `1.0.0`. For local development, run `mvn install` before building a separate Maven consumer. The current host targets a single service instance and application-level authentication; platform-specific permissions remain the client's responsibility.
+This source tree targets `1.1.0`. For local development, run `mvn install` before building a separate Maven consumer. The current host targets a single service instance and application-level authentication; platform-specific permissions remain the client's responsibility.
 
 ## Development
 

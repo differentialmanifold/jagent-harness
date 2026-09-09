@@ -59,6 +59,6 @@ class JdbcSchemaInitializerTest {
                                                 settings,
                                                 new DefaultResourceLoader())
                                         .initialize());
-        assertTrue(error.getMessage().contains("agent.store.jdbc.schema-locations"));
+        assertTrue(error.getMessage().contains("harness.store.jdbc.schema-locations"));
     }
 }

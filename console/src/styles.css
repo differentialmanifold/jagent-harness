@@ -2094,8 +2094,15 @@ textarea {
   margin-right: 6px;
 }
 
-.composer .el-textarea__inner {
+.composer textarea.composer-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
   min-height: 78px;
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  resize: none;
+  outline: none;
   border: 0;
   border-radius: 18px;
   background: transparent;
@@ -2106,17 +2113,17 @@ textarea {
   box-shadow: none;
 }
 
-.composer .el-textarea__inner:focus {
+.composer textarea.composer-input:focus {
   background: transparent;
   box-shadow: none;
 }
 
-.composer .el-textarea__inner:disabled {
+.composer textarea.composer-input:disabled {
   background: transparent;
   box-shadow: none;
 }
 
-.composer .el-textarea__inner::placeholder {
+.composer textarea.composer-input::placeholder {
   color: #98a2b3;
 }
 

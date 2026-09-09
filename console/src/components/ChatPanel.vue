@@ -50,10 +50,8 @@
           </button>
         </div>
       </div>
-      <el-input
-        class="composer-input"
-        type="textarea"
-        resize="none"
+      <ComposerInput
+        :key="currentSession?.sessionId || 'no-session'"
         :model-value="draft"
         :disabled="!currentSession"
         :placeholder="composerPlaceholder"
@@ -157,6 +155,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { CaretBottom, Close, Lock, Picture, Top, Unlock } from '@element-plus/icons-vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import MessageItem from './MessageItem.vue'
+import ComposerInput from './ComposerInput.vue'
 import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
@@ -254,7 +253,7 @@ function selectApprovalMode(mode) {
 
 function handleKeydown(event) {
   if (event.key !== 'Enter') return
-  if (event.shiftKey || event.isComposing) return
+  if (event.shiftKey || event.isComposing || event.keyCode === 229) return
   event.preventDefault()
   submit()
 }

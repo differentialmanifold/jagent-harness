@@ -173,7 +173,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         String model = trimToEmpty(request.getModel());
         if (model.isEmpty()) {
             throw new ModelProviderException(
-                    "Model name is required. Configure agent.model.model.");
+                    "Model name is required. Configure harness.model.model.");
         }
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("model", model);
@@ -455,7 +455,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         String base = trimToEmpty(config.getBaseUrl());
         if (base.isEmpty()) {
             throw new ModelProviderException(
-                    "Model provider base URL is required. Configure agent.model.base-url.");
+                    "Model provider base URL is required. Configure harness.model.base-url.");
         }
 
         int queryIndex = base.indexOf('?');

@@ -14,8 +14,8 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration(after = AgentConsoleAutoConfiguration.class)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnProperty(
-        prefix = "agent",
-        name = "enabled",
+        prefix = "harness",
+        name = {"enabled", "console.enabled"},
         havingValue = "true",
         matchIfMissing = true)
 public class ChatAutoConfiguration {
@@ -42,7 +42,7 @@ public class ChatAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ApiAuthenticationFilter apiAuthenticationFilter(
-            @Value("${agent.protocol.token:}") String token,
+            @Value("${harness.protocol.token:}") String token,
             @Value("${server.address:0.0.0.0}") String bind) {
         return new ApiAuthenticationFilter(token, bind);
     }

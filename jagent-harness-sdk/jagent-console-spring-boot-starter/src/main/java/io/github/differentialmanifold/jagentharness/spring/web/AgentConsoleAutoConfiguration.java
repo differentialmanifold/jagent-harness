@@ -35,8 +35,8 @@ import org.springframework.web.servlet.DispatcherServlet;
             "io.github.differentialmanifold.jagentharness.mcp.spring.McpAutoConfiguration"
         })
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
-        prefix = "agent",
-        name = "enabled",
+        prefix = "harness",
+        name = {"enabled", "console.enabled"},
         havingValue = "true",
         matchIfMissing = true)
 @ConditionalOnClass(DispatcherServlet.class)

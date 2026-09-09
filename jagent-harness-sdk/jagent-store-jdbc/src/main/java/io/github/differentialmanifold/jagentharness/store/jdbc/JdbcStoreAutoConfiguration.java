@@ -25,7 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
             "org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration"
         })
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
-        prefix = "agent",
+        prefix = "harness",
         name = "enabled",
         havingValue = "true",
         matchIfMissing = true)
