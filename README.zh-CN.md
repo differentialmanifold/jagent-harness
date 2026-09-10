@@ -67,7 +67,7 @@ node scripts/dev.mjs
 
 要体验跨机器运行，将 `JAGENT_SERVER_URL` 和 `JAGENT_CLIENT_TOKEN` 指向已启动的服务端，再运行 `node scripts/dev.mjs --client-only`。工作区始终保留在客户端机器上。
 
-更多配置和排错指引见 [Quick start](QUICK_START.md)（英文）。
+独立组件启动、Windows/macOS 快捷方式、手动启动命令和排错指引见 [Quick start](QUICK_START.md)（英文）。
 
 ## 接入项目
 

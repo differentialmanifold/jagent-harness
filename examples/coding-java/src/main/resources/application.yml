@@ -8,6 +8,7 @@ spring:
   application:
     name: jagent-coding-client
 coding:
+  console-port: ${JAGENT_CONSOLE_PORT:5175}
   server-url: ${JAGENT_SERVER_URL:http://127.0.0.1:18181}
   token: ${JAGENT_CLIENT_TOKEN:}
   tools:

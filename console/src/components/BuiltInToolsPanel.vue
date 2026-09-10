@@ -8,13 +8,13 @@
             {{ configured ? 'custom selection' : 'all enabled by default' }}
           </el-tag>
         </div>
-        <p>{{ selection.length }} of {{ tools.length }} built-in tools enabled</p>
+        <p>{{ selection.length }} of {{ tools.length }} server tools enabled</p>
       </div>
       <div class="built-in-tools-actions">
         <el-button text :disabled="loading || !tools.length" @click="selectAll">Select all</el-button>
         <el-button text :disabled="loading || !tools.length" @click="clearAll">Clear all</el-button>
         <el-popconfirm
-          title="Delete tools.json and enable every built-in tool?"
+          title="Delete tools.json and enable every server tool?"
           confirm-button-text="Reset"
           :disabled="!configured || saving"
           @confirm="resetConfiguration"
@@ -36,7 +36,8 @@
       <span>Loading built-in tools...</span>
     </div>
 
-    <el-checkbox-group v-else v-model="selection" class="built-in-tool-list">
+    <h3 v-if="!loading" class="tool-location-heading">Server tools</h3>
+    <el-checkbox-group v-if="!loading" v-model="selection" class="built-in-tool-list">
       <div v-for="tool in tools" :key="tool.name" class="built-in-tool-row">
         <div class="built-in-tool-main">
           <el-checkbox :value="tool.name">
@@ -46,13 +47,27 @@
         </div>
         <p>{{ tool.description || 'No description provided.' }}</p>
       </div>
-      <div v-if="!tools.length" class="built-in-tools-empty">No built-in tools are registered.</div>
+      <div v-if="!tools.length" class="built-in-tools-empty">No server tools are registered.</div>
     </el-checkbox-group>
+
+    <section v-if="!loading && clientTools.length" class="client-tools-section">
+      <h3 class="tool-location-heading">Client tools <el-tag size="small" type="success">{{ clientTools.length }}</el-tag></h3>
+      <p class="client-tools-description">Registered by the connected client. Execution and permissions are managed in the client application.</p>
+      <div class="built-in-tool-list">
+        <div v-for="tool in clientTools" :key="tool.name" class="built-in-tool-row">
+          <div class="built-in-tool-main">
+            <code>{{ tool.name }}</code>
+            <el-button size="small" @click="openDebugger(tool, true)">View schema</el-button>
+          </div>
+          <p>{{ tool.description || 'No description provided.' }}</p>
+        </div>
+      </div>
+    </section>
 
     <el-dialog
       v-model="debugOpen"
       class="mcp-debug-dialog"
-      :title="debugTool ? `Test ${debugTool.name}` : 'Test built-in tool'"
+      :title="debugTool ? `${inspectOnly ? 'Client tool' : 'Test'} ${debugTool.name}` : 'Test server tool'"
       top="20px"
       width="min(760px, calc(100vw - 24px))"
     >
@@ -62,7 +77,7 @@
           <strong>Input schema</strong>
           <pre>{{ formatJson(debugTool.parametersSchema || {}) }}</pre>
         </div>
-        <div class="mcp-debug-field">
+        <div v-if="!inspectOnly" class="mcp-debug-field">
           <strong>Arguments</strong>
           <el-input
             v-model="debugArguments"
@@ -81,7 +96,7 @@
       <template #footer>
         <div class="mcp-dialog-footer">
           <el-button @click="debugOpen = false">Close</el-button>
-          <el-button type="primary" :icon="VideoPlay" :loading="debugging" @click="runDebug">
+          <el-button v-if="!inspectOnly" type="primary" :icon="VideoPlay" :loading="debugging" @click="runDebug">
             Run tool
           </el-button>
         </div>
@@ -102,6 +117,8 @@ const props = defineProps({
 
 const emit = defineEmits(['changed'])
 const tools = ref([])
+const clientTools = ref([])
+const inspectOnly = ref(false)
 const configured = ref(false)
 const selection = ref([])
 const originalSelection = ref([])
@@ -140,7 +157,7 @@ async function save() {
       method: 'PUT',
       body: JSON.stringify({ enabledTools: selection.value })
     }))
-    ElMessage.success('Built-in tool selection saved.')
+    ElMessage.success('Server tool selection saved.')
     emit('changed')
   } catch (reason) {
     error.value = reason.message
@@ -155,7 +172,7 @@ async function resetConfiguration() {
   error.value = ''
   try {
     applyResponse(await request('/api/v1/tools/config', { method: 'DELETE' }))
-    ElMessage.success('All built-in tools are enabled by default.')
+    ElMessage.success('All server tools are enabled by default.')
     emit('changed')
   } catch (reason) {
     error.value = reason.message
@@ -166,6 +183,7 @@ async function resetConfiguration() {
 
 function applyResponse(data) {
   tools.value = data?.tools || []
+  clientTools.value = data?.clientTools || []
   configured.value = Boolean(data?.configured)
   const enabled = normalizeSelection(data?.enabledTools || [])
   selection.value = enabled
@@ -180,7 +198,8 @@ function clearAll() {
   selection.value = []
 }
 
-function openDebugger(tool) {
+function openDebugger(tool, readOnly = false) {
+  inspectOnly.value = readOnly
   debugTool.value = tool
   debugArguments.value = '{}'
   debugResult.value = ''
@@ -189,7 +208,7 @@ function openDebugger(tool) {
 }
 
 async function runDebug() {
-  if (!debugTool.value || debugging.value) return
+  if (!debugTool.value || inspectOnly.value || debugging.value) return
   debugError.value = ''
   debugResult.value = ''
   let args
