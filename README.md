@@ -67,7 +67,7 @@ Watch the tool calls: the server drives the conversation while the coding client
 
 To see the same separation across machines, set `JAGENT_SERVER_URL` and `JAGENT_CLIENT_TOKEN` to an existing server, then run `node scripts/dev.mjs --client-only`. The workspace remains on the client machine.
 
-See [Quick start](QUICK_START.md) for configuration and troubleshooting.
+See [Quick start](QUICK_START.md) for separate component launchers, Windows/macOS shortcuts, manual startup commands, and troubleshooting.
 
 ## Integrate it
 

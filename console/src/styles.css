@@ -3167,3 +3167,23 @@ dd {
     justify-content: flex-end;
   }
 }
+
+.tool-location-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 15px;
+}
+
+.client-tools-section {
+  margin-top: 24px;
+  border-top: 1px solid #d7dde6;
+  padding-top: 12px;
+}
+
+.client-tools-description {
+  margin: 0 0 16px;
+  color: #64748b;
+  font-size: 13px;
+}

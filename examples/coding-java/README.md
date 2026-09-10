@@ -1,6 +1,6 @@
 # Coding client example
 
-A Java application that connects to a JAgentHarness server and executes tools in a local workspace. It provides file reading, writing, editing, directory listing, search, and shell execution, with local approval and cancellation controls. It is a working example of [Harness and execution separation](../../README.md#how-it-works): the cloud server decides what to do, this application decides what may run on this machine.
+A Java application that connects to a JAgentHarness server and executes tools in a local workspace. It provides file reading, writing, editing, directory listing, search, and shell execution, with local approval and cancellation controls. It is a working example of [Harness and execution separation](../../README.md#why-separate-the-harness-from-execution): the cloud server decides what to do, this application decides what may run on this machine.
 
 ## Run
 

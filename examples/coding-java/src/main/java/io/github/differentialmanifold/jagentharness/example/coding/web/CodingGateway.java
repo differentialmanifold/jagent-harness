@@ -213,13 +213,19 @@ public class CodingGateway {
                 json.readValue(
                         forward("GET", "/api/v1/tools", null).body,
                         new TypeReference<List<Map<String, Object>>>() {});
+        result.addAll(clientToolInfo());
+        return result;
+    }
+
+    private List<Map<String, Object>> clientToolInfo() {
+        List<Map<String, Object>> result = new ArrayList<>();
         for (CodingTool tool : localTools) {
-            Map<String, Object> t = new LinkedHashMap<>();
-            t.put("name", tool.getName());
-            t.put("description", tool.getDescription());
-            t.put("parameters", tool.getParametersSchema());
-            t.put("executionLocation", "CLIENT");
-            result.add(t);
+            Map<String, Object> info = new LinkedHashMap<>();
+            info.put("name", tool.getName());
+            info.put("description", tool.getDescription());
+            info.put("parametersSchema", tool.getParametersSchema());
+            info.put("executionLocation", "CLIENT");
+            result.add(info);
         }
         return result;
     }
@@ -251,6 +257,13 @@ public class CodingGateway {
                 request.getRequestURI()
                         + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         Forward remote = forward(request.getMethod(), uri, body, request.getContentType());
+        if (remote.status >= 200 && remote.status < 300
+                && "/api/v1/tools/config".equals(request.getRequestURI())) {
+            com.fasterxml.jackson.databind.node.ObjectNode config =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(remote.body);
+            config.set("clientTools", json.valueToTree(clientToolInfo()));
+            remote.body = json.writeValueAsBytes(config);
+        }
         response.setStatus(remote.status);
         for (Map.Entry<String, List<String>> h : remote.headers.entrySet())
             if (h.getKey() != null
