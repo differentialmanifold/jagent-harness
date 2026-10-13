@@ -1,0 +1,38 @@
+{
+  "job": {
+    "runnerId": "runner_linux",
+    "workspace": "/srv/project",
+    "request": {
+      "sessionId": "ses_remote",
+      "runId": "run_remote",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read README.md"
+        }
+      ],
+      "clientTools": [
+        {
+          "name": "read",
+          "description": "Read a local file",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ],
+      "stream": true
+    },
+    "status": "CLAIMED",
+    "cancelled": false,
+    "response": null
+  },
+  "cancelledRuns": []
+}

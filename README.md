@@ -2,42 +2,41 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-**Run the agent harness remotely. Execute tools locally.**
+**Run the agent on your server. Execute tools where your work lives.**
 
-JAgentHarness is an agent harness designed for server deployment, with tool execution separated from the agent runtime. Your application embeds a lightweight tool-execution SDK; a server runs the harness, calls the model, and maintains the conversation. A shared protocol connects them.
+JAgentHarness separates the agent harness, tool runner, and user interface. The server manages the model and conversation. A lightweight runner carries native tools and executes them on the target machine. The frontend talks to the server and can run on either machine.
 
-![Architecture: a lightweight client SDK executes native tools locally and exchanges chat, tool calls, and results with a remote Agent Harness over HTTP/JSON.](assets/architecture.svg)
+![Three independent parts: a frontend and a coding runner each connect to the server Agent Harness.](assets/architecture.svg)
 
-The client initiates every connection. The server returns tool calls in its responses, so the device does not need to expose a callback endpoint.
+## Three parts, one protocol
+
+| Part | Responsibility | Implementation |
+| --- | --- | --- |
+| **Agent Harness** | Model calls, agent loop, context, database state, and server tools such as skills and virtual files | Java libraries with a [server example](examples/server-demo/README.md) |
+| **Runner** | Scenario-specific native tools, execution permissions, and result delivery | [Client SDK](sdk/java/README.md) with a ready-to-run [coding distribution](examples/coding-runner/README.md) |
+| **Frontend** | Conversations, progress, project selection, and configuration through server APIs | [Web Console](console/README.md), hosted on the server or client machine |
+
+The runner includes its tool implementations. It advertises their schemas to the server, receives work over outbound HTTP long polling, and returns results through the conversation API. The frontend connects to the server, regardless of where it is hosted. The runner needs no inbound port. The Java SDK includes the runner runtime: provide your own `ToolDefinition` implementations for a new scenario. Only file-based tools need a workspace.
 
 ## Why separate the harness from execution?
 
-A robot controller, a phone app, and a desktop application each have their own runtime, dependencies, and native APIs. The tools must run there, but embedding a full agent harness can tie the application to a different language, framework, or dependency stack. Reimplementing the agent loop for each environment adds another system to maintain.
+A robot controller, a phone app, a desktop application, and a Linux workspace each have their own runtime and native APIs. Tools must execute in that environment; model integration, context management, and persistent conversations can remain on a server.
 
-JAgentHarness puts a protocol at that boundary. **The device implements its capabilities; the server runs the agent.** Model integration, context management, and conversation state live on the server. Local code owns tool implementations, permissions, and execution. Agent behavior can evolve independently of those device integrations.
+Build the tools in the language that fits the device. Reuse the server's agent through a simple HTTP/JSON protocol. A web, desktop, or other frontend can use the same server APIs without taking ownership of local execution.
 
-## Where this fits
-
-| Application | What stays local |
-| --- | --- |
-| Coding and desktop automation | Workspace access, application controls, shell commands |
-| Robot control | Hardware drivers, sensor access, device-specific actions |
-| Phone automation | Native app integration, UI actions, platform permissions |
-| Existing business applications | Internal services and operations exposed as tools |
-
-**Available today:** a Java server, lightweight Java client SDK, and a working coding demo. Robot and phone integrations illustrate applications of the design; their platform tools and adapters are not included. A complete JavaScript SDK is not yet provided.
+**Available today:** a Java server, a lightweight Java client SDK, a coding runner with built-in tools, and a web Console. Other languages can implement native runners without MCP. Robot, phone, desktop automation adapters, and a JavaScript SDK are not included.
 
 ## Features
 
-- **Built for servers:** a deployable Java agent with model integration, streaming, context compaction, and tool orchestration.
-- **Database-backed state:** persist conversations, execution events, and usage through JDBC, with your choice of database.
-- **Virtual file system:** manage prompts, skills, and supporting files in the database, with global and project scopes.
-- **Lightweight client SDK:** embed native tools into existing applications with just JDK HTTP and Jackson; connect through a language-neutral protocol.
-- **Extensible by design:** combine server, client, and MCP tools; customize model providers, prompts, and storage through Maven libraries.
+- **Built for servers:** model integration, streaming, context compaction, and tool orchestration.
+- **Database-backed state:** conversations, events, usage, and runner dispatch through JDBC.
+- **Virtual files and skills:** server-managed prompts, skills, and supporting files with global and project scopes.
+- **Lightweight execution:** native tools run in a client process without Spring, JDBC, or model SDKs.
+- **Independent interface:** one set of server APIs for the current web Console and future desktop or other clients.
 
 ## Try it locally
 
-You need **JDK 8+**, **Maven 3.6.3+**, **Node.js 22.12+**, and an OpenAI-compatible model endpoint. SQLite is included; no database service is needed.
+Install **JDK 8+**, **Maven 3.6.3+**, and **Node.js 22.12+**. An OpenAI-compatible model endpoint is required; SQLite is included.
 
 ```sh
 git clone https://github.com/differentialmanifold/jagent-harness.git
@@ -45,38 +44,40 @@ cd jagent-harness
 cp .env.example .env.local
 ```
 
-Set your model connection in `.env.local`:
+Set the model and local workspace in `.env.local`:
 
 ```dotenv
 JAGENT_MODEL=your-model-name
 JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
 JAGENT_OPENAI_API_KEY=your-api-key
+JAGENT_RUNNER_WORKSPACE=/path/to/your/project
 ```
 
-Start the coding demo:
+Start all three parts:
 
 ```sh
 node scripts/dev.mjs
 ```
 
-This builds and starts the harness server, coding client, and web console. Open **http://127.0.0.1:5175**, create a project with a local workspace path, and ask:
+Open **http://127.0.0.1:5175**, add a project, select **coding-local** as its execution target, and ask:
 
 > Read the README in this workspace and summarize the project.
 
-Watch the tool calls: the server drives the conversation while the coding client reads the file on your machine. In a scratch workspace, try asking it to create a small file and read it back. Use the console's approval controls for local actions. **Ctrl+C** stops the demo.
+The server drives the conversation while the runner reads the local file. The runner defaults to read/search tools. Set `JAGENT_RUNNER_FULL_ACCESS=true` before starting it to enable write, edit, and bash. The workspace and permissions are configured on the runner machine. **Ctrl+C** stops the demo.
 
-To see the same separation across machines, set `JAGENT_SERVER_URL` and `JAGENT_CLIENT_TOKEN` to an existing server, then run `node scripts/dev.mjs --client-only`. The workspace remains on the client machine.
-
-See [Quick start](QUICK_START.md) for separate component launchers, Windows/macOS shortcuts, manual startup commands, and troubleshooting.
+See [Quick start](QUICK_START.md) for independent startup, manual commands, remote machines, and Windows/macOS shortcuts.
 
 ## Integrate it
 
-- [Java client SDK](sdk/java/README.md): embed tool execution and register local capabilities.
-- [HTTP/JSON protocol](protocol/README.md): implement a client in another language or environment.
-- [Server integration](jagent-harness-sdk/README.md): host and configure the harness using Maven libraries.
-- [Coding client](examples/coding-java/README.md) and [server host](examples/server-demo/README.md): the two applications behind the demo.
+- [Server integration](jagent-harness-sdk/README.md): deploy and extend the harness through Maven libraries.
+- [Coding runner](examples/coding-runner/README.md): run built-in tools on a target machine; [中文指南](examples/coding-runner/README.zh-CN.md).
+- [Web Console](console/README.md): host the same frontend beside the server or on a client machine.
+- [Java client SDK](sdk/java/README.md): register native tools with `AgentRunner`, or start conversations with `AgentClient`.
+- [HTTP/JSON protocol](protocol/README.md): implement another runner or frontend.
 
-This source tree targets `1.1.0`. For local development, run `mvn install` before building a separate Maven consumer. The current host targets a single service instance and application-level authentication; platform-specific permissions remain the client's responsibility.
+This source tree targets `1.2.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
+
+The source layout follows these roles: `jagent-harness-sdk/` contains the server libraries, `sdk/java/` contains the reusable client and runner runtime, `examples/` contains the server host and coding tool host, `console/` contains the frontend, and `protocol/` contains the language-independent contract and its tests.
 
 ## Development
 
@@ -89,6 +90,6 @@ npm test --prefix console
 npm run build --prefix console
 ```
 
-Maven runs the Java tests; npm runs the protocol and console tests. See [Releasing](RELEASING.md) for artifact publication.
+The Maven reactor contains the shared API, Java client SDK, coding runner, server libraries, and server example. The frontend builds independently into `console/dist/`. See [Releasing](RELEASING.md) for publication.
 
 [MIT License](LICENSE).

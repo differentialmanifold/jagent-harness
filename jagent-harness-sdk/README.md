@@ -12,12 +12,12 @@ Add these dependencies to a Spring Boot application:
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-store-jdbc</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>

@@ -45,18 +45,14 @@
           :pending-inputs="pendingInputs"
           :submitting-input="submittingInput"
           :message-revision="messageRevision"
-          :approval-mode="approvalMode"
-          :client-tools-enabled="workspaceProjectsEnabled"
           :context-usage="contextUsage"
           :draft-images="draftImages"
           :adding-images="addingImages"
           :image-error="imageError"
-          @update:approval-mode="setApprovalMode"
           @add-images="addDraftImages"
           @remove-image="removeDraftImage"
           @send="sendMessage"
           @stop="stopMessage"
-          @resolve-tool-approval="resolveToolApproval"
         />
 
         <InspectorPanel
@@ -79,12 +75,12 @@
     </div>
 
     <ProjectDialog
+      v-model:runner-id="projectRunnerDraft"
+      :runners="runners"
       v-model:project-name="projectNameDraft"
-      v-model:workspace-path="projectWorkspaceDraft"
       :open="projectDialogOpen"
       :submitting="projectSubmitting"
       :error="projectError"
-      :workspace-enabled="workspaceProjectsEnabled"
       @submit="submitProjectDialog"
       @close="closeProjectDialog"
     />
@@ -137,8 +133,9 @@ const {
   draftImages,
   addingImages,
   imageError,
+  runners,
+  projectRunnerDraft,
   projectNameDraft,
-  projectWorkspaceDraft,
   projectError,
   renameTitleDraft,
   renameError,
@@ -151,14 +148,12 @@ const {
   submittingInput,
   messageRevision,
   anyRunning,
-  approvalMode,
   projectDialogOpen,
   projectSubmitting,
   renameDialogOpen,
   renameSubmitting,
   providerLabel,
   statusText,
-  workspaceProjectsEnabled,
   currentProjectKey,
   renameDialogTitle,
   renameDialogLabel,
@@ -179,9 +174,7 @@ const {
   addDraftImages,
   removeDraftImage,
   sendMessage,
-  stopMessage,
-  setApprovalMode,
-  resolveToolApproval
+  stopMessage
 } = useAgentHarness()
 
 async function selectSessionAndShowChat(sessionId) {

@@ -5,7 +5,8 @@ import {
   summarizeToolArguments,
   toolMessageSubtitle,
   toolMessageTitle,
-  toolResultItems
+  toolResultItems,
+  toolStatusLabel
 } from './toolDisplay.js'
 
 test('summarizes the clean find and grep schemas', () => {
@@ -97,4 +98,12 @@ test('renders compact string file results', () => {
       detail: ''
     }
   ])
+})
+
+test('remote tool results preserve unknown and stopped outcomes', () => {
+  const unknown = { toolName: 'bash', content: JSON.stringify({ role: 'tool', status: 'UNKNOWN', content: { error: 'Connection lost' } }) }
+  assert.equal(toolStatusLabel(unknown), 'UNKNOWN')
+  assert.match(toolMessageTitle(unknown), /outcome unknown/)
+  const stopped = { toolName: 'bash', content: JSON.stringify({ role: 'tool', status: 'FAILED', content: { error: 'Tool execution stopped' } }) }
+  assert.equal(toolStatusLabel(stopped), 'STOP')
 })

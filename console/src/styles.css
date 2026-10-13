@@ -29,7 +29,6 @@ body,
   background: #fff;
 }
 
-.mcp-page-header,
 .mcp-detail-header,
 .mcp-list-heading,
 .mcp-title-line,
@@ -40,18 +39,11 @@ body,
   gap: 12px;
 }
 
-.mcp-page-header {
-  padding: 24px 28px;
-  border-bottom: 1px solid #d7dde6;
-}
-
-.mcp-page-header h2,
 .mcp-detail-header h3,
 .mcp-detail-section h4 {
   margin: 0;
 }
 
-.mcp-page-header p,
 .mcp-detail-header p,
 .mcp-detail-section p {
   margin: 5px 0 0;
@@ -268,7 +260,6 @@ body,
   overflow-wrap: anywhere;
 }
 
-.mcp-tools-list,
 .mcp-headers-list {
   margin: 10px 0 0;
   padding: 0;
@@ -346,13 +337,11 @@ body,
   overflow-wrap: anywhere;
 }
 
-.mcp-tools-list li,
 .mcp-headers-list li {
   padding: 10px 12px;
   border-bottom: 1px solid #e4e8ef;
 }
 
-.mcp-tools-list li:last-child,
 .mcp-headers-list li:last-child {
   border-bottom: 0;
 }
@@ -494,15 +483,6 @@ body,
 }
 
 @media (max-width: 640px) {
-  .mcp-page-header {
-    display: grid;
-    align-items: flex-start;
-    padding: 20px 18px;
-  }
-
-  .mcp-page-header > .mcp-detail-actions {
-    justify-content: flex-start;
-  }
 
   .mcp-config-toolbar {
     align-items: stretch;
@@ -1076,40 +1056,6 @@ textarea {
   font-size: 13px;
 }
 
-.primary-button,
-.icon-button,
-.secondary-button {
-  border: 1px solid #1f6feb;
-  background: #1f6feb;
-  color: #fff;
-  cursor: pointer;
-}
-
-.primary-button {
-  height: 38px;
-  border-radius: 6px;
-}
-
-.icon-button {
-  width: 34px;
-  height: 34px;
-  border-radius: 6px;
-}
-
-.icon-button.subtle {
-  border-color: #d7dde6;
-  background: #fff;
-  color: #18212f;
-}
-
-.secondary-button {
-  height: 38px;
-  border-color: #cbd3df;
-  border-radius: 6px;
-  background: #fff;
-  color: #18212f;
-}
-
 .project-actions {
   display: grid;
   gap: 8px;
@@ -1308,10 +1254,6 @@ textarea {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-}
-
-.workspace.management-shell {
-  grid-template-columns: minmax(0, 1fr);
 }
 
 .chat-panel {
@@ -1567,71 +1509,12 @@ textarea {
   animation: tool-progress 1.4s infinite ease-in-out;
 }
 
-.tool-approval-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  margin-top: 12px;
-  border: 1px solid #d0d7de;
-  border-radius: 8px;
-  background: #fff;
-  padding: 12px;
-}
 
-.tool-approval-card strong {
-  display: block;
-  color: #1f2937;
-  font-size: 13px;
-}
 
-.tool-approval-message {
-  display: block;
-  margin-top: 3px;
-  color: #667085;
-  font-size: 12px;
-}
 
-.tool-approval-target {
-  display: block;
-  margin-top: 8px;
-  color: #24292f;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
 
-.tool-approval-actions {
-  display: flex;
-  gap: 8px;
-}
 
-.tool-approval-actions .tool-approval-allow.el-button {
-  --el-button-text-color: #fff;
-  --el-button-bg-color: #1f6feb;
-  --el-button-border-color: #1f6feb;
-  --el-button-hover-text-color: #fff;
-  --el-button-hover-bg-color: #0f62d8;
-  --el-button-hover-border-color: #0f62d8;
-  --el-button-active-text-color: #fff;
-  --el-button-active-bg-color: #0a53be;
-  --el-button-active-border-color: #0a53be;
-  --el-button-disabled-text-color: #fff;
-  --el-button-disabled-bg-color: #6ea8fe;
-  --el-button-disabled-border-color: #6ea8fe;
-  color: #fff;
-  font-weight: 700;
-}
 
-.tool-approval-actions .tool-approval-deny.el-button {
-  --el-button-text-color: #475467;
-  --el-button-bg-color: #fff;
-  --el-button-border-color: #d0d7de;
-  --el-button-hover-text-color: #1f2937;
-  --el-button-hover-bg-color: #f8fafc;
-  --el-button-hover-border-color: #98a2b3;
-  font-weight: 700;
-}
 
 .tool-run summary::-webkit-details-marker {
   display: none;
@@ -1766,10 +1649,6 @@ textarea {
 .tool-field.error pre {
   border-color: #e3a0a0;
   background: #fff2f2;
-}
-
-.tool-field.muted pre {
-  color: #667085;
 }
 
 .edit-diff-card {
@@ -2045,54 +1924,12 @@ textarea {
   cursor: not-allowed;
 }
 
-.approval-dropdown {
-  max-width: 100%;
-}
 
-.approval-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 190px;
-  height: 32px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: #475467;
-  cursor: pointer;
-  padding: 0 8px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-}
 
-.approval-trigger:hover,
-.approval-trigger:focus-visible {
-  background: #f2f6fb;
-  color: #1f6feb;
-  outline: none;
-}
 
-.approval-trigger:disabled {
-  color: #98a2b3;
-  cursor: not-allowed;
-}
 
-.approval-trigger span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.approval-caret {
-  color: #98a2b3;
-  font-size: 12px;
-}
 
-.approval-dropdown-menu .el-dropdown-menu__item .el-icon {
-  margin-right: 6px;
-}
 
 .composer textarea.composer-input {
   display: block;
@@ -2256,12 +2093,6 @@ textarea {
   gap: 3px;
   margin-top: 4px;
   color: #d0d5dd;
-}
-
-.primary-button:disabled,
-.secondary-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .dialog-form .el-form-item {
@@ -2650,10 +2481,6 @@ dd {
   justify-content: flex-end;
 }
 
-.prompt-view-tabs {
-  margin-right: auto;
-}
-
 @media (max-width: 1500px) {
   .github-pathbar {
     display: grid;
@@ -2705,20 +2532,10 @@ dd {
 .github-directory-view,
 .github-file-view,
 .github-editor-view,
-.github-empty-file-view,
-.prompt-preview-view {
+.github-empty-file-view {
   min-height: 0;
   overflow: auto;
   padding: 0 16px 16px;
-}
-
-.prompt-preview-view {
-  min-height: 0;
-  overflow: auto;
-}
-
-.prompt-preview-view .el-radio-group {
-  flex: 0 0 auto;
 }
 
 .prompt-preview-content {
@@ -3038,17 +2855,8 @@ dd {
     justify-content: flex-end;
   }
 
-  .approval-trigger {
-    max-width: 100%;
-  }
 
-  .tool-approval-card {
-    grid-template-columns: 1fr;
-  }
 
-  .tool-approval-actions {
-    justify-content: flex-end;
-  }
 
   .sidebar,
   .inspector {
@@ -3085,10 +2893,6 @@ dd {
   .code-editor .el-textarea__inner {
     height: auto !important;
     min-height: 520px !important;
-  }
-
-  .prompt-preview-view .github-file-toolbar {
-    flex-wrap: wrap;
   }
 
   .prompt-preview-workspace {

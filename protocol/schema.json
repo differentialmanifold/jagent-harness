@@ -288,6 +288,125 @@
         "name",
         "parameters"
       ]
+    },
+    "RunnerInfo": {
+      "type": "object",
+      "properties": {
+        "runnerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "Optional workspace for file-based tools. Omit for other scenarios."
+        },
+        "instructions": {
+          "type": "string",
+          "maxLength": 32000
+        },
+        "tools": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/ToolDescriptor"
+          }
+        },
+        "lastSeen": {
+          "type": "integer"
+        },
+        "online": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runnerId",
+        "name",
+        "tools"
+      ]
+    },
+    "RunnerJob": {
+      "type": "object",
+      "properties": {
+        "runnerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional workspace for file-based tools. Omit for other scenarios."
+        },
+        "request": {
+          "$ref": "#/definitions/ChatRequest"
+        },
+        "status": {
+          "enum": [
+            "QUEUED",
+            "CLAIMED",
+            "COMPLETED",
+            "CANCELLED",
+            "INTERRUPTED"
+          ]
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "response": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ChatResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "runnerId",
+        "request",
+        "status"
+      ]
+    },
+    "RunnerPoll": {
+      "type": "object",
+      "properties": {
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RunnerJob"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancelledRuns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        }
+      },
+      "required": [
+        "cancelledRuns"
+      ]
     }
   }
 }

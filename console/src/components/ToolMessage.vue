@@ -10,39 +10,6 @@
       </span>
     </div>
     <div class="tool-progress-track" aria-hidden="true"><span></span></div>
-    <div v-if="visibleApproval" class="tool-approval-card">
-      <div class="tool-approval-copy">
-        <strong>{{ message.approval.title || 'Approval required' }}</strong>
-        <span v-if="message.approval.message" class="tool-approval-message">
-          {{ message.approval.message }}
-        </span>
-        <code v-if="message.approval.target" class="tool-approval-target">
-          {{ message.approval.target }}
-        </code>
-      </div>
-      <div class="tool-approval-actions">
-        <el-button
-          class="tool-approval-allow"
-          size="small"
-          type="primary"
-          :icon="Check"
-          :loading="message.approval.responding"
-          :disabled="!message.approval.pending || message.approval.responding"
-          @click="$emit('resolveApproval', approvalPayload(true))"
-        >
-          Allow
-        </el-button>
-        <el-button
-          class="tool-approval-deny"
-          size="small"
-          :icon="Close"
-          :disabled="!message.approval.pending || message.approval.responding"
-          @click="$emit('resolveApproval', approvalPayload(false))"
-        >
-          Deny
-        </el-button>
-      </div>
-    </div>
   </div>
 
   <details v-else class="tool-run" :open="isFailedToolMessage(message)">
@@ -112,7 +79,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, Close, Loading } from '@element-plus/icons-vue'
+import { Loading } from '@element-plus/icons-vue'
 import {
   diffHunkKey,
   diffLineClass,
@@ -139,8 +106,6 @@ const props = defineProps({
   message: { type: Object, required: true }
 })
 
-defineEmits(['resolveApproval'])
-
 const now = ref(Date.now())
 let timer = null
 
@@ -151,19 +116,6 @@ const elapsedText = computed(() => {
     ? `${elapsedSeconds}s`
     : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`
 })
-
-const visibleApproval = computed(() => {
-  const approval = props.message.approval
-  return Boolean(approval?.pending || approval?.responding)
-})
-
-function approvalPayload(approved) {
-  return {
-    approvalId: props.message.approval?.approvalId,
-    runId: props.message.approval?.runId,
-    approved
-  }
-}
 
 watch(
   () => props.message.running,

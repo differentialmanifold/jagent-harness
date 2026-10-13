@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/agent/prompt-preview")
 public class PromptPreviewController {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RunnerService runners;
 
     private final PromptProvider promptProvider;
     private final ToolRegistry toolRegistry;
@@ -60,6 +62,13 @@ public class PromptPreviewController {
             context.setClientCapabilities(
                     new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
                             request.getClientTools(), request.getClientInstructions()));
+        if (session != null && runners != null && runners.binding(session.getSessionId()) != null) {
+            io.github.differentialmanifold.jagentharness.protocol.RunnerInfo runner =
+                    runners.require(runners.binding(session.getSessionId()));
+            context.setClientCapabilities(
+                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
+                            runner.tools, runner.instructions));
+        }
         String prompt =
                 promptProvider.buildSystemPrompt(
                         new PromptContext(toolRegistry.all(context), context));

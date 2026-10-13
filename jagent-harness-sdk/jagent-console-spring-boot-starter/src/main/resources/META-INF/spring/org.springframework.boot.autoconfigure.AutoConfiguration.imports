@@ -1,2 +1,3 @@
 io.github.differentialmanifold.jagentharness.spring.web.AgentConsoleAutoConfiguration
 io.github.differentialmanifold.jagentharness.spring.web.ChatAutoConfiguration
+io.github.differentialmanifold.jagentharness.spring.web.RunnerAutoConfiguration

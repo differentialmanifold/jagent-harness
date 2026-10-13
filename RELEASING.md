@@ -28,3 +28,5 @@ mvn -B -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-sta
 For local publication, configure the `central` server in Maven settings and provide `MAVEN_GPG_KEY` and `MAVEN_GPG_PASSPHRASE` in the environment. The Central plugin has `autoPublish=true`; a release `deploy` uploads and publishes the artifacts.
 
 Keep the API version, JSON Schema, OpenAPI, and protocol fixtures consistent when changing the public contract.
+
+Tagged releases also attach the self-contained coding runner JAR, the web frontend archive, and SHA256SUMS. The runner already includes its coding tools. The executable and frontend are release assets, not Central libraries.

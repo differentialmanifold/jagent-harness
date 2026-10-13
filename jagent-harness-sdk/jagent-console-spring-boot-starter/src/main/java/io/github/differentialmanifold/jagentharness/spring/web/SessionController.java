@@ -21,6 +21,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/sessions")
 public class SessionController {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RunnerService runners;
+
+    private SessionRecord decorate(SessionRecord session) {
+        if (runners != null) session.setRunnerId(runners.binding(session.getSessionId()));
+        return session;
+    }
+
     private final SessionManager sessionManager;
     private final WorkspaceRootResolver workspaceRootResolver;
     private final ModelCallUsageStore modelCallUsageStore;
@@ -42,6 +50,20 @@ public class SessionController {
 
     @PostMapping
     public SessionRecord create(@RequestBody(required = false) CreateSessionRequest request) {
+        if (request != null && request.getRunnerId() != null && !request.getRunnerId().isEmpty()) {
+            if (runners == null)
+                throw new IllegalArgumentException("Remote runners are unavailable");
+            io.github.differentialmanifold.jagentharness.protocol.RunnerInfo runner =
+                    runners.require(request.getRunnerId());
+            SessionRecord session =
+                    sessionManager.createSession(
+                            request.getTitle(),
+                            runner.workspace,
+                            request.getProjectName(),
+                            request.getProjectId());
+            runners.bind(session.getSessionId(), runner.runnerId);
+            return decorate(session);
+        }
         String title = request == null ? null : request.getTitle();
         String workspacePath = request == null ? null : request.getWorkspacePath();
         String normalizedWorkspacePath =
@@ -53,7 +75,9 @@ public class SessionController {
 
     @GetMapping
     public List<SessionRecord> list() {
-        return sessionManager.listSessions();
+        List<SessionRecord> sessions = sessionManager.listSessions();
+        for (SessionRecord session : sessions) decorate(session);
+        return sessions;
     }
 
     @PostMapping("/detail")
@@ -62,7 +86,7 @@ public class SessionController {
         SessionDetails details = sessionManager.getDetails(sessionId);
         details.setLatestUsage(modelCallUsageStore.findLatestBySessionId(sessionId));
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("session", details.getSession());
+        response.put("session", decorate(details.getSession()));
         response.put("latestUsage", details.getLatestUsage());
         List<Object> events = new ArrayList<>();
         ObjectMapper json = new ObjectMapper();
@@ -77,8 +101,9 @@ public class SessionController {
         if (request == null) {
             throw new IllegalArgumentException("sessionId and title are required");
         }
-        return sessionManager.renameSession(
-                requireSessionId(request.getSessionId()), request.getTitle());
+        return decorate(
+                sessionManager.renameSession(
+                        requireSessionId(request.getSessionId()), request.getTitle()));
     }
 
     @PostMapping("/delete")

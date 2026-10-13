@@ -16,7 +16,7 @@ export async function launch(component) {
   const options = process.argv.slice(2)
   const supported = ['--skip-build', '--help', ...(component === 'all' ? ['--client-only'] : [])]
   if (options.includes('--help')) {
-    console.log(`Start ${component === 'all' ? 'the server, coding client, and frontend' : component + ' only'}.\nOptions: ${supported.join(', ')}\nConfiguration: .env.local (shell environment takes precedence).`)
+    console.log(`Start ${component === 'all' ? 'the harness server, coding runner, and frontend' : component === 'client' ? 'the coding runner only' : component + ' only'}.\nOptions: ${supported.join(', ')}\nConfiguration: .env.local (shell environment takes precedence).`)
     return
   }
   const localEnv = resolve(root, '.env.local')
@@ -31,13 +31,13 @@ export async function launch(component) {
   const startClient = component === 'client' || component === 'all'
   const startFrontend = component === 'frontend' || component === 'all'
   const serverPort = Number(env.AGENT_SERVER_PORT || 18181)
-  const clientPort = Number(env.CODING_CLIENT_PORT || 18180)
   const frontendPort = Number(env.JAGENT_CONSOLE_PORT || 5175)
   const serverUrl = env.JAGENT_SERVER_URL || `http://127.0.0.1:${serverPort}`
   const token = env.JAGENT_CLIENT_TOKEN || ''
   const localServerUrl = `http://127.0.0.1:${serverPort}`
-  const clientUrl = `http://127.0.0.1:${clientPort}`
-  const frontendTarget = component === 'frontend' ? (env.JAGENT_API_TARGET || clientUrl) : clientUrl
+  const runnerHome = resolve(root, env.JAGENT_RUNNER_HOME || 'data/coding-runner')
+  const workspace = resolve(root, env.JAGENT_RUNNER_WORKSPACE || '.')
+  const runnerJar = `examples/coding-runner/target/jagent-coding-runner-${version}.jar`
 
   function start(command, args, cwd, childEnv = env) {
     const child = spawn(command, args, { cwd, env: childEnv, stdio: 'inherit', detached: !win, shell: win && command.endsWith('.cmd') })
@@ -46,9 +46,9 @@ export async function launch(component) {
     child.on('exit', () => processes.delete(child))
     return child
   }
-  function command(name, args, cwd = root) {
+  function command(name, args, cwd = root, commandEnv = env) {
     return new Promise((resolveDone, reject) => {
-      const child = start(win ? `${name}.cmd` : name, args, cwd)
+      const child = start(win && ['mvn', 'npm'].includes(name) ? `${name}.cmd` : name, args, cwd, commandEnv)
       child.once('error', reject)
       child.once('exit', code => code === 0 ? resolveDone() : reject(new Error(`${name} exited with code ${code}`)))
     })
@@ -74,15 +74,15 @@ export async function launch(component) {
       probe.listen(port, '127.0.0.1', () => probe.close(resolveDone))
     })
   }
-  async function ready(url) {
+  async function ready(url, path = '/api/v1/sessions', accept = () => true) {
     const end = Date.now() + 90000
     while (!stopping && Date.now() < end) {
       try {
-        const response = await fetch(`${url}/api/v1/sessions`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(2000) })
-        if (response.ok) return
-        if (response.status === 401) throw new Error('Client/server token mismatch')
+        const response = await fetch(`${url}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(2000) })
+        if (response.ok && accept(await response.json())) return
+        if (response.status === 401) throw new Error('API token mismatch')
       } catch (error) {
-        if (error.message === 'Client/server token mismatch') throw error
+        if (error.message === 'API token mismatch') throw error
       }
       await new Promise(resolveDone => setTimeout(resolveDone, 500))
     }
@@ -114,12 +114,12 @@ export async function launch(component) {
     if (startServer && startClient && new URL(serverUrl).origin !== new URL(localServerUrl).origin && new URL(serverUrl).origin !== `http://localhost:${serverPort}`) {
       throw new Error('JAGENT_SERVER_URL must match AGENT_SERVER_PORT for an all-in-one launch. Use --client-only to connect to a remote server.')
     }
-    const ports = [...(startServer ? [serverPort] : []), ...(startClient ? [clientPort] : []), ...(startFrontend ? [frontendPort] : [])]
-    if (new Set(ports).size !== ports.length) throw new Error('Server, client, and console ports must be distinct')
+    const ports = [...(startServer ? [serverPort] : []), ...(startFrontend ? [frontendPort] : [])]
+    if (new Set(ports).size !== ports.length) throw new Error('Server and console ports must be distinct')
     for (const port of ports) await available(port)
     if (startServer) mkdirSync(resolve(root, 'data'), { recursive: true })
     if (!options.includes('--skip-build') && (startServer || startClient)) {
-      const modules = [...(startServer ? ['examples/server-demo'] : []), ...(startClient ? ['examples/coding-java'] : [])]
+      const modules = [...(startServer ? ['examples/server-demo'] : []), ...(startClient ? ['examples/coding-runner'] : [])]
       await command('mvn', ['-q', '-pl', modules.join(','), '-am', '-DskipTests', 'package'])
     }
     if (startFrontend && !existsSync(resolve(root, 'console/node_modules'))) await command('npm', ['ci'], resolve(root, 'console'))
@@ -131,20 +131,23 @@ export async function launch(component) {
       })
       await ready(localServerUrl)
     }
-    const clientEnv = { ...env, CODING_CLIENT_PORT: String(clientPort), JAGENT_SERVER_URL: serverUrl, JAGENT_CONSOLE_PORT: String(frontendPort) }
+    const clientEnv = { ...env, JAGENT_SERVER_URL: serverUrl, JAGENT_CONSOLE_PORT: String(frontendPort) }
     // Model and database settings belong to the server, not the client or frontend.
     for (const key of Object.keys(clientEnv)) if (/^JAGENT_(OPENAI_|MODEL|DATASOURCE|TEMPERATURE|COMPACTION|CONTEXT|CONFIG_ROOT)/.test(key)) delete clientEnv[key]
     if (startClient) {
       await ready(serverUrl)
-      console.log(`Starting Coding client at ${clientUrl}`)
-      service('Coding client', 'java', ['-jar', `examples/coding-java/target/jagent-coding-java-${version}.jar`], clientEnv)
-      await ready(clientUrl)
+      await command('java', ['-jar', runnerJar, '--home', runnerHome, 'connect', serverUrl], root, clientEnv)
+      const permissions = env.JAGENT_RUNNER_FULL_ACCESS === 'true' ? ['--full-access'] : []
+      console.log(`Starting coding runner in ${workspace} (${permissions.length ? 'full access' : 'read/search only'})`)
+      service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--workspace', workspace, '--name', env.JAGENT_RUNNER_NAME || 'coding-local', ...permissions], clientEnv)
+      const identity = JSON.parse(readFileSync(resolve(runnerHome, 'config.json'), 'utf8')).runnerId
+      await ready(serverUrl, '/api/v1/runners', runners => runners.some(runner => runner.runnerId === identity && runner.online))
     }
     if (startFrontend) {
-      const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev:coding', '--', '--port', String(frontendPort)], resolve(root, 'console'), { ...clientEnv, JAGENT_API_TARGET: frontendTarget })
+      const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev', '--', '--port', String(frontendPort), '--host', env.JAGENT_CONSOLE_HOST || '127.0.0.1'], resolve(root, 'console'), { ...clientEnv, JAGENT_SERVER_URL: serverUrl })
       ui.once('error', error => { console.error(error.message); shutdown(1) })
       ui.once('exit', code => { if (!stopping) shutdown(code || 1) })
-      console.log(`\nFrontend: http://127.0.0.1:${frontendPort} (API: ${frontendTarget})`)
+      console.log(`\nFrontend: http://127.0.0.1:${frontendPort} (API: ${serverUrl})`)
     }
     console.log('Ctrl+C stops only the processes started by this launcher.\n')
   } catch (error) {

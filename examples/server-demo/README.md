@@ -6,7 +6,7 @@ The application has its own Spring Boot parent, startup class, and configuration
 
 ## Run as part of the coding demo
 
-Follow the root [quick start](../../README.md#try-it-locally) and run `node scripts/dev.mjs` from the repository root. The launcher starts this server together with the coding client and console. Local file and shell tools belong to the client; model access and conversation storage belong to this server.
+Follow the root [quick start](../../README.md#try-it-locally) and run `node scripts/dev.mjs` from the repository root. The launcher starts this server together with the coding runner and frontend. Local file and shell tools are built into the runner; model access, conversation storage, skills, and virtual files belong to this server. The frontend calls this server directly wherever it is hosted.
 
 ## Build and deploy independently
 
@@ -14,7 +14,7 @@ For local source builds, run `mvn install` in the framework root first. From thi
 
 ```sh
 mvn package
-java -jar target/server-demo-1.1.0.jar
+java -jar target/server-demo-1.2.0.jar
 ```
 
 Provide `JAGENT_MODEL`, `JAGENT_OPENAI_BASE_URL`, and `JAGENT_OPENAI_API_KEY` as process environment variables. Direct JAR launches do not read the framework's `.env.local`.

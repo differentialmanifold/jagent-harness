@@ -7,6 +7,16 @@ public class SessionRecord {
     public static final String STATUS_ACTIVE = "active";
     public static final String STATUS_DELETED = "deleted";
 
+    private String runnerId;
+
+    public String getRunnerId() {
+        return runnerId;
+    }
+
+    public void setRunnerId(String runnerId) {
+        this.runnerId = runnerId;
+    }
+
     private String sessionId;
     private String title;
     private String projectId;

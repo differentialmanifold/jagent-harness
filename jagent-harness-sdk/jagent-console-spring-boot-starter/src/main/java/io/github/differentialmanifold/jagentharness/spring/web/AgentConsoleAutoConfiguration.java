@@ -55,7 +55,8 @@ public class AgentConsoleAutoConfiguration {
         FilterRegistrationBean<ChatRequestBodyLimitFilter> registration =
                 new FilterRegistrationBean<ChatRequestBodyLimitFilter>(filter);
         registration.setName("chatRequestBodyLimitFilter");
-        registration.addUrlPatterns("/api/v1/chat", "/api/v1/runs/*");
+        registration.addUrlPatterns(
+                "/api/v1/chat", "/api/v1/runs/*", "/api/v1/runners/*", "/api/v1/runners");
         registration.setDispatcherTypes(EnumSet.of(DispatcherType.REQUEST));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
         return registration;

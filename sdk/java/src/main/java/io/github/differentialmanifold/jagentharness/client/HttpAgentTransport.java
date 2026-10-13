@@ -11,6 +11,13 @@ import java.util.function.Consumer;
 public final class HttpAgentTransport implements AgentTransport {
     private final URL endpoint;
     private final String token;
+    private final java.util.Map<String, String> headers = new java.util.LinkedHashMap<>();
+
+    public HttpAgentTransport header(String name, String value) {
+        headers.put(name, value);
+        return this;
+    }
+
     private final ObjectMapper json =
             new ObjectMapper()
                     .configure(
@@ -27,6 +34,9 @@ public final class HttpAgentTransport implements AgentTransport {
     public ChatResponse chat(ChatRequest request, Consumer<StreamEvent> events) throws IOException {
         HttpURLConnection c = (HttpURLConnection) endpoint.openConnection();
         c.setRequestMethod("POST");
+        for (java.util.Map.Entry<String, String> h : headers.entrySet())
+            c.setRequestProperty(h.getKey(), h.getValue());
+        c.setInstanceFollowRedirects(false);
         c.setConnectTimeout(10000);
         c.setReadTimeout(180000);
         c.setDoOutput(true);
@@ -112,16 +122,35 @@ public final class HttpAgentTransport implements AgentTransport {
         return id;
     }
 
-    private com.fasterxml.jackson.databind.JsonNode management(
+    public com.fasterxml.jackson.databind.JsonNode management(
             String method, String path, Object body) throws IOException {
+        return management(
+                method,
+                path,
+                body,
+                io.github.differentialmanifold.jagentharness.core.agent.StopSignal.none());
+    }
+
+    com.fasterxml.jackson.databind.JsonNode management(
+            String method,
+            String path,
+            Object body,
+            io.github.differentialmanifold.jagentharness.core.agent.StopSignal stop)
+            throws IOException {
+        stop.throwIfAborted();
         HttpURLConnection c = (HttpURLConnection) new URL(endpoint, path).openConnection();
         c.setRequestMethod(method);
+        for (java.util.Map.Entry<String, String> h : headers.entrySet())
+            c.setRequestProperty(h.getKey(), h.getValue());
+        c.setInstanceFollowRedirects(false);
         c.setConnectTimeout(10000);
-        c.setReadTimeout(30000);
+        c.setReadTimeout(35000);
         c.setRequestProperty("Accept", "application/json");
         if (token != null && !token.isEmpty())
             c.setRequestProperty("Authorization", "Bearer " + token);
-        try {
+        try (io.github.differentialmanifold.jagentharness.core.agent.StopRegistration ignored =
+                stop.onStop(c::disconnect)) {
+            stop.throwIfAborted();
             if (body != null) {
                 byte[] bytes = json.writeValueAsBytes(body);
                 c.setDoOutput(true);

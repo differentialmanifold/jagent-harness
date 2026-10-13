@@ -2,6 +2,16 @@ package io.github.differentialmanifold.jagentharness.spring.web.dto;
 
 public class CreateSessionRequest {
 
+    private String runnerId;
+
+    public String getRunnerId() {
+        return runnerId;
+    }
+
+    public void setRunnerId(String runnerId) {
+        this.runnerId = runnerId;
+    }
+
     private String title;
     private String workspacePath;
     private String projectName;

@@ -13,8 +13,8 @@ import {
 const DEFAULT_PROJECT_NAME = 'Default Project'
 
 export function useAgentHarness() {
-  const consoleTarget = import.meta.env.VITE_JAGENT_CONSOLE_TARGET === 'coding' ? 'coding' : 'server'
-  const workspaceProjectsEnabled = consoleTarget === 'coding'
+  const runners = ref([])
+  const projectRunnerDraft = ref('')
   const sessions = ref([])
   const currentSession = ref(null)
   const sessionRuntimeStates = reactive(new Map())
@@ -29,11 +29,9 @@ export function useAgentHarness() {
   })
   const provider = ref(null)
   const projectNameDraft = ref('')
-  const projectWorkspaceDraft = ref('')
   const projectError = ref('')
   const renameTitleDraft = ref('')
   const renameError = ref('')
-  const approvalMode = ref(loadJson('jagent.approvalMode', 'ask_approval'))
   const hiddenProjectKeys = ref(loadJson('jagent.hiddenProjects', []))
   const projectAliases = ref(loadJson('jagent.projectAliases', {}))
   const projectDialogOpen = ref(false)
@@ -77,7 +75,6 @@ export function useAgentHarness() {
   const statusText = computed(() => {
     if (!currentSession.value) return 'Create or select a session to begin'
     const state = currentRuntimeState.value
-    const pendingApproval = state.messages.find((message) => message.role === 'tool' && message.approval?.pending)
     const runningTool = state.messages.find((message) => message.role === 'tool' && message.running)
     const thinking = state.messages.find((message) => message.role === 'assistant' && message.thinking)
     const pendingCount = state.pendingInputs.length
@@ -87,8 +84,6 @@ export function useAgentHarness() {
         ? 'Finishing agent run'
       : state.running && !state.stopReady
         ? 'Starting agent run'
-      : pendingApproval
-        ? `Waiting for ${pendingApproval.toolName || 'tool'} approval`
       : runningTool
         ? `Running ${runningTool.toolName || 'tool'}`
       : thinking
@@ -116,8 +111,9 @@ export function useAgentHarness() {
           projectId: session.projectId || '',
           projectName: sessionProjectNameValue,
           workspacePath: session.workspacePath || '',
+          runnerId: session.runnerId || '',
           name: projectAliases.value[key] || sessionProjectNameValue,
-          pathLabel: session.workspacePath ? projectPathLabel(session.workspacePath) : 'No workspace',
+          pathLabel: [session.runnerId, session.workspacePath ? projectPathLabel(session.workspacePath) : 'No workspace'].filter(Boolean).join(' · '),
           sessions: []
         })
       }
@@ -139,11 +135,15 @@ export function useAgentHarness() {
   })
 
   async function bootstrap() {
-    await Promise.all([loadProvider(), loadAgentContext(), loadSessions()])
+    await Promise.all([loadProvider(), loadAgentContext(), loadSessions(), loadRunners()])
     const first = firstVisibleSession()
     if (!currentSession.value && first) {
       await selectSession(first.sessionId)
     }
+  }
+
+  async function loadRunners() {
+    try { runners.value = await request('/api/v1/runners') } catch { runners.value = [] }
   }
 
   async function loadProvider() {
@@ -178,13 +178,6 @@ export function useAgentHarness() {
         : currentSession.value
           ? sessionProjectName(currentSession.value)
           : DEFAULT_PROJECT_NAME)
-    const targetWorkspace = workspaceProjectsEnabled
-      ? project && project.workspacePath
-        ? project.workspacePath
-        : currentSession.value && currentSession.value.workspacePath
-          ? currentSession.value.workspacePath
-          : ''
-      : ''
     projectError.value = ''
     showProject(projectKey(targetProjectName))
     const title = `New Chat - ${projectAliases.value[projectKey(targetProjectName)] || targetProjectName}`
@@ -192,7 +185,7 @@ export function useAgentHarness() {
       method: 'POST',
       body: JSON.stringify({
         title,
-        workspacePath: targetWorkspace,
+        runnerId: project ? (project.runnerId || '') : (currentSession.value?.runnerId || ''),
         projectName: targetProjectName,
         projectId: project ? (project.projectId || '') : (currentSession.value?.projectId || '')
       })
@@ -219,9 +212,10 @@ export function useAgentHarness() {
   }
 
   async function openProjectDialog() {
+    await loadRunners()
+    projectRunnerDraft.value = ''
     projectError.value = ''
     projectNameDraft.value = ''
-    projectWorkspaceDraft.value = ''
     projectDialogOpen.value = true
   }
 
@@ -233,18 +227,16 @@ export function useAgentHarness() {
 
   async function submitProjectDialog() {
     const projectName = normalizeProjectName(projectNameDraft.value)
-    const workspacePath = projectWorkspaceDraft.value.trim()
-    if (!projectName || (workspaceProjectsEnabled && !workspacePath)) return
+    if (!projectName) return
     projectError.value = ''
     projectSubmitting.value = true
     try {
       await createSession({
         projectName,
-        workspacePath: workspaceProjectsEnabled ? workspacePath : ''
+        runnerId: projectRunnerDraft.value
       })
       projectDialogOpen.value = false
       projectNameDraft.value = ''
-      projectWorkspaceDraft.value = ''
     } catch (error) {
       projectError.value = error.message
     } finally {
@@ -333,7 +325,7 @@ export function useAgentHarness() {
       })
       await loadSessions()
       if (currentSession.value && currentSession.value.sessionId === updated.sessionId) {
-        currentSession.value = updated
+        currentSession.value = { ...currentSession.value, ...updated, runnerId: updated.runnerId || currentSession.value.runnerId }
       }
       renameDialogOpen.value = false
     } catch (error) {
@@ -404,6 +396,7 @@ export function useAgentHarness() {
   async function sendMessage() {
     if (!currentSession.value) return
     const sessionId = currentSession.value.sessionId
+    const chatEndpoint = currentSession.value.runnerId ? '/api/v1/runners/chat' : '/api/v1/chat'
     const state = runtimeState(sessionId)
     const content = state.draft
     const images = state.draftImages.slice()
@@ -429,7 +422,7 @@ export function useAgentHarness() {
     let requestAccepted = false
     try {
       await streamRequest(
-        '/api/v1/chat',
+        chatEndpoint,
         {
           sessionId,
           runId: `run_${crypto.randomUUID()}`,
@@ -551,7 +544,7 @@ export function useAgentHarness() {
     state.responseReceived = false
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Tool-Approval-Mode': approvalMode.value },
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify(body),
       signal: state.streamController.signal
     })
@@ -669,10 +662,6 @@ export function useAgentHarness() {
       startToolExecution(event, payload, state)
     } else if (type === 'tool_execution_update') {
       updateToolExecution(payload, state)
-    } else if (type === 'tool_approval_requested') {
-      requestToolApproval(event, payload, state)
-    } else if (type === 'tool_approval_resolved') {
-      resolveToolApprovalEvent(payload, state)
     } else if (type === 'tool_execution_end') {
       completeToolExecution(payload, state)
     } else if (type === 'compaction_start') {
@@ -1225,96 +1214,19 @@ export function useAgentHarness() {
     message.completedAt = Date.now()
     message.content = payload.result || ''
     message.stopped = payload.stopped === true
-    if (message.approval) {
-      message.approval.pending = false
-      message.approval.responding = false
-    }
     markMessagesChanged(state)
-  }
-
-  function requestToolApproval(event, payload, state) {
-    const approval = {
-      runId: payload.runId || eventRunId(event, payload) || state.activeRunId,
-      approvalId: payload.approvalId,
-      title: payload.title || 'Approval required',
-      message: payload.message || '',
-      action: payload.action || '',
-      target: payload.target || '',
-      approved: null,
-      pending: true,
-      responding: false
-    }
-    const message = pendingToolMessage(payload.toolCallId, state)
-    if (message) {
-      message.approval = approval
-      message.progress = approval.title
-      markMessagesChanged(state)
-      return
-    }
-    state.messages.push({
-      messageId: `approval:${approval.approvalId || Date.now()}`,
-      sessionId: event.sessionId,
-      role: 'status',
-      content: `${approval.title}: ${approval.target || approval.action || 'tool execution'}`
-    })
-    markMessagesChanged(state)
-  }
-
-  function resolveToolApprovalEvent(payload, state) {
-    const message = pendingToolMessage(payload.toolCallId, state)
-    if (!message || !message.approval) return
-    message.approval.pending = false
-    message.approval.responding = false
-    message.approval.approved = payload.approved === true
-    message.approval.reason = payload.reason || ''
-    message.progress = message.approval.approved ? 'Approved' : 'Denied'
-    markMessagesChanged(state)
-  }
-
-  async function resolveToolApproval({ approvalId, runId, approved }) {
-    if (!approvalId) return
-    const state = currentRuntimeState.value
-    const message = state.messages.find((item) => item.approval?.approvalId === approvalId)
-    const approval = message ? message.approval : null
-    if (approval) {
-      approval.responding = true
-    }
-    try {
-      await request('/api/v1/approvals/resolve', {
-        method: 'POST',
-        body: JSON.stringify({
-          runId: runId || approval?.runId || state.activeRunId,
-          approvalId,
-          approved,
-          reason: approved ? 'Approved by user' : 'Denied by user'
-        })
-      })
-      if (approval) {
-        approval.pending = false
-        approval.responding = false
-        approval.approved = approved === true
-        approval.reason = approved ? 'Approved by user' : 'Denied by user'
-      }
-      if (message) {
-        message.progress = approved ? 'Approved' : 'Denied'
-      }
-      markMessagesChanged(state)
-    } catch (error) {
-      if (approval) {
-        approval.responding = false
-      }
-      appendLocalErrorMessage(state, `Failed to resolve approval: ${error.message}`)
-    }
   }
 
   function replacePendingToolMessage(message, state) {
     const pendingMessageId = state.pendingToolMessages.get(message.toolCallId)
+      || state.messages.find(item => item.role === 'tool' && item.toolCallId === message.toolCallId)?.messageId
     if (!pendingMessageId) return false
     const index = state.messages.findIndex((item) => item.messageId === pendingMessageId)
     if (index >= 0) {
       const pendingMessage = state.messages[index]
       state.messages.splice(index, 1, {
         ...message,
+        stopped: pendingMessage.stopped || message.stopped,
         argumentsJson: message.argumentsJson || pendingMessage.argumentsJson || ''
       })
     } else {
@@ -1493,11 +1405,6 @@ export function useAgentHarness() {
     }
   }
 
-  function setApprovalMode(value) {
-    approvalMode.value = value === 'full_access' ? 'full_access' : 'ask_approval'
-    saveJson('jagent.approvalMode', approvalMode.value)
-  }
-
   function shouldAutoNameChat(session, currentMessages) {
     if (!session || currentMessages.length > 0) return false
     const title = session.title || ''
@@ -1513,7 +1420,7 @@ export function useAgentHarness() {
         body: JSON.stringify({ sessionId, title })
       })
       if (currentSession.value && currentSession.value.sessionId === updated.sessionId) {
-        currentSession.value = updated
+        currentSession.value = { ...currentSession.value, ...updated, runnerId: updated.runnerId || currentSession.value.runnerId }
       }
       await loadSessions()
     } catch (error) {
@@ -1606,8 +1513,9 @@ export function useAgentHarness() {
     draftImages,
     addingImages,
     imageError,
+    runners,
+    projectRunnerDraft,
     projectNameDraft,
-    projectWorkspaceDraft,
     projectError,
     renameTitleDraft,
     renameError,
@@ -1620,14 +1528,12 @@ export function useAgentHarness() {
     submittingInput,
     messageRevision,
     anyRunning,
-    approvalMode,
     projectDialogOpen,
     projectSubmitting,
     renameDialogOpen,
     renameSubmitting,
     providerLabel,
     statusText,
-    workspaceProjectsEnabled,
     currentProjectKey,
     renameDialogTitle,
     renameDialogLabel,
@@ -1649,8 +1555,6 @@ export function useAgentHarness() {
     addDraftImages,
     removeDraftImage,
     sendMessage,
-    stopMessage,
-    setApprovalMode,
-    resolveToolApproval
+    stopMessage
   }
 }

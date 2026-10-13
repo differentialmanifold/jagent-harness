@@ -52,7 +52,7 @@
 
     <section v-if="!loading && clientTools.length" class="client-tools-section">
       <h3 class="tool-location-heading">Client tools <el-tag size="small" type="success">{{ clientTools.length }}</el-tag></h3>
-      <p class="client-tools-description">Registered by the connected client. Execution and permissions are managed in the client application.</p>
+      <p class="client-tools-description">Built into the selected runner. Execution and permissions are controlled on that machine.</p>
       <div class="built-in-tool-list">
         <div v-for="tool in clientTools" :key="tool.name" class="built-in-tool-row">
           <div class="built-in-tool-main">
@@ -106,7 +106,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Loading, RefreshLeft, VideoPlay } from '@element-plus/icons-vue'
 import { ElCheckbox, ElCheckboxGroup, ElMessage } from 'element-plus'
 import { request } from '../api/http'
@@ -118,6 +118,20 @@ const props = defineProps({
 const emit = defineEmits(['changed'])
 const tools = ref([])
 const clientTools = ref([])
+let catalogVersion = 0
+watch(() => props.sessionId, async (sessionId) => {
+  const version = ++catalogVersion
+  clientTools.value = []
+  if (!sessionId) return
+  try {
+    const detail = await request('/api/v1/sessions/detail', { method: 'POST', body: JSON.stringify({ sessionId }) })
+    if (!detail.session?.runnerId) return
+    const runners = await request('/api/v1/runners')
+    if (version !== catalogVersion) return
+    const runner = runners.find(item => item.runnerId === detail.session.runnerId)
+    clientTools.value = (runner?.tools || []).map(tool => ({ ...tool, parametersSchema: tool.parameters }))
+  } catch { /* No runner catalog is available for this session. */ }
+}, { immediate: true })
 const inspectOnly = ref(false)
 const configured = ref(false)
 const selection = ref([])
@@ -183,7 +197,6 @@ async function resetConfiguration() {
 
 function applyResponse(data) {
   tools.value = data?.tools || []
-  clientTools.value = data?.clientTools || []
   configured.value = Boolean(data?.configured)
   const enabled = normalizeSelection(data?.enabledTools || [])
   selection.value = enabled
