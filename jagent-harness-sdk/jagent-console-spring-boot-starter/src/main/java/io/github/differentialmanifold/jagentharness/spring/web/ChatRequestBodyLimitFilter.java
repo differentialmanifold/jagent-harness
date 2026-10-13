@@ -50,7 +50,9 @@ public class ChatRequestBodyLimitFilter extends OncePerRequestFilter {
             return true;
         }
         String path = pathWithinApplication(request);
-        if (STREAM_PATH.equals(path) || "/api/v1/chat".equals(path)) {
+        if (STREAM_PATH.equals(path)
+                || path.equals("/api/v1/runners")
+                || path.startsWith("/api/v1/runners/")) {
             return false;
         }
         if (!path.startsWith(RUNS_PATH_PREFIX) || !path.endsWith(MESSAGES_PATH_SUFFIX)) {

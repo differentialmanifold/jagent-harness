@@ -11,6 +11,18 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 @RequestMapping("/api/v1")
 public class ChatController {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RunnerService runners;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private javax.servlet.http.HttpServletRequest http;
+
+    private void authorize(ChatRequest request) {
+        if (runners != null)
+            runners.authorizeChat(
+                    request, http.getHeader("X-Runner-Id"), http.getHeader("X-Runner-Secret"));
+    }
+
     private final ChatService service;
     private final io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator
             inputs;
@@ -32,11 +44,17 @@ public class ChatController {
 
     @PostMapping(value = "/chat", produces = MediaType.APPLICATION_JSON_VALUE)
     public ChatResponse chat(@RequestBody ChatRequest request) {
-        return service.chat(request, null);
+        authorize(request);
+        return service.chat(
+                request,
+                event -> {
+                    if (runners != null) runners.event(event);
+                });
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestBody ChatRequest request) {
+        authorize(request);
         SseEmitter emitter = new SseEmitter(0L);
         try {
             tasks.execute(
@@ -44,7 +62,11 @@ public class ChatController {
                         try {
                             ChatResponse response =
                                     service.chat(
-                                            request, event -> send(emitter, event.type, event));
+                                            request,
+                                            event -> {
+                                                send(emitter, event.type, event);
+                                                if (runners != null) runners.event(event);
+                                            });
                             send(emitter, "response", response);
                             emitter.complete();
                         } catch (Exception error) {
@@ -65,7 +87,12 @@ public class ChatController {
 
     @PostMapping("/runs/{id}/stop")
     public Map<String, Object> stop(@PathVariable String id) {
-        service.cancel(id);
+        boolean remote = runners != null && runners.cancel(id);
+        try {
+            service.cancel(id);
+        } catch (ProtocolException e) {
+            if (!remote || e.status != 404) throw e;
+        }
         return Collections.singletonMap("accepted", true);
     }
 

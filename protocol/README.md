@@ -6,6 +6,8 @@ Java tool contracts and protocol DTOs are provided by `io.github.differentialman
 
 Reference materials: [OpenAPI](openapi.json), [JSON Schema](schema.json), and [fixtures](fixtures/). The API prefix is `/api/v1`. Send `Authorization: Bearer <token>` when authentication is configured.
 
+The JSON files in `fixtures/` are protocol test samples: user messages, tool results, responses, stream events, runner registration, and polling. `schema.test.mjs` checks them against the JSON Schema during CI and release validation. They are not runtime configuration or installed tool implementations. Run `npm ci --prefix protocol` and `npm test --prefix protocol` from the repository root to validate them.
+
 ## Start a conversation
 
 Create a session with `POST /api/v1/sessions`:
@@ -115,3 +117,19 @@ npm test --prefix protocol
 ```
 
 These tests check the request, response, and event fixtures against the JSON Schema.
+
+## Remote runners
+
+Runner dispatch is an optional layer around the conversation API. Runners ship with native tool implementations; only JSON descriptors, messages and results cross the network. Frontends always use the server APIs, whether hosted on the server or client machine.
+
+1. Register with `POST /api/v1/runners`, providing a stable runner ID, display name and enabled tool catalog; workspace is optional for file-based scenarios. Send a locally generated random secret of at least 32 characters in `X-Runner-Secret`, in addition to the server bearer token. Re-registration requires the same secret and, when configured, the same workspace. Runners without a workspace may omit it or send null.
+2. Create a session with `runnerId`. The registered workspace is used when present; the Console cannot override it. Submit one user message and a `runId` to `POST /api/v1/runners/chat` to queue a conversation and stream its progress.
+3. The runner calls `GET /api/v1/runners/{id}/poll`. The response waits up to 25 seconds for a job, then returns `{ "job": null, "cancelledRuns": [] }` on timeout. Immediately poll again. While executing a job, include `?activeRun=<runId>` to receive cancellation without taking another job.
+4. Execute the job's initial request and subsequent tool-result requests using the existing `POST /api/v1/chat` API. Include `X-Runner-Id` and `X-Runner-Secret`. The server checks session ownership and uses the job's frozen tool catalog. Tool results remain ordinary `role=tool` messages; no tool continuation ID or alternate resume endpoint is introduced.
+5. Report local tool start/end events to `POST /api/v1/runners/{id}/events`; model events already originate on the server. Report the terminal ChatResponse to `POST /api/v1/runners/{id}/complete`.
+
+Inspect dispatch at `GET /api/v1/runners/runs/{runId}`. Subscribe to future SSE events at `GET /api/v1/runners/runs/{runId}/events`; obtain saved history from session details. Existing `POST /api/v1/runs/{runId}/stop` also flags the remote job for cancellation.
+
+CLAIMED jobs remain assigned across disconnects. Receiving the same runId is not permission to execute it again: a runner must retain its local acceptance and result journal. Completion reports can be retried. An interrupted dispatch with pending tool results can be explicitly reopened at `POST /api/v1/runners/{id}/runs/{runId}/recover`; only after inspecting local effects should the runner submit saved results through the normal chat API. This reopens dispatch ownership, not the Agent Harness loop.
+
+Tools are built into each runner. The Harness has no tool download or installation API. Java tools implement `ToolDefinition` and the client SDK's `AgentRunner` handles dispatch; another runtime implements equivalent native interfaces and the same wire messages without MCP. Skills and other server tools execute on the Harness.

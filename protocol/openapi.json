@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "JAgent conversation API",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "servers": [
     {
@@ -70,7 +70,25 @@
             "description": "Capacity exhausted"
           }
         },
-        "description": "Ordinary multi-turn conversation. No idempotency or automatic replay. Tool results reference unanswered toolCallId values in session history. Remaining calls are returned without another model request when results are partial."
+        "description": "Ordinary multi-turn conversation. No idempotency or automatic replay. Tool results reference unanswered toolCallId values in session history. Remaining calls are returned without another model request when results are partial.",
+        "parameters": [
+          {
+            "name": "X-Runner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/sessions": {
@@ -96,6 +114,10 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "runnerId": {
+                    "type": "string",
+                    "description": "Optional remote runner; its workspace is used when one is registered."
                   }
                 },
                 "required": []
@@ -217,6 +239,379 @@
         "responses": {
           "200": {
             "description": "Input receipt (inputId, status)"
+          }
+        }
+      }
+    },
+    "/runners": {
+      "get": {
+        "operationId": "listRunners",
+        "summary": "List registered terminals",
+        "responses": {
+          "200": {
+            "description": "Runner catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "schema.json#/definitions/RunnerInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerRunner",
+        "summary": "Register or update this runner",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Missing server token"
+          },
+          "403": {
+            "description": "Invalid runner credentials"
+          },
+          "409": {
+            "description": "Conflicting operation or offline runner"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/RunnerInfo"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runners/{id}/poll": {
+      "get": {
+        "operationId": "pollRunner",
+        "summary": "Wait up to 25 seconds for an assigned conversation or cancellation",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerPoll"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Missing server token"
+          },
+          "403": {
+            "description": "Invalid runner credentials"
+          },
+          "409": {
+            "description": "Conflicting operation or offline runner"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "activeRun",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/runners/chat": {
+      "post": {
+        "operationId": "dispatchRunnerChat",
+        "summary": "Queue one user message for the session runner; stream the entire conversation",
+        "responses": {
+          "200": {
+            "description": "Model and local execution events followed by a terminal response",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Offline runner or unfinished session"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/ChatRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runners/{id}/complete": {
+      "post": {
+        "operationId": "completeRunnerJob",
+        "summary": "Report a terminal conversation outcome",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Missing server token"
+          },
+          "403": {
+            "description": "Invalid runner credentials"
+          },
+          "409": {
+            "description": "Conflicting operation or offline runner"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/ChatResponse"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runners/{id}/events": {
+      "post": {
+        "operationId": "reportRunnerEvent",
+        "summary": "Report a local tool execution start or end",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Missing server token"
+          },
+          "403": {
+            "description": "Invalid runner credentials"
+          },
+          "409": {
+            "description": "Conflicting operation or offline runner"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/StreamEvent"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runners/runs/{run}": {
+      "get": {
+        "operationId": "inspectRunnerJob",
+        "summary": "Inspect durable dispatch status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Missing server token"
+          },
+          "403": {
+            "description": "Invalid runner credentials"
+          },
+          "409": {
+            "description": "Conflicting operation or offline runner"
+          }
+        },
+        "parameters": [
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/runners/runs/{run}/events": {
+      "get": {
+        "operationId": "watchRunnerJob",
+        "summary": "Subscribe to future events; use session details for saved history",
+        "responses": {
+          "200": {
+            "description": "Future events and the final response",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/runners/{id}/runs/{run}/recover": {
+      "post": {
+        "operationId": "recoverRunnerDispatch",
+        "summary": "Explicitly recover an interrupted dispatch with pending tool results; does not execute the harness",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Claimed dispatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerJob"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No pending results or another active dispatch"
           }
         }
       }

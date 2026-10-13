@@ -2,22 +2,13 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), 'JAGENT_API_TARGET')
-  const apiTarget = process.env.JAGENT_API_TARGET || env.JAGENT_API_TARGET || (mode === 'coding' ? 'http://127.0.0.1:18180' : 'http://127.0.0.1:18181')
-
+  const env = loadEnv(mode, process.cwd(), 'JAGENT_')
+  const apiTarget = process.env.JAGENT_SERVER_URL || env.JAGENT_SERVER_URL || 'http://127.0.0.1:18181'
+  const token = process.env.JAGENT_CLIENT_TOKEN || env.JAGENT_CLIENT_TOKEN
+  const proxy = { '/api': { target: apiTarget, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) } }
   return {
     plugins: [vue()],
-    server: {
-      port: 5175,
-      proxy: {
-        '/api': { target: apiTarget, ...(process.env.JAGENT_CLIENT_TOKEN ? { headers: { Authorization: `Bearer ${process.env.JAGENT_CLIENT_TOKEN}` } } : {}) }
-      }
-    },
-    preview: {
-      port: 4175,
-      proxy: {
-        '/api': { target: apiTarget, ...(process.env.JAGENT_CLIENT_TOKEN ? { headers: { Authorization: `Bearer ${process.env.JAGENT_CLIENT_TOKEN}` } } : {}) }
-      }
-    }
+    server: { port: 5175, proxy },
+    preview: { port: 4175, proxy }
   }
 })

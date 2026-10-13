@@ -2,42 +2,41 @@
 
 [English](README.md) | **简体中文**
 
-**云端运行 Agent Harness，本地执行工具。**
+**服务端运行 Agent，工具在实际工作环境中执行。**
 
-JAgentHarness 是专为服务端部署设计的 Agent Harness，将 Agent 运行时与工具执行环境分离。业务应用嵌入轻量的工具执行 SDK，服务端负责运行 Agent、调用模型和维护会话，两端通过统一协议协同工作。
+JAgentHarness 将 Agent Harness、工具 Runner 和交互前端分离。服务端负责模型与会话；轻量 Runner 自带原生工具，在目标终端执行；前端通过服务端接口进行交互，既可以部署在服务端，也可以运行在客户端。
 
-![架构图：轻量客户端 SDK 在本地执行原生工具，通过 HTTP/JSON 与远程 Agent Harness 交换消息、工具调用和执行结果。](assets/architecture.svg)
+![三个独立部分：交互前端和 coding Runner 分别连接服务端 Agent Harness。](assets/architecture.svg)
 
-所有连接均由客户端发起。服务端通过响应返回工具调用，设备无需开放回调接口。
+## 三个部分，一套协议
 
-## 为什么要分离 Harness 与工具执行？
+| 部分 | 职责 | 当前实现 |
+| --- | --- | --- |
+| **Agent Harness** | 模型调用、Agent 循环、上下文、数据库存储，以及 skills、虚拟文件等服务端工具 | Java 库与[服务端示例](examples/server-demo/README.md) |
+| **Runner** | 场景原生工具、执行权限及结果回传 | [客户端 SDK](sdk/java/README.md)，并提供开箱即用的 [Coding 发行包](examples/coding-runner/README.zh-CN.md) |
+| **交互前端** | 通过服务端接口管理对话、进度、项目和配置 | [Web Console](console/README.md)，可部署在服务端或客户端 |
 
-机器人控制程序、手机应用和桌面软件各有自己的运行环境、依赖和原生 API。工具需要在这些环境中执行，但嵌入完整的 Agent Harness 往往会引入不兼容的语言、框架或依赖。为每一种环境重新实现 Agent 循环，又意味着多维护一套系统。
+客户端工具的实现随 Runner 一起交付。Runner 向服务端声明工具结构，通过主动发起的 HTTP 长轮询领取任务，再通过对话接口回传结果。前端无论部署在哪里，都连接服务端。Runner 无需开放入站端口。Java SDK 已包含 Runner 运行能力：新场景只需实现并注册自己的 `ToolDefinition`，不必重新开发任务接收与结果回传。只有文件类工具需要工作目录。
 
-JAgentHarness 用协议连接两端：**设备实现自身能力，服务端运行 Agent。** 模型接入、上下文管理和会话状态由服务端负责；工具实现、权限和执行由本地应用掌控。Agent 能力可以独立演进，无需反复改造设备端集成。
+## 为什么分离 Harness 与工具执行？
 
-## 适用场景
+机器人控制器、手机应用、桌面应用和 Linux 工作区，各自有不同的运行环境与原生 API。工具需要在对应环境中执行，模型接入、上下文管理和持久化会话则可以统一放在服务端。
 
-| 应用 | 留在本地的能力 |
-| --- | --- |
-| 编程与桌面自动化 | 工作区访问、应用控制、Shell 命令 |
-| 机器人控制 | 硬件驱动、传感器访问、设备动作 |
-| 手机自动化 | 原生应用集成、界面操作、平台权限 |
-| 现有业务系统 | 以工具形式提供的内部服务与业务操作 |
+用适合设备的语言实现工具，通过简洁的 HTTP/JSON 协议复用服务端 Agent。网页版、桌面版或其他交互界面可以使用同一套服务端接口，独立于本地工具执行。
 
-**目前已提供：** Java 服务端、轻量 Java 客户端 SDK，以及可运行的 coding 示例。机器人和手机场景用于说明架构的适用方向，项目尚未提供对应的平台工具与适配器，也尚未提供完整的 JavaScript SDK。
+**目前已提供：** Java 服务端、轻量 Java 客户端 SDK、内置工具的 Coding Runner，以及 Web Console。其他语言可以直接实现原生 Runner，无需 MCP。项目尚未提供机器人、手机、桌面自动化适配器和 JavaScript SDK。
 
-## 核心特性
+## 核心能力
 
-- **面向服务端部署：** Java Agent 集成模型接入、流式响应、上下文压缩和工具编排。
-- **数据库存储：** 通过 JDBC 持久化会话、执行事件和用量，数据库由业务应用选择。
-- **虚拟文件系统：** 在数据库中管理提示词、skills 和附属文件，支持全局与项目作用域。
-- **轻量可嵌入 SDK：** Java 客户端仅依赖 JDK HTTP 和 Jackson，将原生工具嵌入现有应用，通过跨语言协议连接服务端。
-- **灵活扩展：** 组合服务端、客户端与 MCP 工具，通过 Maven 库扩展模型、提示词和存储实现。
+- **面向服务端部署：** 模型接入、流式输出、上下文压缩和工具编排。
+- **数据库存储：** 通过 JDBC 保存会话、事件、用量和 Runner 任务。
+- **虚拟文件与 skills：** 服务端管理提示词、技能和资源文件，支持全局与项目作用域。
+- **轻量本地执行：** 客户端进程运行原生工具，无需 Spring、JDBC 或模型 SDK。
+- **独立交互界面：** 当前 Web Console 与未来桌面端等前端共用服务端 API。
 
 ## 快速体验
 
-需要 **JDK 8+**、**Maven 3.6.3+**、**Node.js 22.12+**，以及兼容 OpenAI 格式的模型接口。示例内置 SQLite，无需另外启动数据库服务。
+安装 **JDK 8+**、**Maven 3.6.3+** 和 **Node.js 22.12+**，准备一个兼容 OpenAI 的模型接口。示例自带 SQLite，无需安装数据库服务。
 
 ```sh
 git clone https://github.com/differentialmanifold/jagent-harness.git
@@ -45,38 +44,40 @@ cd jagent-harness
 cp .env.example .env.local
 ```
 
-在 `.env.local` 中配置模型：
+在 `.env.local` 中配置模型和本地工作区：
 
 ```dotenv
 JAGENT_MODEL=your-model-name
 JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
 JAGENT_OPENAI_API_KEY=your-api-key
+JAGENT_RUNNER_WORKSPACE=/path/to/your/project
 ```
 
-启动 coding 示例：
+启动三个部分：
 
 ```sh
 node scripts/dev.mjs
 ```
 
-脚本会构建并启动 Harness 服务端、coding 客户端和 Web 控制台。打开 **http://127.0.0.1:5175**，创建项目并指定本地工作区路径，然后输入：
+打开 **http://127.0.0.1:5175**，添加项目，选择 **coding-local** 作为执行目标，然后发送：
 
-> 阅读这个工作区的 README，总结一下项目。
+> 阅读工作区中的 README，总结这个项目。
 
-观察工具调用：服务端推进对话，coding 客户端在你的电脑上读取文件。也可以在临时工作区中，让它创建一个文件并读回内容，通过控制台的审批功能控制本地操作。按 **Ctrl+C** 停止示例。
+服务端推进对话，Runner 在目标机器读取文件。Runner 默认只启用读取与搜索工具；启动前设置 `JAGENT_RUNNER_FULL_ACCESS=true` 可启用 write、edit 和 bash。工作区与权限均在 Runner 所在机器配置。按 **Ctrl+C** 停止示例。
 
-要体验跨机器运行，将 `JAGENT_SERVER_URL` 和 `JAGENT_CLIENT_TOKEN` 指向已启动的服务端，再运行 `node scripts/dev.mjs --client-only`。工作区始终保留在客户端机器上。
-
-独立组件启动、Windows/macOS 快捷方式、手动启动命令和排错指引见 [Quick start](QUICK_START.md)（英文）。
+独立启动、手动命令、远程终端和 Windows/macOS 快捷方式见 [Quick start](QUICK_START.md)（英文）。
 
 ## 接入项目
 
-- [Java 客户端 SDK](sdk/java/README.md)：嵌入工具执行能力，注册本地工具。
-- [HTTP/JSON 协议](protocol/README.md)：为其他语言和运行环境实现客户端。
-- [服务端集成](jagent-harness-sdk/README.md)：使用 Maven 库部署和配置 Harness。
-- [Coding 客户端](examples/coding-java/README.md)与[服务端示例](examples/server-demo/README.md)：了解示例中的两个应用。
+- [服务端集成](jagent-harness-sdk/README.md)：通过 Maven 库部署和扩展 Harness。
+- [Coding Runner](examples/coding-runner/README.zh-CN.md)：在目标终端运行内置工具。
+- [Web Console](console/README.md)：在服务端或客户端部署同一个前端。
+- [Java 客户端 SDK](sdk/java/README.md)：通过 `AgentRunner` 托管原生工具，或通过 `AgentClient` 发起对话。
+- [HTTP/JSON 协议](protocol/README.md)：实现其他语言的 Runner 或其他形式的前端。
 
-上述集成文档目前为英文。本源码树的目标版本为 `1.1.0`。本地开发时，先运行 `mvn install`，再构建独立的 Maven 使用方项目。当前服务端面向单实例部署，使用应用级身份验证；设备平台的权限控制由客户端应用负责。
+除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `1.2.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
+
+源码目录按职责划分：`jagent-harness-sdk/` 是服务端库，`sdk/java/` 是包含 Runner 运行能力的通用客户端 SDK，`examples/` 是服务端与 coding 工具宿主示例，`console/` 是前端，`protocol/` 是跨语言协议及其测试。
 
 ## 开发
 
@@ -89,6 +90,6 @@ npm test --prefix console
 npm run build --prefix console
 ```
 
-Maven 运行 Java 测试，npm 运行协议与控制台测试。Maven 库的发布流程见 [Releasing](RELEASING.md)（英文）。
+Maven 构建共享 API、Java 客户端 SDK、Coding Runner、服务端库和服务端示例。前端独立构建，产物位于 `console/dist/`。发布说明见 [Releasing](RELEASING.md)。
 
-[MIT 许可证](LICENSE)。
+[MIT License](LICENSE)。

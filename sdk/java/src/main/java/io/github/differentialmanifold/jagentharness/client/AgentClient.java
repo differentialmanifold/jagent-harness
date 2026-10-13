@@ -96,6 +96,8 @@ public final class AgentClient {
                                         .execute(context, json.valueToTree(call.arguments));
                         if (value == null || value.content == null)
                             value = ToolExecutionResult.unknown("Tool returned no result");
+                    } catch (ToolApprovalRejectedException denied) {
+                        value = ToolExecutionResult.failure(denied.getMessage());
                     } catch (Exception error) {
                         value = ToolExecutionResult.unknown(error.toString());
                     }

@@ -3,7 +3,6 @@
     <ToolMessage
       v-if="message.role === 'tool'"
       :message="message"
-      @resolve-approval="$emit('resolveToolApproval', $event)"
     />
 
     <template v-else>
@@ -83,8 +82,6 @@ import { isDisplayableImageUrl } from '../utils/images'
 const props = defineProps({
   message: { type: Object, required: true }
 })
-
-defineEmits(['resolveToolApproval'])
 
 const messageImages = computed(() => (
   (Array.isArray(props.message.images) ? props.message.images : [])

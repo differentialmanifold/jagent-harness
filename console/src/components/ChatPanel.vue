@@ -18,7 +18,6 @@
         v-for="message in visibleMessages"
         :key="message.role === 'assistant' && message.turnId ? `assistant:${message.turnId}` : message.messageId"
         :message="message"
-        @resolve-tool-approval="$emit('resolveToolApproval', $event)"
       />
     </div>
 
@@ -88,35 +87,6 @@
           >
             <el-icon :class="{ 'is-loading': addingImages }"><Picture /></el-icon>
           </button>
-          <el-dropdown
-            v-if="!running && clientToolsEnabled"
-            class="approval-dropdown"
-            popper-class="approval-dropdown-menu"
-            trigger="click"
-            :disabled="running"
-            @command="selectApprovalMode"
-          >
-            <button class="approval-trigger" type="button" :disabled="running">
-              <el-icon>
-                <Lock v-if="approvalMode === 'ask_approval'" />
-                <Unlock v-else />
-              </el-icon>
-              <span>{{ approvalModeLabel }}</span>
-              <el-icon class="approval-caret"><CaretBottom /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="ask_approval">
-                  <el-icon><Lock /></el-icon>
-                  <span>Ask</span>
-                </el-dropdown-item>
-                <el-dropdown-item command="full_access">
-                  <el-icon><Unlock /></el-icon>
-                  <span>Full access</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
         </div>
         <div class="composer-right">
           <ContextUsageIndicator :usage="contextUsage" />
@@ -152,14 +122,13 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { CaretBottom, Close, Lock, Picture, Top, Unlock } from '@element-plus/icons-vue'
+import { Close, Picture, Top } from '@element-plus/icons-vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import MessageItem from './MessageItem.vue'
 import ComposerInput from './ComposerInput.vue'
 import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
-  clientToolsEnabled: { type: Boolean, default: false },
   currentSession: { type: Object, default: null },
   messages: { type: Array, required: true },
   provider: { type: Object, default: null },
@@ -171,7 +140,6 @@ const props = defineProps({
   pendingInputs: { type: Array, default: () => [] },
   submittingInput: { type: Boolean, default: false },
   messageRevision: { type: Number, default: 0 },
-  approvalMode: { type: String, required: true },
   contextUsage: { type: Object, default: null },
   draft: { type: String, required: true },
   draftImages: { type: Array, default: () => [] },
@@ -181,12 +149,10 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:draft',
-  'update:approvalMode',
   'addImages',
   'removeImage',
   'send',
-  'stop',
-  'resolveToolApproval'
+  'stop'
 ])
 const AUTO_SCROLL_THRESHOLD_PX = 16
 const messagesEl = ref(null)
@@ -210,7 +176,6 @@ const modelConfigured = computed(() => Boolean(
   String(props.provider?.model || '').trim()
   && String(props.provider?.baseUrl || '').trim()
 ))
-const approvalModeLabel = computed(() => props.approvalMode === 'full_access' ? 'Full access' : 'Ask')
 const composerPlaceholder = computed(() => {
   if (!props.running) return 'Ask the agent to inspect, edit, or plan work...'
   return 'Send another message...'
@@ -244,11 +209,6 @@ function submit() {
   autoFollowMessages.value = true
   scrollMessagesToBottom({ force: true })
   emit('send')
-}
-
-function selectApprovalMode(mode) {
-  if (props.running) return
-  emit('update:approvalMode', mode === 'full_access' ? 'full_access' : 'ask_approval')
 }
 
 function handleKeydown(event) {

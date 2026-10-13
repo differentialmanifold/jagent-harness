@@ -25,7 +25,13 @@ export function parseJsonObject(value) {
 }
 
 export function toolResult(message) {
-  return parseJsonObject(message.content) || {}
+  const result = message.content && typeof message.content === 'object' ? message.content : parseJsonObject(message.content) || {}
+  if (result.role === 'tool' && ['SUCCEEDED', 'FAILED', 'UNKNOWN'].includes(result.status)) {
+    const content = result.content && typeof result.content === 'object'
+      ? result.content : parseJsonObject(result.content) || { error: String(result.content || '') }
+    return { ...content, executionStatus: result.status }
+  }
+  return result
 }
 
 export function isFailedToolMessage(message) {
@@ -39,6 +45,7 @@ export function isStoppedToolMessage(message) {
 
 function isToolResultObjectError(result) {
   if (!result) return false
+  if (['FAILED', 'UNKNOWN'].includes(result.executionStatus)) return true
   if (result.error) return true
   if (result.timedOut) return true
   return typeof result.exitCode === 'number' && result.exitCode !== 0
@@ -47,6 +54,7 @@ function isToolResultObjectError(result) {
 export function toolStatusLabel(message) {
   if (message.running) return 'RUN'
   if (isStoppedToolMessage(message)) return 'STOP'
+  if (toolResult(message).executionStatus === 'UNKNOWN') return 'UNKNOWN'
   return isFailedToolMessage(message) ? 'ERR' : 'OK'
 }
 
@@ -55,6 +63,7 @@ export function toolMessageTitle(message) {
   if (name === 'grep' || name === 'find') return name
   if (message.running) return runningToolTitle(name)
   if (isStoppedToolMessage(message)) return `${toolDisplayName(name)} stopped`
+  if (toolResult(message).executionStatus === 'UNKNOWN') return `${toolDisplayName(name)} outcome unknown`
   const failed = isFailedToolMessage(message)
   if (name === 'bash') return failed ? 'Bash command failed' : 'Ran bash command'
   if (name === 'skill') return failed ? 'Skill load failed' : 'Loaded skill'

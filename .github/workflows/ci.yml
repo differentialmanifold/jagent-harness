@@ -49,4 +49,4 @@ jobs:
           distribution: temurin
           java-version: '8'
           cache: maven
-      - run: mvn -B -pl examples/coding-java -am test
+      - run: mvn -B -pl examples/coding-runner -am test

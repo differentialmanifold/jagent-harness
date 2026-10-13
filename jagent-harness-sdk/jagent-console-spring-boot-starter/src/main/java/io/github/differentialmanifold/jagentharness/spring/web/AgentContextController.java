@@ -28,6 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/agent/context")
 public class AgentContextController {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RunnerService runners;
 
     private final ToolRegistry toolRegistry;
     private final SkillRegistry skillRegistry;
@@ -80,6 +82,13 @@ public class AgentContextController {
             agentContext.setClientCapabilities(
                     new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
                             request.getClientTools(), request.getClientInstructions()));
+        if (session != null && runners != null && runners.binding(session.getSessionId()) != null) {
+            io.github.differentialmanifold.jagentharness.protocol.RunnerInfo runner =
+                    runners.require(runners.binding(session.getSessionId()));
+            agentContext.setClientCapabilities(
+                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
+                            runner.tools, runner.instructions));
+        }
         return new AgentContextResponse(
                 tools(agentContext),
                 promptFiles(session == null ? null : session.getProjectId()),

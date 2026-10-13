@@ -8,7 +8,6 @@ import io.github.differentialmanifold.jagentharness.core.message.MessageReposito
 import io.github.differentialmanifold.jagentharness.core.prompt.*;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalCoordinator;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import javax.sql.DataSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -30,12 +29,19 @@ import org.springframework.jdbc.core.JdbcTemplate;
         havingValue = "true",
         matchIfMissing = true)
 @ConditionalOnClass(JdbcTemplate.class)
-@EnableConfigurationProperties({
-    JdbcStoreProperties.class,
-    JdbcRunStopProperties.class,
-    JdbcToolApprovalProperties.class
-})
+@EnableConfigurationProperties({JdbcStoreProperties.class, JdbcRunStopProperties.class})
 public class JdbcStoreAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(
+            io.github.differentialmanifold.jagentharness.core.runner.RunnerStore.class)
+    public JdbcRunnerStore jdbcRunnerStore(
+            JdbcTemplate db,
+            JdbcSchemaInitializer schema,
+            ObjectMapper json,
+            JdbcStoreProperties properties) {
+        return new JdbcRunnerStore(db, json, properties);
+    }
 
     @Bean(initMethod = "initialize")
     @ConditionalOnMissingBean
@@ -138,17 +144,5 @@ public class JdbcStoreAutoConfiguration {
             ObjectMapper objectMapper,
             JdbcStoreProperties storeProperties) {
         return new JdbcRunInputCoordinator(jdbcTemplate, objectMapper, storeProperties);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(ToolApprovalCoordinator.class)
-    public JdbcToolApprovalCoordinator jdbcToolApprovalCoordinator(
-            JdbcTemplate jdbcTemplate,
-            JdbcSchemaInitializer schemaInitializer,
-            ObjectMapper objectMapper,
-            JdbcStoreProperties storeProperties,
-            JdbcToolApprovalProperties properties) {
-        return new JdbcToolApprovalCoordinator(
-                jdbcTemplate, objectMapper, storeProperties, properties);
     }
 }

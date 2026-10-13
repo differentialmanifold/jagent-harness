@@ -17,9 +17,6 @@ harness:
   store:
     jdbc:
       application-id: ${JAGENT_APPLICATION_ID:agent-server}
-  approval:
-    jdbc:
-      poll-interval-millis: ${JAGENT_APPROVAL_POLL_INTERVAL_MS:1000}
   stop:
     jdbc:
       poll-interval-millis: ${JAGENT_STOP_POLL_INTERVAL_MS:1000}
