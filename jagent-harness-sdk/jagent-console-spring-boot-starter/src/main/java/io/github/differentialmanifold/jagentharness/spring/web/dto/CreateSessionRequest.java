@@ -12,6 +12,16 @@ public class CreateSessionRequest {
         this.runnerId = runnerId;
     }
 
+    private java.util.List<String> enabledTools;
+
+    public java.util.List<String> getEnabledTools() {
+        return enabledTools;
+    }
+
+    public void setEnabledTools(java.util.List<String> enabledTools) {
+        this.enabledTools = enabledTools;
+    }
+
     private String title;
     private String workspacePath;
     private String projectName;

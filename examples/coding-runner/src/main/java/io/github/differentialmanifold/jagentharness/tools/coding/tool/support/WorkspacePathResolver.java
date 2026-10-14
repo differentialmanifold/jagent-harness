@@ -5,18 +5,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class WorkspacePathResolver {
-    private final Path workspace;
-
-    public WorkspacePathResolver() {
-        this.workspace = null;
-    }
-
-    public WorkspacePathResolver(Path workspace) {
-        if (workspace == null || !java.nio.file.Files.isDirectory(workspace))
-            throw new IllegalArgumentException("Workspace must be a directory");
-        this.workspace = workspace.toAbsolutePath().normalize();
-    }
-
     public Path resolve(ToolContext context, String input) {
         Path root = workspaceRoot(context);
         Path path = Paths.get(normalizePathSeparators(input));
@@ -26,7 +14,6 @@ public class WorkspacePathResolver {
     }
 
     public Path workspaceRoot(ToolContext context) {
-        if (workspace != null) return workspace;
         if (context != null && context.getWorkspaceRoot() != null) {
             return context.getWorkspaceRoot().toAbsolutePath().normalize();
         }

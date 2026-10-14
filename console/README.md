@@ -15,7 +15,7 @@ npm --prefix console run dev
 
 Open `http://127.0.0.1:5175`. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and adds the token on the frontend host. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start-frontend.mjs` does.
 
-Add a project and choose an online runner, or select **Server tools only**. Runner workspace paths and permissions come from the runner registration. They cannot be changed in the web interface.
+Add a project and choose an online runner, or select **Server tools only**. For a coding runner, browse or enter a directory on that terminal. New projects enable all registered client tools by default. The directory browser works through the runner’s outbound polling connection. **Configuration → Built-in tools → Client tools** edits the project selection for future runs. Selected tools run with Full access without approval prompts.
 
 ## Build and host
 

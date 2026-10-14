@@ -36,7 +36,6 @@ export async function launch(component) {
   const token = env.JAGENT_CLIENT_TOKEN || ''
   const localServerUrl = `http://127.0.0.1:${serverPort}`
   const runnerHome = resolve(root, env.JAGENT_RUNNER_HOME || 'data/coding-runner')
-  const workspace = resolve(root, env.JAGENT_RUNNER_WORKSPACE || '.')
   const runnerJar = `examples/coding-runner/target/jagent-coding-runner-${version}.jar`
 
   function start(command, args, cwd, childEnv = env) {
@@ -136,12 +135,14 @@ export async function launch(component) {
     for (const key of Object.keys(clientEnv)) if (/^JAGENT_(OPENAI_|MODEL|DATASOURCE|TEMPERATURE|COMPACTION|CONTEXT|CONFIG_ROOT)/.test(key)) delete clientEnv[key]
     if (startClient) {
       await ready(serverUrl)
-      await command('java', ['-jar', runnerJar, '--home', runnerHome, 'connect', serverUrl], root, clientEnv)
-      const permissions = env.JAGENT_RUNNER_FULL_ACCESS === 'true' ? ['--full-access'] : []
-      console.log(`Starting coding runner in ${workspace} (${permissions.length ? 'full access' : 'read/search only'})`)
-      service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--workspace', workspace, '--name', env.JAGENT_RUNNER_NAME || 'coding-local', ...permissions], clientEnv)
-      const identity = JSON.parse(readFileSync(resolve(runnerHome, 'config.json'), 'utf8')).runnerId
-      await ready(serverUrl, '/api/v1/runners', runners => runners.some(runner => runner.runnerId === identity && runner.online))
+      console.log('Starting coding runner; select project directories and tools in the console')
+      service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--server', serverUrl, '--name', env.JAGENT_RUNNER_NAME || 'coding-local'], clientEnv)
+      await ready(serverUrl, '/api/v1/runners', runners => {
+        const config = resolve(runnerHome, 'config.json')
+        if (!existsSync(config)) return false
+        const identity = JSON.parse(readFileSync(config, 'utf8')).runnerId
+        return runners.some(runner => runner.runnerId === identity && runner.online)
+      })
     }
     if (startFrontend) {
       const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev', '--', '--port', String(frontendPort), '--host', env.JAGENT_CONSOLE_HOST || '127.0.0.1'], resolve(root, 'console'), { ...clientEnv, JAGENT_SERVER_URL: serverUrl })

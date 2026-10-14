@@ -39,6 +39,8 @@ class AgentRunnerTest {
                     AgentRunner.builder(server.url(), home)
                             .tools(Collections.singletonList(tool))
                             .toolContext(device)
+                            .toolDiagnostics(
+                                    Collections.singletonMap(tool.getName(), "Native device API"))
                             .token("not-stored")
                             .build()) {
                 id = runner.runnerId();
@@ -53,7 +55,10 @@ class AgentRunnerTest {
                 ChatResponse result = server.completed.poll(5, TimeUnit.SECONDS);
                 assertNotNull(result);
                 assertEquals("COMPLETED", result.status);
-                assertNull(server.registration.get().workspace);
+                assertFalse(server.registration.get().workspaces);
+                assertEquals(
+                        "Native device API",
+                        server.registration.get().toolDiagnostics.get(tool.getName()));
                 assertEquals(1, effects.get());
                 assertEquals(2, server.chats.size());
                 assertEquals("tool", server.chats.get(1).messages.get(0).role);
@@ -70,7 +75,9 @@ class AgentRunnerTest {
                 receive.get(5, TimeUnit.SECONDS);
             }
             try (AgentRunner restarted =
-                    AgentRunner.builder(home).tools(Collections.singletonList(tool)).build()) {
+                    AgentRunner.builder(server.url(), home)
+                            .tools(Collections.singletonList(tool))
+                            .build()) {
                 assertEquals(id, restarted.runnerId());
             }
             assertFalse(
@@ -167,8 +174,99 @@ class AgentRunnerTest {
                                 .tools(Collections.singletonList(tool))
                                 .build());
         try (AgentRunner restarted =
-                AgentRunner.builder(home).tools(Collections.singletonList(tool)).build()) {
+                AgentRunner.builder("https://agent.example.com", home)
+                        .tools(Collections.singletonList(tool))
+                        .build()) {
             assertNotNull(restarted.runnerId());
+        }
+    }
+
+    @Test
+    void oneTerminalUsesEachProjectsWorkspaceAndRejectsDisabledTools() throws Exception {
+        AtomicInteger effects = new AtomicInteger();
+        ToolDefinition tool =
+                tool(
+                        (context, args) -> {
+                            assertEquals(ToolApprovalMode.FULL_ACCESS, context.getApprovalMode());
+                            effects.incrementAndGet();
+                            return ToolExecutionResult.success(
+                                    new String(
+                                            Files.readAllBytes(
+                                                    context.getWorkspaceRoot().resolve("name.txt")),
+                                            StandardCharsets.UTF_8));
+                        });
+        try (Server server = new Server();
+                AgentRunner runner =
+                        AgentRunner.builder(server.url(), home.resolve("state"))
+                                .workspaces(new LocalWorkspaces())
+                                .tools(Collections.singletonList(tool))
+                                .build()) {
+            Future<?> receive =
+                    server.threads.submit(
+                            () -> {
+                                runner.serve();
+                                return null;
+                            });
+            for (String name : Arrays.asList("first", "second")) {
+                Path directory = Files.createDirectory(home.resolve(name));
+                Files.write(directory.resolve("name.txt"), name.getBytes(StandardCharsets.UTF_8));
+                server.job = job(runner.runnerId(), tool);
+                server.job.request.sessionId = "s_" + name;
+                server.job.request.runId = "r_" + name;
+                server.job.workspace = directory.toString();
+                server.jobs.add(server.job);
+                assertEquals(
+                        "COMPLETED",
+                        Objects.requireNonNull(server.completed.poll(5, TimeUnit.SECONDS)).status);
+                assertEquals(
+                        name, server.chats.get(server.chats.size() - 1).messages.get(0).content);
+            }
+            assertTrue(server.registration.get().workspaces);
+            server.job = job(runner.runnerId(), tool);
+            server.job.workspace = home.toString();
+            server.job.request.clientTools.clear();
+            server.jobs.add(server.job);
+            ChatResponse rejected = server.completed.poll(5, TimeUnit.SECONDS);
+            assertNotNull(rejected);
+            assertEquals("INTERRUPTED", rejected.status);
+            assertTrue(server.chats.get(server.chats.size() - 1).clientTools.isEmpty());
+            assertEquals(2, effects.get());
+            runner.close();
+            receive.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void missingWorkspaceFailsJobWithoutExecutingOrRetryingIt() throws Exception {
+        AtomicInteger effects = new AtomicInteger();
+        ToolDefinition tool =
+                tool(
+                        (context, args) -> {
+                            effects.incrementAndGet();
+                            return ToolExecutionResult.success("ok");
+                        });
+        try (Server server = new Server();
+                AgentRunner runner =
+                        AgentRunner.builder(server.url(), home)
+                                .workspaces(new LocalWorkspaces())
+                                .tools(Collections.singletonList(tool))
+                                .build()) {
+            server.job = job(runner.runnerId(), tool);
+            server.job.workspace = home.resolve("missing").toString();
+            server.jobs.add(server.job);
+            Future<?> receive =
+                    server.threads.submit(
+                            () -> {
+                                runner.serve();
+                                return null;
+                            });
+            assertEquals(
+                    "INTERRUPTED",
+                    Objects.requireNonNull(server.completed.poll(5, TimeUnit.SECONDS)).status);
+            assertEquals(0, effects.get());
+            assertTrue(server.chats.isEmpty());
+            runner.close();
+            receive.get(5, TimeUnit.SECONDS);
         }
     }
 
@@ -279,11 +377,11 @@ class AgentRunnerTest {
 
         ChatResponse pending() {
             ChatResponse response = new ChatResponse();
-            response.sessionId = "s";
-            response.runId = "r";
+            response.sessionId = job == null ? "s" : job.request.sessionId;
+            response.runId = job == null ? "r" : job.request.runId;
             response.status = "REQUIRES_ACTION";
             ToolInvocation call = new ToolInvocation();
-            call.toolCallId = "c";
+            call.toolCallId = "r".equals(response.runId) ? "c" : "c_" + response.runId;
             call.name = "device_status";
             call.arguments = new LinkedHashMap<>();
             response.toolCalls.add(call);

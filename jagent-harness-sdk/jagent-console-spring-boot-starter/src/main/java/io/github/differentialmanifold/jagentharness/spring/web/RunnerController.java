@@ -41,6 +41,36 @@ public class RunnerController {
         return service.submit(request);
     }
 
+    @GetMapping("/projects/{projectId}")
+    public RunnerProject project(@PathVariable String projectId) {
+        RunnerProject project = service.project(projectId);
+        if (project == null)
+            throw new ProtocolException(404, "PROJECT_NOT_FOUND", "Runner project not found");
+        return project;
+    }
+
+    @PutMapping("/projects/{projectId}/tools")
+    public RunnerProject tools(
+            @PathVariable String projectId, @RequestBody Map<String, List<String>> body) {
+        return service.selectTools(projectId, body.get("enabledTools"));
+    }
+
+    @GetMapping("/{id}/workspaces")
+    public DeferredResult<WorkspaceListing> browse(
+            @PathVariable String id, @RequestParam(required = false) String path) {
+        return service.browse(id, path);
+    }
+
+    @PostMapping("/{id}/workspaces/result")
+    public Map<String, Boolean> workspaceResult(
+            @PathVariable String id,
+            @RequestHeader(value = "X-Runner-Secret", required = false) String secret,
+            @RequestBody WorkspaceListing listing) {
+        service.authenticate(id, secret);
+        service.workspaceResult(id, listing);
+        return Collections.singletonMap("accepted", true);
+    }
+
     @GetMapping("/runs/{run}")
     public RunnerJob job(@PathVariable String run) {
         return service.job(run);

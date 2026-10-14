@@ -19,6 +19,10 @@ public interface RunnerStore {
 
     String runnerForSession(String sessionId);
 
+    RunnerProject project(String projectId);
+
+    void saveProject(RunnerProject project);
+
     void submit(RunnerJob job);
 
     RunnerJob job(String runId);

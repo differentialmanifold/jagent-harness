@@ -84,7 +84,7 @@ public final class AgentClient {
                                             response.runId,
                                             call.turnId,
                                             null,
-                                            null,
+                                            options.workspace,
                                             null,
                                             Collections.emptyMap(),
                                             options.stop)

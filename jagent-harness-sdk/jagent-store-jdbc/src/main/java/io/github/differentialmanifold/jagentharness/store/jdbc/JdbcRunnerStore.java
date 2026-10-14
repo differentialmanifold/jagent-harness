@@ -116,6 +116,55 @@ public class JdbcRunnerStore implements RunnerStore {
         return values.isEmpty() ? null : values.get(0);
     }
 
+    public RunnerProject project(String id) {
+        List<RunnerProject> values =
+                db.query(
+                        "select config_json from runner_projects where application_id = ? and project_id = ?",
+                        (r, n) -> decode(r.getString(1), RunnerProject.class),
+                        app,
+                        id);
+        if (!values.isEmpty()) return values.get(0);
+        // Existing chats already store their terminal and workspace. Preserve that project
+        // when opening a database created before per-project tool selection was introduced.
+        List<RunnerProject> previous =
+                db.query(
+                        "select s.workspace_path, r.runner_id from sessions s join runner_sessions r on s.application_id = r.application_id and s.session_id = r.session_id where s.application_id = ? and s.project_id = ? order by s.created_at",
+                        (r, n) -> {
+                            RunnerProject project = new RunnerProject();
+                            project.projectId = id;
+                            project.runnerId = r.getString("runner_id");
+                            project.workspace = r.getString("workspace_path");
+                            return project;
+                        },
+                        app,
+                        id);
+        if (previous.isEmpty()) return null;
+        RunnerProject project = previous.get(0);
+        RunnerInfo info = runner(project.runnerId);
+        if (info != null)
+            for (ToolDescriptor tool : info.tools) project.enabledTools.add(tool.name);
+        saveProject(project);
+        return project;
+    }
+
+    public void saveProject(RunnerProject project) {
+        tx.execute(
+                status -> {
+                    if (db.update(
+                                    "update runner_projects set config_json = ? where application_id = ? and project_id = ?",
+                                    encode(project),
+                                    app,
+                                    project.projectId)
+                            == 0)
+                        db.update(
+                                "insert into runner_projects (application_id, project_id, config_json) values (?, ?, ?)",
+                                app,
+                                project.projectId,
+                                encode(project));
+                    return null;
+                });
+    }
+
     public void submit(RunnerJob job) {
         tx.execute(
                 status -> {

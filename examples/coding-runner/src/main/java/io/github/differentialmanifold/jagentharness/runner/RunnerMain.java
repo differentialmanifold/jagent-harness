@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.runner;
 
 import io.github.differentialmanifold.jagentharness.client.AgentRunner;
+import io.github.differentialmanifold.jagentharness.client.LocalWorkspaces;
 import io.github.differentialmanifold.jagentharness.protocol.ChatResponse;
 import io.github.differentialmanifold.jagentharness.tools.coding.CodingTools;
 import java.net.InetAddress;
@@ -24,13 +25,13 @@ public final class RunnerMain {
         for (int i = 0; i < args.length; i++) {
             if (args[i].startsWith("--")) {
                 String name = args[i].substring(2);
-                if (Arrays.asList("help", "full-access").contains(name)) flags.put(name, "true");
-                else if (Arrays.asList("home", "workspace", "name", "session").contains(name)
+                if ("help".equals(name)) flags.put(name, "true");
+                else if (Arrays.asList("home", "server", "name", "session").contains(name)
                         && i + 1 < args.length) flags.put(name, args[++i]);
                 else throw new IllegalArgumentException("Unknown or incomplete option: --" + name);
             } else words.add(args[i]);
         }
-        if (words.isEmpty() || flags.containsKey("help")) {
+        if (flags.containsKey("help")) {
             help();
             return;
         }
@@ -44,26 +45,34 @@ public final class RunnerMain {
                                                 System.getProperty("user.home")
                                                         + "/.jagent-runner")));
         String token = System.getenv().getOrDefault("JAGENT_CLIENT_TOKEN", "");
-        String command = words.get(0);
-        if ("connect".equals(command)) {
-            if (words.size() != 2)
-                throw new IllegalArgumentException("connect requires a server URL");
-            AgentRunner.connect(home, words.get(1), token);
-            System.out.println("Connected to " + words.get(1));
-            return;
-        }
-        if (words.size() != 1 || !("serve".equals(command) || "recover".equals(command)))
-            throw new IllegalArgumentException("Use connect, serve or recover");
-        Path workspace =
-                Paths.get(flags.getOrDefault("workspace", System.getProperty("user.dir")))
-                        .toRealPath();
+        String command = words.isEmpty() ? "serve" : words.get(0);
+        if (words.size() > 1 || !("serve".equals(command) || "recover".equals(command)))
+            throw new IllegalArgumentException("Use serve or recover");
+        if ("recover".equals(command) && !flags.containsKey("session"))
+            throw new IllegalArgumentException("recover requires --session");
+        if (!"recover".equals(command) && flags.containsKey("session"))
+            throw new IllegalArgumentException("--session is only used with recover");
+        String server =
+                flags.getOrDefault(
+                        "server",
+                        System.getenv()
+                                .getOrDefault("JAGENT_SERVER_URL", "http://127.0.0.1:18181"));
         CodingTools coding = new CodingTools();
+        Map<String, String> diagnostics = coding.toolDiagnostics();
+        System.out.println("Search backend (find, grep): " + diagnostics.get("grep"));
         try (AgentRunner runner =
-                AgentRunner.builder(home)
+                AgentRunner.builder(server, home)
                         .token(token)
-                        .name(flags.getOrDefault("name", InetAddress.getLocalHost().getHostName()))
-                        .workspace(workspace.toString())
-                        .tools(coding.tools(workspace, flags.containsKey("full-access")))
+                        .name(
+                                flags.getOrDefault(
+                                        "name",
+                                        System.getenv()
+                                                .getOrDefault(
+                                                        "JAGENT_RUNNER_NAME",
+                                                        InetAddress.getLocalHost().getHostName())))
+                        .workspaces(new LocalWorkspaces())
+                        .tools(coding.tools())
+                        .toolDiagnostics(diagnostics)
                         .instructions(coding.instructions())
                         .onStatus(System.out::println)
                         .onEvent(
@@ -78,8 +87,6 @@ public final class RunnerMain {
             try {
                 if ("serve".equals(command)) runner.serve();
                 else {
-                    if (!flags.containsKey("session"))
-                        throw new IllegalArgumentException("recover requires --session");
                     ChatResponse response = runner.recover(flags.get("session"));
                     System.out.println(
                             response.status + ": " + Objects.toString(response.answer, ""));
@@ -97,10 +104,12 @@ public final class RunnerMain {
     private static void help() {
         System.out.println(
                 "JAgent Coding Runner (Java 8+)\n"
-                        + "  connect <https://server>\n"
-                        + "  serve --workspace <path> [--name <name>] [--full-access]\n"
-                        + "  recover --session <id> --workspace <path> [--full-access]\n"
+                        + "Run without arguments to start the runner at http://127.0.0.1:18181.\n"
+                        + "  [serve] [--server <url>] [--name <name>] [--home <path>]\n"
+                        + "Optional recovery of an interrupted operation (not a startup step):\n"
+                        + "  recover --session <id> [--server <url>] [--home <path>]\n"
+                        + "JAGENT_SERVER_URL overrides the default server address. --help prints this help.\n"
                         + "Use --home <path> for another runner identity. Authentication: JAGENT_CLIENT_TOKEN.\n"
-                        + "Coding defaults to read/search tools. --full-access enables writes and shell execution under the runner OS account.");
+                        + "Select the workspace and enabled tools per project in the console. Selected tools run with full access under the runner OS account.");
     }
 }

@@ -2,7 +2,6 @@
   "runnerId": "runner_linux",
   "name": "Linux build machine",
   "runtime": "java",
-  "workspace": "/srv/project",
   "instructions": "",
   "tools": [
     {
@@ -20,5 +19,9 @@
         ]
       }
     }
-  ]
+  ],
+  "workspaces": true,
+  "toolDiagnostics": {
+    "read": "Native filesystem"
+  }
 }

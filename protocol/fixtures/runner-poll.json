@@ -34,5 +34,9 @@
     "cancelled": false,
     "response": null
   },
-  "cancelledRuns": []
+  "cancelledRuns": [],
+  "workspaceRequest": {
+    "requestId": "lookup_example",
+    "path": "/srv"
+  }
 }

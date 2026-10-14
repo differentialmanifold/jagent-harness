@@ -4,10 +4,26 @@ import com.fasterxml.jackson.databind.*;
 import io.github.differentialmanifold.jagentharness.core.tool.*;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.*;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.*;
-import java.nio.file.Path;
 import java.util.*;
 
 public final class CodingTools {
+
+    private final RipgrepSearchEngine search =
+            new RipgrepSearchEngine(
+                    new RipgrepProcessRunner(),
+                    new RipgrepBinaryResolver(System.getenv().getOrDefault("JAGENT_RG_PATH", ""))
+                            .resolve());
+
+    public Map<String, String> toolDiagnostics() {
+        String backend =
+                search.getExecutable()
+                        .map(rg -> rg.getVersion() + " · " + rg.getPath())
+                        .orElse("Java fallback (ripgrep unavailable on PATH)");
+        Map<String, String> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("find", backend);
+        diagnostics.put("grep", backend);
+        return diagnostics;
+    }
 
     public String instructions() {
         return "### Coding Tool Usage\n"
@@ -23,15 +39,9 @@ public final class CodingTools {
                 + "- When enabled, bash is available for general shell commands; prefer dedicated tools first when they directly cover the operation.";
     }
 
-    public Collection<? extends ToolDefinition> tools(Path workspace, boolean allowExecution) {
+    public Collection<? extends ToolDefinition> tools() {
         ObjectMapper json = new ObjectMapper();
-        WorkspacePathResolver paths = new WorkspacePathResolver(workspace);
-        RipgrepSearchEngine search =
-                new RipgrepSearchEngine(
-                        new RipgrepProcessRunner(),
-                        new RipgrepBinaryResolver(
-                                        System.getenv().getOrDefault("JAGENT_RG_PATH", ""))
-                                .resolve());
+        WorkspacePathResolver paths = new WorkspacePathResolver();
         List<ToolDefinition> coding =
                 Arrays.asList(
                         new ReadTool(json, paths),
@@ -41,11 +51,6 @@ public final class CodingTools {
                         new WriteTool(json, paths),
                         new EditTool(json, paths),
                         new BashTool(json, paths));
-        if (!allowExecution) {
-            coding = new ArrayList<>(coding);
-            coding.removeIf(
-                    tool -> Arrays.asList("write", "edit", "bash").contains(tool.getName()));
-        }
         return coding;
     }
 }

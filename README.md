@@ -18,6 +18,36 @@ JAgentHarness separates the agent harness, tool runner, and user interface. The 
 
 The runner includes its tool implementations. It advertises their schemas to the server, receives work over outbound HTTP long polling, and returns results through the conversation API. The frontend connects to the server, regardless of where it is hosted. The runner needs no inbound port. The Java SDK includes the runner runtime: provide your own `ToolDefinition` implementations for a new scenario. Only file-based tools need a workspace.
 
+### Conversation flow
+
+For a conversation bound to a runner, long polling delivers the conversation task. Tool calls and results then travel through ordinary chat requests in the same session, while the frontend receives one continuous event stream.
+
+```mermaid
+sequenceDiagram
+    participant UI as Frontend Console
+    participant S as Server Harness
+    participant R as Client Runner / SDK
+
+    R->>S: Register local tools and start long polling
+    UI->>S: Submit a message to a runner-bound session
+    S-->>UI: Keep SSE open for progress
+    S-->>R: Return the conversation task in the poll response
+
+    R->>S: Submit the user message through the chat API
+    Note over S: Call the model and execute server tools
+    S-->>R: Return client tool calls and end this request
+
+    Note over R: Execute tools locally
+    R->>S: Submit role=tool results in the same session
+    Note over S: Append history and continue the agent loop
+    S-->>R: Return more tool calls or the final answer
+
+    R->>S: Report task completion
+    S-->>UI: Send the final result and close SSE
+```
+
+The tool-call exchange repeats as needed. The runner keeps polling during local execution to receive cancellation. Applications that initiate their own conversations can use `AgentClient.run()` directly, without runner dispatch.
+
 ## Why separate the harness from execution?
 
 A robot controller, a phone app, a desktop application, and a Linux workspace each have their own runtime and native APIs. Tools must execute in that environment; model integration, context management, and persistent conversations can remain on a server.
@@ -44,13 +74,12 @@ cd jagent-harness
 cp .env.example .env.local
 ```
 
-Set the model and local workspace in `.env.local`:
+Set the model in `.env.local`:
 
 ```dotenv
 JAGENT_MODEL=your-model-name
 JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
 JAGENT_OPENAI_API_KEY=your-api-key
-JAGENT_RUNNER_WORKSPACE=/path/to/your/project
 ```
 
 Start all three parts:
@@ -59,11 +88,11 @@ Start all three parts:
 node scripts/dev.mjs
 ```
 
-Open **http://127.0.0.1:5175**, add a project, select **coding-local** as its execution target, and ask:
+Open **http://127.0.0.1:5175**, add a project, select **coding-local**, browse or enter a workspace on that terminal. Then ask:
 
 > Read the README in this workspace and summarize the project.
 
-The server drives the conversation while the runner reads the local file. The runner defaults to read/search tools. Set `JAGENT_RUNNER_FULL_ACCESS=true` before starting it to enable write, edit, and bash. The workspace and permissions are configured on the runner machine. **Ctrl+C** stops the demo.
+The server drives the conversation while the runner reads the local file. All seven coding tools are available by default. Select which tools a project can use in **Configuration → Built-in tools → Client tools**; selected tools run with **Full access**, without approval prompts. One runner can serve multiple project directories. **Ctrl+C** stops the demo.
 
 See [Quick start](QUICK_START.md) for independent startup, manual commands, remote machines, and Windows/macOS shortcuts.
 

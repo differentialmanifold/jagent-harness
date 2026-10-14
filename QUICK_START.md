@@ -9,19 +9,23 @@ Install **JDK 8+**, **Maven 3.6.3+**, and **Node.js 22.12+** (Node 20.19 is also
 ```sh
 git clone https://github.com/differentialmanifold/jagent-harness.git
 cd jagent-harness
-cp .env.example .env.local
 ```
 
-Edit `.env.local`:
+Choose either the launchers or the manual steps below.
+
+## Start with launchers
+
+Copy `.env.example` to `.env.local` and set only your model connection:
+
+```sh
+cp .env.example .env.local
+```
 
 ```dotenv
 JAGENT_MODEL=your-model-name
 JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
 JAGENT_OPENAI_API_KEY=your-api-key
-JAGENT_RUNNER_WORKSPACE=/path/to/your/project
 ```
-
-## Start with launchers
 
 Start everything:
 
@@ -37,7 +41,7 @@ Or use a separate terminal for each part, in this order:
 | Coding runner | `node scripts/start-client.mjs` | Outbound connection to the server; no listening port |
 | Web frontend | `node scripts/start-frontend.mjs` | `http://127.0.0.1:5175`, with `/api` forwarded to the server |
 
-The runner includes all seven coding tool implementations. It defaults to read/search tools; set `JAGENT_RUNNER_FULL_ACCESS=true` to enable write, edit, and bash. Its workspace and permissions cannot be changed from the frontend.
+The runner includes all seven coding tools. Select the workspace and enabled tools per project in the frontend. Selected tools run with Full access, without approval prompts.
 
 Each launcher starts only its own component. Java launchers build the required modules; `--skip-build` reuses existing JARs. The runner launcher registers with the server before starting its receive loop. The frontend launcher installs npm dependencies when missing and does not require Java or Maven. It can start before the server is ready.
 
@@ -58,92 +62,99 @@ Each shortcut finds the repository root automatically. Keep its terminal open wh
 
 ## Start manually without launchers
 
-Run from the repository root. These commands do not load `.env.local`; set variables in each terminal. Use the same `JAGENT_CLIENT_TOKEN` for server, runner, and the frontend's API proxy. Model credentials belong only to the server.
+Start with the local defaults: server on **18181**, frontend on **5175**, and a runner that connects to the local server automatically. Only the model connection needs configuration. Run all commands from the repository root.
 
-### 1. Build
+### 1. Build once
 
 ```sh
-mvn -DskipTests install
+mvn -DskipTests package
 npm ci --prefix console
 ```
 
-The following JAR filenames use version `1.2.0`; update them when using another source version.
+### 2. Terminal 1: server
 
-### 2. Start the server
+Set your model name, API endpoint, and API key, then start the server:
 
 ```sh
-mkdir -p data
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-export JAGENT_CLIENT_TOKEN='your-shared-token'
-export AGENT_SERVER_PORT=18181
-export JAGENT_DATASOURCE_URL='jdbc:sqlite:data/agent-server.db'
-export JAGENT_CONFIG_ROOT="$PWD/data/server-config"
 java -jar examples/server-demo/target/server-demo-1.2.0.jar
 ```
 
-Wait for the application to report that it has started.
+Omit the API key if your model endpoint does not require one. Wait for the server to report that it has started. SQLite storage is created automatically as `agent-server.db` in the working directory.
 
-### 3. Start the coding runner
-
-In a second terminal:
+### 3. Terminal 2: runner
 
 ```sh
-export JAGENT_CLIENT_TOKEN='your-shared-token'
-java -jar examples/coding-runner/target/jagent-coding-runner-1.2.0.jar --home data/coding-runner connect http://127.0.0.1:18181
-java -jar examples/coding-runner/target/jagent-coding-runner-1.2.0.jar --home data/coding-runner serve --workspace /path/to/your/project --name coding-local
+java -jar examples/coding-runner/target/jagent-coding-runner-1.2.0.jar
 ```
 
-Append `--full-access` to the `serve` command when you want to enable file changes and shell commands. No separate tool download or installation is needed.
+No arguments or environment variables are needed. Wait for `Runner <machine-name> online`. The runner registers all coding tools and keeps receiving work. Choose project directories in the frontend after startup.
 
-### 4. Start the frontend
-
-In a third terminal, on either the server or client machine:
+### 4. Terminal 3: frontend
 
 ```sh
-export JAGENT_SERVER_URL='http://127.0.0.1:18181'
-export JAGENT_CLIENT_TOKEN='your-shared-token'
 npm --prefix console run dev
 ```
 
-The frontend always forwards API requests to `JAGENT_SERVER_URL`. It has no connection to a runner's local HTTP endpoint. Stop each process with **Ctrl+C**.
+Open **http://127.0.0.1:5175**. Keep all three terminals running; **Ctrl+C** stops each process.
+
+These manual Java commands do not load `.env.local`. If you previously configured custom addresses or a token in your shell, those settings override the defaults. Remote deployment and other optional settings are listed in [Configuration reference](#configuration-reference).
+
+### Run the Java processes in IntelliJ IDEA
+
+Import the root `pom.xml` as a Maven project. Run `ServerDemoApplication.main()` with the model environment variables above, then run `RunnerMain.main()` with no program arguments. Start the frontend with the same npm command in IDEA's terminal. Only the server needs model credentials.
 
 ## Try a conversation
 
-Open **http://127.0.0.1:5175**, add a project, and select **coding-local** as the execution target. The dialog shows the runner's workspace and enabled tools. Ask the agent to read the README. With full access enabled, try creating a file in a scratch workspace and reading it back.
+Open **http://127.0.0.1:5175**, add a project, and select the online runner as the execution target (**coding-local** with launchers, or your machine name with manual startup). Browse or enter a directory on that terminal. New projects enable all registered client tools by default. Ask the agent to read the README. With write enabled, try creating a file in a scratch workspace and reading it back.
 
-In **Configuration → Built-in tools**, server tools are configurable. **Client tools** shows the selected runner's tool catalog and schemas. Skills and virtual files are stored and executed through server capabilities. A project using **Server tools only** does not need a runner.
-
-## Place the three parts on different machines
-
-Deploy the server once with HTTPS. On a target machine with Java 8+, copy only `jagent-coding-runner-1.2.0.jar` and use the [Runner guide](examples/coding-runner/README.md) to connect it. The executable already contains its tools.
-
-Host the [web frontend](console/README.md) on the server, on your laptop, or on another machine. Set its `JAGENT_SERVER_URL` to the harness URL. Select the target runner in the same interface wherever the frontend is hosted.
-
-For a source checkout on the client machine, set the remote `JAGENT_SERVER_URL` and `JAGENT_CLIENT_TOKEN`, then run `node scripts/dev.mjs --client-only` to start only the runner and frontend. Model settings are not needed on that machine.
+In **Configuration → Built-in tools**, server tools are configurable. **Client tools** lets you change the current project's enabled tools and inspect their schemas. Changes apply to the next run; selecting no client tools keeps local execution disabled. Skills and virtual files are stored and executed through server capabilities. A project using **Server tools only** does not need a runner.
 
 ## Configuration reference
 
 | Variable | Purpose / default |
 | --- | --- |
+| `JAGENT_MODEL` | Model name; required on the server |
+| `JAGENT_OPENAI_BASE_URL` | OpenAI-compatible API endpoint; required on the server |
+| `JAGENT_OPENAI_API_KEY` | Model API key, if required by the provider; server only |
+| `AGENT_BIND_ADDRESS` | Server bind address; `127.0.0.1` for local startup |
+| `JAGENT_DATASOURCE_URL` | SQLite URL; `jdbc:sqlite:agent-server.db` directly, `jdbc:sqlite:data/agent-server.db` with launchers |
+| `JAGENT_CONFIG_ROOT` | Server configuration root; `./data/server-config` |
 | `JAGENT_SERVER_URL` | Harness URL used by runner and frontend; `http://127.0.0.1:18181` |
-| `JAGENT_CLIENT_TOKEN` | Shared server API token |
+| `JAGENT_CLIENT_TOKEN` | Optional shared server API token; empty for local startup. If set, use the same value for all three processes. |
 | `AGENT_SERVER_PORT` | Server port; `18181` |
 | `JAGENT_CONSOLE_PORT` | Frontend launcher port; `5175` |
 | `JAGENT_CONSOLE_HOST` | Frontend launcher bind address; `127.0.0.1` |
-| `JAGENT_RUNNER_WORKSPACE` | Workspace on the runner machine; repository root in launchers |
 | `JAGENT_RUNNER_HOME` | Runner identity and journal; `data/coding-runner` in launchers |
-| `JAGENT_RUNNER_NAME` | Display name; `coding-local` |
-| `JAGENT_RUNNER_FULL_ACCESS` | Enable write, edit, and bash; `false` |
+| `JAGENT_RUNNER_NAME` | Display name; machine hostname for direct startup, `coding-local` in launchers |
 | `JAGENT_RG_PATH` | Optional path to ripgrep; search tools also have a Java fallback |
 
-The standalone runner defaults to `~/.jagent-runner` unless `--home` or `JAGENT_RUNNER_HOME` is provided. One identity binds to one workspace. Use another home for another workspace or server.
+The standalone runner defaults to `~/.jagent-runner` unless `--home` or `JAGENT_RUNNER_HOME` is provided. One identity represents one terminal and can serve multiple project directories. Use another home for another terminal or server.
+
+### Connect to a remote server
+
+Deploy the server with HTTPS. Set its bind address as needed for your host or reverse proxy, and set `JAGENT_CLIENT_TOKEN` for authenticated access. Model credentials stay on the server.
+
+On the runner machine, set the remote address and token, then use the same startup command:
+
+```sh
+export JAGENT_SERVER_URL='https://agent.example.com'
+export JAGENT_CLIENT_TOKEN='your-shared-token'
+java -jar jagent-coding-runner-1.2.0.jar
+```
+
+The standalone JAR includes the SDK and coding tools. See the [Runner guide](examples/coding-runner/README.md) for distribution and recovery.
+
+On the frontend host, set the same `JAGENT_SERVER_URL` and `JAGENT_CLIENT_TOKEN` before running `npm --prefix console run dev`. The frontend can run on either machine. See [frontend hosting](console/README.md) for a production build.
+
+With a source checkout, put these optional settings in `.env.local` and run `node scripts/dev.mjs --client-only` to start the runner and frontend against the remote server.
 
 ## Troubleshooting
 
 - **Runner missing:** check that it uses the same server URL/token as the frontend. Open the project dialog again after the runner comes online.
-- **Write or bash missing:** enable full access on the runner, finish outstanding work, and restart it. The frontend cannot elevate local permissions.
+- **Write or bash missing:** enable it in the project’s Client tools selection. Tools use the runner OS account’s permissions; the selected directory is a working directory, not a sandbox.
 - **Port occupied:** stop the previous server/frontend or change its port. The runner uses no listening port.
 - **401 response:** check the shared API token in all three processes.
 - **Remote connection fails:** use HTTPS for a remote server; loopback HTTP is allowed for local development.

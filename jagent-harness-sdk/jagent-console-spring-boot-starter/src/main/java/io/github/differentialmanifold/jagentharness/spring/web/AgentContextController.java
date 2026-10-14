@@ -62,8 +62,12 @@ public class AgentContextController {
     public AgentContextResponse current(
             @RequestBody(required = false) AgentContextRequest request) {
         SessionRecord session = findSession(request);
+        boolean remote =
+                session != null
+                        && runners != null
+                        && runners.binding(session.getSessionId()) != null;
         Path workspaceRoot =
-                session == null
+                session == null || remote
                         ? null
                         : workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
         Path configRoot = settings.getConfigRoot();
@@ -82,19 +86,15 @@ public class AgentContextController {
             agentContext.setClientCapabilities(
                     new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
                             request.getClientTools(), request.getClientInstructions()));
-        if (session != null && runners != null && runners.binding(session.getSessionId()) != null) {
-            io.github.differentialmanifold.jagentharness.protocol.RunnerInfo runner =
-                    runners.require(runners.binding(session.getSessionId()));
-            agentContext.setClientCapabilities(
-                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
-                            runner.tools, runner.instructions));
-        }
+        if (remote) agentContext.setClientCapabilities(runners.capabilities(session));
         return new AgentContextResponse(
                 tools(agentContext),
                 promptFiles(session == null ? null : session.getProjectId()),
                 skills(agentContext),
                 configRoot == null ? null : configRoot.toString(),
-                workspaceRoot == null ? null : workspaceRoot.toString());
+                remote
+                        ? session.getWorkspacePath()
+                        : workspaceRoot == null ? null : workspaceRoot.toString());
     }
 
     private SessionRecord findSession(AgentContextRequest request) {

@@ -107,7 +107,8 @@
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "description": "Workspace on the runner for a new file-based project; never resolved on the server."
                   },
                   "projectName": {
                     "type": [
@@ -117,7 +118,18 @@
                   },
                   "runnerId": {
                     "type": "string",
-                    "description": "Optional remote runner; its workspace is used when one is registered."
+                    "description": "Optional terminal for a new project. Existing projects inherit their saved execution settings."
+                  },
+                  "projectId": {
+                    "type": "string",
+                    "description": "Reuse an existing project and its workspace and tools."
+                  },
+                  "enabledTools": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Tools selected for a new runner project; omitted means all registered tools, [] means none."
                   }
                 },
                 "required": []
@@ -315,7 +327,7 @@
     "/runners/{id}/poll": {
       "get": {
         "operationId": "pollRunner",
-        "summary": "Wait up to 25 seconds for an assigned conversation or cancellation",
+        "summary": "Wait up to 25 seconds for an assigned conversation, cancellation or directory lookup",
         "responses": {
           "200": {
             "description": "Success",
@@ -612,6 +624,165 @@
           },
           "409": {
             "description": "No pending results or another active dispatch"
+          }
+        }
+      }
+    },
+    "/runners/projects/{projectId}": {
+      "get": {
+        "operationId": "getRunnerProject",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerProject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runners/projects/{projectId}/tools": {
+      "put": {
+        "operationId": "selectProjectTools",
+        "summary": "Save the enabled client tools for subsequent project runs",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabledTools": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "enabledTools"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerProject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runners/{id}/workspaces": {
+      "get": {
+        "operationId": "browseRunnerWorkspace",
+        "summary": "Browse a terminal directory through outbound runner polling",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/WorkspaceListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid directory or workspace-free runner"
+          },
+          "409": {
+            "description": "Runner offline or lookup in progress"
+          },
+          "504": {
+            "description": "Runner did not respond within 10 seconds"
+          }
+        }
+      }
+    },
+    "/runners/{id}/workspaces/result": {
+      "post": {
+        "operationId": "reportRunnerWorkspace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/WorkspaceListing"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lookup result accepted"
           }
         }
       }

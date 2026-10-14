@@ -44,8 +44,12 @@ public class PromptPreviewController {
     public PromptPreviewResponse preview(
             @RequestBody(required = false) AgentContextRequest request) {
         SessionRecord session = findSession(request);
+        boolean remote =
+                session != null
+                        && runners != null
+                        && runners.binding(session.getSessionId()) != null;
         Path workspaceRoot =
-                session == null
+                session == null || remote
                         ? null
                         : workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
         AgentContext context =
@@ -62,18 +66,15 @@ public class PromptPreviewController {
             context.setClientCapabilities(
                     new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
                             request.getClientTools(), request.getClientInstructions()));
-        if (session != null && runners != null && runners.binding(session.getSessionId()) != null) {
-            io.github.differentialmanifold.jagentharness.protocol.RunnerInfo runner =
-                    runners.require(runners.binding(session.getSessionId()));
-            context.setClientCapabilities(
-                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
-                            runner.tools, runner.instructions));
-        }
+        if (remote) context.setClientCapabilities(runners.capabilities(session));
         String prompt =
                 promptProvider.buildSystemPrompt(
                         new PromptContext(toolRegistry.all(context), context));
         return new PromptPreviewResponse(
-                prompt, workspaceRoot == null ? null : workspaceRoot.toString());
+                prompt,
+                remote
+                        ? session.getWorkspacePath()
+                        : workspaceRoot == null ? null : workspaceRoot.toString());
     }
 
     private SessionRecord findSession(AgentContextRequest request) {

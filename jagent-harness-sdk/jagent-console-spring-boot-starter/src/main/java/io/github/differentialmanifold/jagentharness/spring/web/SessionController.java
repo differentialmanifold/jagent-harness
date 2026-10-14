@@ -50,19 +50,13 @@ public class SessionController {
 
     @PostMapping
     public SessionRecord create(@RequestBody(required = false) CreateSessionRequest request) {
-        if (request != null && request.getRunnerId() != null && !request.getRunnerId().isEmpty()) {
-            if (runners == null)
-                throw new IllegalArgumentException("Remote runners are unavailable");
-            io.github.differentialmanifold.jagentharness.protocol.RunnerInfo runner =
-                    runners.require(request.getRunnerId());
-            SessionRecord session =
-                    sessionManager.createSession(
-                            request.getTitle(),
-                            runner.workspace,
-                            request.getProjectName(),
-                            request.getProjectId());
-            runners.bind(session.getSessionId(), runner.runnerId);
-            return decorate(session);
+        if (request != null && runners != null) {
+            io.github.differentialmanifold.jagentharness.protocol.RunnerProject existing =
+                    runners.project(request.getProjectId());
+            if (existing != null
+                    || (request.getRunnerId() != null && !request.getRunnerId().isEmpty())) {
+                return decorate(runners.createSession(request, existing));
+            }
         }
         String title = request == null ? null : request.getTitle();
         String workspacePath = request == null ? null : request.getWorkspacePath();
