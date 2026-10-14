@@ -44,10 +44,10 @@ class BashToolTest {
         Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
         ObjectMapper json = new ObjectMapper();
         io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition tool =
-                new BashTool(json, new WorkspacePathResolver(tempDir));
+                new BashTool(json, new WorkspacePathResolver());
         io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult result =
                 tool.execute(
-                        new ToolContext("s", "r", "t"),
+                        new ToolContext("s", "r", "t", null, tempDir, null, Collections.emptyMap()),
                         json.createObjectNode().put("command", "exit 7"));
         assertEquals("FAILED", result.status);
         assertEquals(

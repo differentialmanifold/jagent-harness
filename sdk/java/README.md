@@ -69,7 +69,7 @@ The state directory stores the runner identity and execution records; it is not 
 
 A tool can receive dependencies through its constructor: a robot controller, a phone automation API, a business service, or a file path. Alternatively, pass a process-local object with `AgentRunner.Builder.toolContext(...)` and access it using `context.requireLocalContext(MyDevice.class)`. This object is never serialized.
 
-Working directories belong to file-based scenarios. The coding tools receive their workspace locally; the runner advertises it through the optional `.workspace(...)` field for display and target consistency. Leave this field unset for scenarios without a workspace. The server never resolves a remote workspace on its own filesystem.
+For file-based scenarios, add `.workspaces(new LocalWorkspaces())` to the builder. The frontend can browse the terminal and choose a directory per project. Each tool receives that job’s resolved directory through `context.getWorkspaceRoot()`. Implement `RunnerWorkspaces` for a custom directory policy, or omit it entirely for workspace-free devices. The server never resolves a remote path on its own filesystem.
 
 Both server and client tools implement `ToolDefinition`. Its `descriptor()` method produces the name, description, and parameter schema sent over the wire. Return structured content with `ToolExecutionResult.success(...)`, `.failure(...)`, or `.unknown(...)`; no coding-specific interface or JSON string adapter is needed. Tools should check the shared `StopSignal` or register a callback to cancel blocking device operations.
 
@@ -97,8 +97,8 @@ Reuse `sessionId` for follow-up messages. `run()` executes on the calling thread
 
 `AgentRunner` keeps receiving cancellation while tools execute. It records accepted jobs and tool outcomes before delivery, so a redelivered job does not replay the initial prompt or a tool that already started. A crash before saving the tool result leaves the outcome `UNKNOWN`.
 
-After inspecting the local effects of an interrupted operation, stop the receiver and create a runner with the same state directory, tools, and optional workspace. Call `runner.recover(sessionId)` to submit saved results. Recovery does not re-execute pending calls; the server may issue new calls after receiving their results. Restart `serve()` afterwards.
+After inspecting the local effects of an interrupted operation, stop the receiver and create a runner with the same server URL, state directory, and tool implementations. The saved job supplies its project workspace and selected catalog. Call `runner.recover(sessionId)` to submit saved results. Recovery does not re-execute pending calls; the server may issue new calls after receiving their results. Restart `serve()` afterwards.
 
 `AgentClient` alone does not keep a durable journal or retry requests automatically. If a connection fails, inspect `transport.state(sessionId)` and the actual tool effects before continuing. Both entry points submit tool results as ordinary `role=tool` messages under the same session.
 
-The current runner supports one active conversation at a time. Tool permissions and application lifecycle remain local. Frontends use the server APIs independently of the SDK. Another language can implement the same [HTTP/JSON protocol](../../protocol/README.md#remote-runners) without MCP.
+The current runner supports one active conversation at a time. Projects select enabled tools in the frontend. Each job freezes that selection, and the SDK rejects calls outside it, including when no tools are selected. Selected tools run with Full access under the host process’s permissions. Application lifecycle remains local. Frontends use the server APIs independently of the SDK. Another language can implement the same [HTTP/JSON protocol](../../protocol/README.md#remote-runners) without MCP.

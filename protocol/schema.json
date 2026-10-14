@@ -303,15 +303,6 @@
         "runtime": {
           "type": "string"
         },
-        "workspace": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "minLength": 1,
-          "maxLength": 2048,
-          "description": "Optional workspace for file-based tools. Omit for other scenarios."
-        },
         "instructions": {
           "type": "string",
           "maxLength": 32000
@@ -329,6 +320,17 @@
         },
         "online": {
           "type": "boolean"
+        },
+        "workspaces": {
+          "type": "boolean",
+          "description": "Supports directory browsing and a workspace per project."
+        },
+        "toolDiagnostics": {
+          "type": "object",
+          "description": "Optional startup diagnostics by tool name, for console display only.",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -349,7 +351,7 @@
             "string",
             "null"
           ],
-          "description": "Optional workspace for file-based tools. Omit for other scenarios."
+          "description": "Project workspace on the runner. Omit for workspace-free scenarios."
         },
         "request": {
           "$ref": "#/definitions/ChatRequest"
@@ -402,10 +404,112 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,128}$"
           }
+        },
+        "workspaceRequest": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/WorkspaceRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "cancelledRuns"
+      ]
+    },
+    "WorkspaceRequest": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "requestId"
+      ]
+    },
+    "WorkspaceListing": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "directories": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "string"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "requestId"
+      ]
+    },
+    "RunnerProject": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "runnerId": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabledTools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "runnerId",
+        "enabledTools"
       ]
     }
   }

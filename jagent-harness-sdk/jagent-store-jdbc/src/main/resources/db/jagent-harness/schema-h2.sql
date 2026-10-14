@@ -246,3 +246,10 @@ create table if not exists runner_jobs (
     primary key (application_id, run_id)
 );
 create index if not exists ix_runner_jobs_pending on runner_jobs(application_id, runner_id, status);
+
+create table if not exists runner_projects (
+    application_id varchar(128) not null,
+    project_id varchar(128) not null,
+    config_json text not null,
+    primary key (application_id, project_id)
+);

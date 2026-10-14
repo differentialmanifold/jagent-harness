@@ -1,0 +1,8 @@
+{
+  "projectId": "project_example",
+  "runnerId": "runner_linux",
+  "workspace": "/srv/project",
+  "enabledTools": [
+    "read"
+  ]
+}

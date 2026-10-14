@@ -50,18 +50,27 @@
       <div v-if="!tools.length" class="built-in-tools-empty">No server tools are registered.</div>
     </el-checkbox-group>
 
+    <p v-if="clientError" class="mcp-error" role="alert">{{ clientError }}</p>
     <section v-if="!loading && clientTools.length" class="client-tools-section">
       <h3 class="tool-location-heading">Client tools <el-tag size="small" type="success">{{ clientTools.length }}</el-tag></h3>
-      <p class="client-tools-description">Built into the selected runner. Execution and permissions are controlled on that machine.</p>
-      <div class="built-in-tool-list">
+      <p class="client-tools-description">{{ clientSelection.length }} of {{ clientTools.length }} tools enabled for this project. Full access · changes apply to the next run.</p>
+      <div class="built-in-tools-actions">
+        <el-button text :disabled="clientSaving" @click="clientSelection = clientTools.map(tool => tool.name)">Select all</el-button>
+        <el-button text :disabled="clientSaving" @click="clientSelection = []">Clear all</el-button>
+        <el-button type="primary" :disabled="!clientDirty" :loading="clientSaving" @click="saveClientTools">Save project tools</el-button>
+      </div>
+      <el-checkbox-group v-model="clientSelection" class="built-in-tool-list" :disabled="clientSaving">
         <div v-for="tool in clientTools" :key="tool.name" class="built-in-tool-row">
           <div class="built-in-tool-main">
-            <code>{{ tool.name }}</code>
+            <el-checkbox :value="tool.name"><code>{{ tool.name }}</code></el-checkbox>
             <el-button size="small" @click="openDebugger(tool, true)">View schema</el-button>
           </div>
+          <p v-if="tool.diagnostic" class="tool-diagnostic">
+            <el-tag size="small" type="info">Startup backend</el-tag> {{ tool.diagnostic }}
+          </p>
           <p>{{ tool.description || 'No description provided.' }}</p>
         </div>
-      </div>
+      </el-checkbox-group>
     </section>
 
     <el-dialog
@@ -118,20 +127,54 @@ const props = defineProps({
 const emit = defineEmits(['changed'])
 const tools = ref([])
 const clientTools = ref([])
+const clientSelection = ref([])
+const originalClientSelection = ref([])
+const clientProjectId = ref('')
+const clientSaving = ref(false)
+const clientError = ref('')
+const clientDirty = computed(() => !sameSelection(clientSelection.value, originalClientSelection.value))
 let catalogVersion = 0
 watch(() => props.sessionId, async (sessionId) => {
   const version = ++catalogVersion
   clientTools.value = []
+  clientProjectId.value = ''
+  clientSelection.value = []
+  originalClientSelection.value = []
+  clientError.value = ''
   if (!sessionId) return
   try {
     const detail = await request('/api/v1/sessions/detail', { method: 'POST', body: JSON.stringify({ sessionId }) })
-    if (!detail.session?.runnerId) return
-    const runners = await request('/api/v1/runners')
+    if (!detail.session?.runnerId || version !== catalogVersion) return
+    const [runners, project] = await Promise.all([
+      request('/api/v1/runners'),
+      request(`/api/v1/runners/projects/${encodeURIComponent(detail.session.projectId)}`)
+    ])
     if (version !== catalogVersion) return
     const runner = runners.find(item => item.runnerId === detail.session.runnerId)
-    clientTools.value = (runner?.tools || []).map(tool => ({ ...tool, parametersSchema: tool.parameters }))
-  } catch { /* No runner catalog is available for this session. */ }
+    clientTools.value = (runner?.tools || []).map(tool => ({ ...tool, parametersSchema: tool.parameters, diagnostic: runner?.toolDiagnostics?.[tool.name] }))
+    clientProjectId.value = project.projectId
+    clientSelection.value = project.enabledTools.filter(name => clientTools.value.some(tool => tool.name === name))
+    originalClientSelection.value = [...clientSelection.value]
+  } catch (reason) { if (version === catalogVersion) clientError.value = reason.message }
 }, { immediate: true })
+
+async function saveClientTools() {
+  if (!clientDirty.value || clientSaving.value) return
+  const version = catalogVersion
+  clientSaving.value = true
+  clientError.value = ''
+  try {
+    const project = await request(`/api/v1/runners/projects/${encodeURIComponent(clientProjectId.value)}/tools`, {
+      method: 'PUT', body: JSON.stringify({ enabledTools: clientSelection.value })
+    })
+    if (version !== catalogVersion) return
+    clientSelection.value = [...project.enabledTools]
+    originalClientSelection.value = [...project.enabledTools]
+    ElMessage.success('Project tools saved. Changes apply to the next run.')
+    emit('changed')
+  } catch (reason) { if (version === catalogVersion) clientError.value = reason.message }
+  finally { clientSaving.value = false }
+}
 const inspectOnly = ref(false)
 const configured = ref(false)
 const selection = ref([])
@@ -283,12 +326,17 @@ function isPlainObject(value) {
 }
 
 function hasUnsavedChanges() {
-  return dirty.value
+  return dirty.value || clientDirty.value
 }
 
 function discardChanges() {
   selection.value = [...originalSelection.value]
+  clientSelection.value = [...originalClientSelection.value]
 }
 
 defineExpose({ hasUnsavedChanges, discardChanges })
 </script>
+
+<style scoped>
+.tool-diagnostic { overflow-wrap: anywhere; }
+</style>

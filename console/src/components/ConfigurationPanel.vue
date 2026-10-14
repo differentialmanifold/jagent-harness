@@ -222,7 +222,7 @@ const resourceSubtitle = computed(() => {
     return ({
       'agent-rules': 'Shared AGENTS.md rules loaded for every project.',
       skills: 'Shared skills available to every project.',
-      'built-in-tools': 'Application-wide built-in tools exposed to every project.',
+      'built-in-tools': 'Global server tools and the selected project’s client tools.',
       mcp: 'Shared MCP servers available to every project.'
     })[activeResource.value]
   }

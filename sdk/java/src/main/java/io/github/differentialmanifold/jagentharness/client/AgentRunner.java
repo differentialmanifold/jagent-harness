@@ -23,6 +23,7 @@ public final class AgentRunner implements AutoCloseable {
     private final RunnerInfo info = new RunnerInfo();
     private final List<ToolDefinition> tools = new ArrayList<>();
     private final Object toolContext;
+    private final RunnerWorkspaces workspaces;
     private final Consumer<StreamEvent> events;
     private final Consumer<String> status;
     private final Signal closing = new Signal();
@@ -38,23 +39,6 @@ public final class AgentRunner implements AutoCloseable {
         return new Builder(server, stateDirectory);
     }
 
-    /** Uses a server previously saved by connect or by another instance of this runner. */
-    public static Builder builder(Path stateDirectory) throws IOException {
-        return builder(savedServer(stateDirectory), stateDirectory);
-    }
-
-    /** Saves the server and identity; never saves the API token. */
-    public static void connect(Path stateDirectory, String server, String token)
-            throws IOException {
-        Path home = stateDirectory.toAbsolutePath().normalize();
-        String normalized = serverUrl(server);
-        try (RunnerFiles.Lease ignored = RunnerFiles.lock(home)) {
-            Map<String, Object> config = identity(home, normalized);
-            new HttpAgentTransport(normalized, token).management("GET", "/api/v1/sessions", null);
-            RunnerFiles.save(home.resolve("config.json"), config);
-        }
-    }
-
     private AgentRunner(Builder b) throws IOException {
         String server = serverUrl(b.server);
         if (b.tools.isEmpty()) throw new IllegalArgumentException("Register at least one tool");
@@ -62,6 +46,7 @@ public final class AgentRunner implements AutoCloseable {
         new AgentClient(new HttpAgentTransport(server, b.token), b.tools);
         home = b.home.toAbsolutePath().normalize();
         toolContext = b.toolContext;
+        workspaces = b.workspaces;
         events = b.events;
         status = b.status;
         lease = RunnerFiles.lock(home);
@@ -69,8 +54,9 @@ public final class AgentRunner implements AutoCloseable {
             Map<String, Object> config = identity(home, server);
             info.runnerId = (String) config.get("runnerId");
             info.name = b.name;
-            info.workspace = b.workspace;
+            info.workspaces = workspaces != null;
             info.instructions = b.instructions;
+            info.toolDiagnostics.putAll(b.toolDiagnostics);
             http =
                     new HttpAgentTransport(server, b.token)
                             .header("X-Runner-Id", info.runnerId)
@@ -120,6 +106,7 @@ public final class AgentRunner implements AutoCloseable {
                         current.signal.stop();
                         Thread.sleep(200);
                     }
+                    if (poll.workspaceRequest != null) browse(poll.workspaceRequest);
                     if (!closing.isAborted() && poll.job != null && active.get() == null) {
                         Active run = new Active(poll.job);
                         active.set(run);
@@ -205,14 +192,17 @@ public final class AgentRunner implements AutoCloseable {
         }
     }
 
-    private void validate(RunnerJob job) {
+    private void validateTarget(RunnerJob job) {
         if (job.request == null
                 || job.request.runId == null
                 || !job.request.runId.matches("[A-Za-z0-9_-]{1,64}"))
             throw new IllegalArgumentException("Invalid run ID");
-        if (!info.runnerId.equals(job.runnerId) || !Objects.equals(info.workspace, job.workspace))
-            throw new IllegalArgumentException(
-                    "Use the original runner identity and execution target");
+        if (!info.runnerId.equals(job.runnerId))
+            throw new IllegalArgumentException("Use the original runner identity");
+    }
+
+    private void validate(RunnerJob job) {
+        validateTarget(job);
         Map<String, JsonNode> available = new HashMap<>();
         for (ToolDescriptor tool : info.tools)
             available.put(tool.name, RunnerFiles.JSON.valueToTree(tool));
@@ -224,7 +214,7 @@ public final class AgentRunner implements AutoCloseable {
 
     private void execute(Active run) throws Exception {
         RunnerJob job = run.job;
-        validate(job);
+        validateTarget(job);
         Path file = home.resolve("jobs").resolve(job.request.runId + ".json");
         ChatResponse response;
         if (Files.exists(file)) {
@@ -245,11 +235,19 @@ public final class AgentRunner implements AutoCloseable {
 
     private ChatResponse converse(Active run, ChatRequest request) {
         try {
-            return new AgentClient(http, tools)
+            validate(run.job);
+            Path workspace = workspaces == null ? null : workspaces.resolve(run.job.workspace);
+            Set<String> enabled = new HashSet<>();
+            for (ToolDescriptor descriptor : request.clientTools) enabled.add(descriptor.name);
+            List<ToolDefinition> selected = new ArrayList<>();
+            for (ToolDefinition tool : tools)
+                if (enabled.contains(tool.getName())) selected.add(tool);
+            return new AgentClient(http, selected)
                     .run(
                             request,
                             new ClientRunOptions()
                                     .toolContext(toolContext)
+                                    .workspace(workspace)
                                     .stopSignal(run.signal)
                                     .onEvent(
                                             event -> {
@@ -282,6 +280,21 @@ public final class AgentRunner implements AutoCloseable {
             if (run.signal.isAborted()) response.status = "CANCELLED";
             return response;
         }
+    }
+
+    private void browse(WorkspaceRequest request) throws IOException {
+        WorkspaceListing result;
+        try {
+            if (workspaces == null)
+                throw new IllegalArgumentException("This runner does not use workspaces");
+            result = workspaces.browse(request.path);
+        } catch (Exception e) {
+            result = new WorkspaceListing();
+            result.error = Objects.toString(e.getMessage(), e.getClass().getSimpleName());
+        }
+        result.requestId = request.requestId;
+        http.management(
+                "POST", "/api/v1/runners/" + info.runnerId + "/workspaces/result", result, closing);
     }
 
     private void complete(ChatResponse response) throws IOException {
@@ -350,13 +363,6 @@ public final class AgentRunner implements AutoCloseable {
         }
     }
 
-    private static String savedServer(Path home) throws IOException {
-        Path config = home.resolve("config.json");
-        if (!Files.exists(config))
-            throw new IllegalArgumentException("Run connect <server-url> first");
-        return RunnerFiles.JSON.readTree(config.toFile()).path("server").asText();
-    }
-
     private static Map<String, Object> identity(Path home, String server) throws IOException {
         Path file = home.resolve("config.json");
         if (Files.exists(file)) {
@@ -393,9 +399,10 @@ public final class AgentRunner implements AutoCloseable {
         private final Path home;
         private String token = "";
         private String name = "Java runner";
-        private String workspace;
+        private RunnerWorkspaces workspaces;
         private String instructions = "";
         private final List<ToolDefinition> tools = new ArrayList<>();
+        private final Map<String, String> toolDiagnostics = new LinkedHashMap<>();
         private Object toolContext;
         private Consumer<StreamEvent> events;
         private Consumer<String> status;
@@ -414,9 +421,9 @@ public final class AgentRunner implements AutoCloseable {
             this.name = Objects.requireNonNull(name);
             return this;
         }
-        /** Optional target label for file-based scenarios; never resolved on the server. */
-        public Builder workspace(String workspace) {
-            this.workspace = workspace;
+        /** Enables per-project directories. Omit for tools without a filesystem workspace. */
+        public Builder workspaces(RunnerWorkspaces workspaces) {
+            this.workspaces = Objects.requireNonNull(workspaces);
             return this;
         }
 
@@ -434,6 +441,12 @@ public final class AgentRunner implements AutoCloseable {
          */
         public Builder toolContext(Object context) {
             this.toolContext = context;
+            return this;
+        }
+
+        /** Startup diagnostics shown beside tools in the console, separate from model schemas. */
+        public Builder toolDiagnostics(Map<String, String> diagnostics) {
+            this.toolDiagnostics.putAll(diagnostics);
             return this;
         }
 

@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
 import io.github.differentialmanifold.jagentharness.core.session.*;
@@ -26,6 +27,7 @@ public class RunnerService {
     private final ChatService chat;
     private final AgentEventPublisher publisher;
     private final ObjectMapper json;
+    private final RunnerWorkspaceRequests workspaces = new RunnerWorkspaceRequests();
     private final ConcurrentMap<String, Waiter> waiters = new ConcurrentHashMap<>();
     private final Set<String> started = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<String, SseEmitter> streams = new ConcurrentHashMap<>();
@@ -83,8 +85,6 @@ public class RunnerService {
                 || secret.length() > 256
                 || info.name == null
                 || info.name.length() > 128
-                || (info.workspace != null
-                        && (info.workspace.isEmpty() || info.workspace.length() > 2048))
                 || info.tools == null
                 || info.tools.isEmpty()
                 || info.tools.size() > 128
@@ -106,14 +106,10 @@ public class RunnerService {
             authenticate(info.runnerId, secret);
             if (!store.unfinished(info.runnerId).isEmpty()
                     && (!json.valueToTree(previous.tools).equals(json.valueToTree(info.tools))
-                            || !Objects.equals(previous.instructions, info.instructions)))
+                            || !Objects.equals(previous.instructions, info.instructions)
+                            || previous.workspaces != info.workspaces))
                 throw new ProtocolException(
                         409, "RUNNER_BUSY", "Finish pending jobs before changing tools");
-            if (!Objects.equals(previous.workspace, info.workspace))
-                throw new ProtocolException(
-                        409,
-                        "WORKSPACE_CHANGED",
-                        "Use a new runner identity for another workspace");
         }
         store.register(info, hash(secret));
         // Re-registration starts a new receiver after reconnect or process restart.
@@ -139,9 +135,103 @@ public class RunnerService {
         return store.runnerForSession(session);
     }
 
+    public DeferredResult<WorkspaceListing> browse(String runner, String path) {
+        RunnerInfo info = require(runner);
+        if (!info.workspaces)
+            throw new ProtocolException(400, "NO_WORKSPACES", "Runner does not use workspaces");
+        if (System.currentTimeMillis() - info.lastSeen > 65000)
+            throw new ProtocolException(409, "RUNNER_OFFLINE", "Runner is offline");
+        DeferredResult<WorkspaceListing> result = workspaces.browse(runner, path);
+        wake(runner);
+        return result;
+    }
+
+    public void workspaceResult(String runner, WorkspaceListing listing) {
+        workspaces.complete(runner, listing);
+    }
+
     public void bind(String session, String runner) {
         require(runner);
         store.bind(session, runner);
+    }
+
+    public RunnerProject project(String id) {
+        return id == null || id.isEmpty() ? null : store.project(id);
+    }
+
+    public ClientCapabilities capabilities(SessionRecord session) {
+        RunnerProject project = project(session.getProjectId());
+        if (project == null || !project.runnerId.equals(binding(session.getSessionId())))
+            throw new ProtocolException(
+                    409,
+                    "PROJECT_REQUIRED",
+                    "Project execution settings do not match this session");
+        RunnerInfo info = require(project.runnerId);
+        return new ClientCapabilities(enabledTools(project, info), info.instructions);
+    }
+
+    private List<ToolDescriptor> enabledTools(RunnerProject project, RunnerInfo info) {
+        List<ToolDescriptor> selected = new ArrayList<>();
+        for (ToolDescriptor tool : info.tools)
+            if (project.enabledTools.contains(tool.name)) selected.add(tool);
+        return selected;
+    }
+
+    public synchronized SessionRecord createSession(
+            io.github.differentialmanifold.jagentharness.spring.web.dto.CreateSessionRequest
+                    request,
+            RunnerProject existing) {
+        RunnerProject project = existing;
+        if (project == null) {
+            RunnerInfo info = require(request.getRunnerId());
+            project = new RunnerProject();
+            project.runnerId = info.runnerId;
+            project.workspace = info.workspaces ? request.getWorkspacePath() : null;
+            if (info.workspaces
+                    && (project.workspace == null
+                            || project.workspace.trim().isEmpty()
+                            || project.workspace.length() > 2048))
+                throw new ProtocolException(
+                        400, "WORKSPACE_REQUIRED", "Select a workspace on the runner");
+            project.enabledTools = selectedTools(info, request.getEnabledTools());
+        } else if (request.getRunnerId() != null
+                && !request.getRunnerId().isEmpty()
+                && !project.runnerId.equals(request.getRunnerId())) {
+            throw new ProtocolException(409, "PROJECT_RUNNER", "Project belongs to another runner");
+        }
+        SessionRecord session =
+                sessions.createSession(
+                        request.getTitle(),
+                        project.workspace,
+                        request.getProjectName(),
+                        request.getProjectId());
+        if (existing == null) {
+            project.projectId = session.getProjectId();
+            store.saveProject(project);
+        }
+        bind(session.getSessionId(), project.runnerId);
+        return session;
+    }
+
+    private List<String> selectedTools(RunnerInfo info, List<String> selection) {
+        Set<String> available = new LinkedHashSet<>();
+        for (ToolDescriptor tool : info.tools) available.add(tool.name);
+        if (selection == null) return new ArrayList<>(available);
+        if (selection.contains(null) || !available.containsAll(selection))
+            throw new ProtocolException(
+                    400, "INVALID_TOOLS", "Select tools registered by this runner");
+        return new ArrayList<>(new LinkedHashSet<>(selection));
+    }
+
+    public synchronized RunnerProject selectTools(String projectId, List<String> names) {
+        RunnerProject project = project(projectId);
+        if (project == null)
+            throw new ProtocolException(404, "PROJECT_NOT_FOUND", "Runner project not found");
+        if (names == null)
+            throw new ProtocolException(400, "INVALID_TOOLS", "enabledTools is required");
+        project.enabledTools = selectedTools(require(project.runnerId), names);
+        store.saveProject(project);
+        return project;
     }
 
     public SseEmitter submit(ChatRequest request) {
@@ -156,7 +246,7 @@ public class RunnerService {
                 || request.messages.get(0).content == null)
             throw new ProtocolException(
                     400, "INVALID_REQUEST", "Submit one user message with sessionId and runId");
-        sessions.requireSession(request.sessionId);
+        SessionRecord session = sessions.requireSession(request.sessionId);
         String runner = binding(request.sessionId);
         if (runner == null)
             throw new ProtocolException(400, "NO_RUNNER", "Session has no remote runner");
@@ -174,9 +264,13 @@ public class RunnerService {
         }
         RunnerJob job = new RunnerJob();
         job.runnerId = runner;
-        job.workspace = info.workspace;
+        RunnerProject project = project(session.getProjectId());
+        if (project == null)
+            throw new ProtocolException(
+                    409, "PROJECT_REQUIRED", "Create a project with an execution target and tools");
+        job.workspace = project.workspace;
         job.request = request;
-        request.clientTools = info.tools;
+        request.clientTools = enabledTools(project, info);
         request.clientInstructions = info.instructions;
         request.stream = true;
         try {
@@ -262,6 +356,7 @@ public class RunnerService {
         synchronized (waiter) {
             if (waiter.result.isSetOrExpired()) return;
             RunnerPoll result = new RunnerPoll();
+            result.workspaceRequest = workspaces.poll(runner);
             if (waiter.active != null && !waiter.active.isEmpty()) {
                 RunnerJob active = store.job(waiter.active);
                 if (active != null
@@ -279,7 +374,9 @@ public class RunnerService {
                     }
                 }
             }
-            if (result.job != null || !result.cancelledRuns.isEmpty()) {
+            if (result.job != null
+                    || result.workspaceRequest != null
+                    || !result.cancelledRuns.isEmpty()) {
                 waiters.remove(runner, waiter);
                 waiter.result.setResult(result);
             }
@@ -386,6 +483,7 @@ public class RunnerService {
     @PreDestroy
     public void close() {
         timer.shutdownNow();
+        workspaces.close();
         for (Waiter w : waiters.values()) w.result.setResult(new RunnerPoll());
         for (SseEmitter s : streams.values()) s.complete();
     }

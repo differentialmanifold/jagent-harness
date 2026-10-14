@@ -13,26 +13,20 @@ class CodingToolsTest {
     @TempDir Path directory;
 
     @Test
-    void readOnlyRunnerAdvertisesOnlyBundledReadAndSearchTools() {
-        Collection<? extends ToolDefinition> local = new CodingTools().tools(directory, false);
-        assertEquals(new HashSet<>(Arrays.asList("read", "ls", "find", "grep")), names(local));
-    }
-
-    @Test
     void codingWorkspaceIsInjectedIntoToolsAndResultsAreStructured() throws Exception {
         java.nio.file.Files.write(
                 directory.resolve("example.txt"),
                 "hello".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         ToolDefinition read =
                 new CodingTools()
-                        .tools(directory, false).stream()
+                        .tools().stream()
                                 .filter(tool -> "read".equals(tool.getName()))
                                 .findFirst()
                                 .get();
         io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult result =
                 read.execute(
                         new io.github.differentialmanifold.jagentharness.core.tool.ToolContext(
-                                "s", "r", "t"),
+                                "s", "r", "t", null, directory, null, Collections.emptyMap()),
                         new com.fasterxml.jackson.databind.ObjectMapper()
                                 .createObjectNode()
                                 .put("path", "example.txt"));
@@ -46,8 +40,8 @@ class CodingToolsTest {
     }
 
     @Test
-    void fullAccessRunnerIncludesMutationAndShellToolsWithoutAnInstaller() {
-        Collection<? extends ToolDefinition> local = new CodingTools().tools(directory, true);
+    void allToolsAreAvailableWithoutCommandLinePermissions() {
+        Collection<? extends ToolDefinition> local = new CodingTools().tools();
         assertEquals(
                 new HashSet<>(Arrays.asList("read", "ls", "find", "grep", "write", "edit", "bash")),
                 names(local));

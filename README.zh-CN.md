@@ -18,6 +18,36 @@ JAgentHarness 将 Agent Harness、工具 Runner 和交互前端分离。服务�
 
 客户端工具的实现随 Runner 一起交付。Runner 向服务端声明工具结构，通过主动发起的 HTTP 长轮询领取任务，再通过对话接口回传结果。前端无论部署在哪里，都连接服务端。Runner 无需开放入站端口。Java SDK 已包含 Runner 运行能力：新场景只需实现并注册自己的 `ToolDefinition`，不必重新开发任务接收与结果回传。只有文件类工具需要工作目录。
 
+### 对话执行流程
+
+绑定 Runner 的会话通过长轮询派发整次对话任务。后续工具调用与结果通过同一会话中的普通对话请求往返，前端持续接收一条连贯的事件流。
+
+```mermaid
+sequenceDiagram
+    participant UI as 前端 Console
+    participant S as 服务端 Harness
+    participant R as 客户端 Runner / SDK
+
+    R->>S: 注册本地工具描述，开始长轮询
+    UI->>S: 提交消息，指定已绑定 Runner 的会话
+    S-->>UI: 保持 SSE 连接，推送进度
+    S-->>R: 在长轮询响应中返回对话任务
+
+    R->>S: 调用普通对话接口，提交用户消息
+    Note over S: 调用模型，执行服务端工具
+    S-->>R: 返回客户端工具调用，本次请求结束
+
+    Note over R: 执行本地工具
+    R->>S: 同一会话提交 role=tool 的执行结果
+    Note over S: 追加历史，继续 Agent 循环
+    S-->>R: 返回下一批工具调用或最终回答
+
+    R->>S: 上报任务完成
+    S-->>UI: 推送完成结果，结束 SSE
+```
+
+工具调用与结果回传可以重复多轮。执行本地工具期间，Runner 继续长轮询以接收取消指令。由应用自身发起对话时，可以直接使用 `AgentClient.run()`，无需经过 Runner 任务派发。
+
 ## 为什么分离 Harness 与工具执行？
 
 机器人控制器、手机应用、桌面应用和 Linux 工作区，各自有不同的运行环境与原生 API。工具需要在对应环境中执行，模型接入、上下文管理和持久化会话则可以统一放在服务端。
@@ -44,13 +74,12 @@ cd jagent-harness
 cp .env.example .env.local
 ```
 
-在 `.env.local` 中配置模型和本地工作区：
+在 `.env.local` 中配置模型：
 
 ```dotenv
 JAGENT_MODEL=your-model-name
 JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
 JAGENT_OPENAI_API_KEY=your-api-key
-JAGENT_RUNNER_WORKSPACE=/path/to/your/project
 ```
 
 启动三个部分：
@@ -59,11 +88,11 @@ JAGENT_RUNNER_WORKSPACE=/path/to/your/project
 node scripts/dev.mjs
 ```
 
-打开 **http://127.0.0.1:5175**，添加项目，选择 **coding-local** 作为执行目标，然后发送：
+打开 **http://127.0.0.1:5175**，添加项目，选择 **coding-local**，浏览或输入该终端上的工作目录，然后发送：
 
 > 阅读工作区中的 README，总结这个项目。
 
-服务端推进对话，Runner 在目标机器读取文件。Runner 默认只启用读取与搜索工具；启动前设置 `JAGENT_RUNNER_FULL_ACCESS=true` 可启用 write、edit 和 bash。工作区与权限均在 Runner 所在机器配置。按 **Ctrl+C** 停止示例。
+服务端推进对话，Runner 在目标机器读取文件。新项目默认启用全部七个 coding 工具；在 **Configuration → Built-in tools → Client tools** 中修改项目工具选择，已选工具以 **Full access** 模式执行，不弹出审批。一个 Runner 可以服务多个不同目录的项目。按 **Ctrl+C** 停止示例。
 
 独立启动、手动命令、远程终端和 Windows/macOS 快捷方式见 [Quick start](QUICK_START.md)（英文）。
 

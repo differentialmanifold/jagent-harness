@@ -9,6 +9,12 @@ public final class ClientRunOptions {
     Consumer<StreamEvent> events;
     StopSignal stop = StopSignal.none();
     Object toolContext;
+    java.nio.file.Path workspace;
+
+    public ClientRunOptions workspace(java.nio.file.Path workspace) {
+        this.workspace = workspace;
+        return this;
+    }
 
     public ClientRunOptions onEvent(Consumer<StreamEvent> events) {
         this.events = events;

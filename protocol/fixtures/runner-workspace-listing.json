@@ -1,0 +1,13 @@
+{
+  "requestId": "lookup_example",
+  "path": "/srv",
+  "parent": "/",
+  "roots": [
+    "/"
+  ],
+  "directories": [
+    "/srv/project"
+  ],
+  "truncated": false,
+  "error": null
+}

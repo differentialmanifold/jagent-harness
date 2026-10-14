@@ -186,6 +186,7 @@ export function useAgentHarness() {
       body: JSON.stringify({
         title,
         runnerId: project ? (project.runnerId || '') : (currentSession.value?.runnerId || ''),
+        workspacePath: project ? project.workspacePath : currentSession.value?.workspacePath,
         projectName: targetProjectName,
         projectId: project ? (project.projectId || '') : (currentSession.value?.projectId || '')
       })
@@ -225,13 +226,14 @@ export function useAgentHarness() {
     projectError.value = ''
   }
 
-  async function submitProjectDialog() {
+  async function submitProjectDialog(settings = {}) {
     const projectName = normalizeProjectName(projectNameDraft.value)
     if (!projectName) return
     projectError.value = ''
     projectSubmitting.value = true
     try {
       await createSession({
+        ...settings,
         projectName,
         runnerId: projectRunnerDraft.value
       })
