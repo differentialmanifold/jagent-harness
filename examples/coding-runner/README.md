@@ -18,10 +18,10 @@ Build from the repository root, or use a release containing the coding runner:
 mvn -pl examples/coding-runner -am package
 ```
 
-Copy `examples/coding-runner/target/jagent-coding-runner-1.2.0.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
+Copy `examples/coding-runner/target/jagent-coding-runner-1.2.1.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
 
 ```sh
-java -jar jagent-coding-runner-1.2.0.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-1.2.1.jar --server https://agent.example.com --name linux-dev
 ```
 
 Open the web frontend wherever it is hosted, add a project, and choose **linux-dev**. Browse or enter a directory on that terminal. One runner can execute work for multiple projects with different directories.
@@ -30,7 +30,7 @@ New projects enable all seven tools by default. Project tools can be changed in 
 
 Tools run with the OS account's file and process permissions; the workspace is a working directory, not an OS sandbox. Use an account or container with suitable permissions. Bash needs a local shell; Windows requires Git Bash. Search uses ripgrep when available and falls back to Java. `JAGENT_RG_PATH` can select a ripgrep executable. The runner logs the detected search backend at startup; **Configuration → Built-in tools → Client tools** shows that startup snapshot beside `find` and `grep`. Each search result reports the backend actually used, including any later fallback.
 
-No model key is needed on this machine. The runner listens on no port. Use HTTPS except for loopback development. A process supervisor can run `serve` unattended; Ctrl+C stops it.
+No model key is needed on this machine. The runner listens on no port. HTTPS is recommended; plain HTTP to a non-loopback server is accepted with a warning at startup. A process supervisor can run `serve` unattended; Ctrl+C stops it.
 
 ## Local tools and other runners
 
@@ -51,7 +51,7 @@ Jobs can be delivered again after a disconnect. The runner journals acceptance b
 To recover pending results after interruption, stop `serve`, inspect the conversation and local effects, and explicitly submit the saved results:
 
 ```sh
-java -jar jagent-coding-runner-1.2.0.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-1.2.1.jar recover --server https://agent.example.com --session ses_example
 ```
 
 Use the same home and executable version. The saved job supplies its project workspace and tool selection. Missing or unfinished results are reported as `UNKNOWN`; the model may issue new calls after receiving them. Restart `serve` afterwards.

@@ -73,6 +73,8 @@ class AgentRunnerTest {
                 assertEquals(2, server.chats.size());
                 runner.close();
                 receive.get(5, TimeUnit.SECONDS);
+                // close() signals both threads; the result-delivery worker may finish last.
+                awaitStateDirectoryReleased();
             }
             try (AgentRunner restarted =
                     AgentRunner.builder(server.url(), home)
@@ -182,6 +184,30 @@ class AgentRunnerTest {
     }
 
     @Test
+    void plainHttpBeyondLoopbackIsAllowedWithAWarning() throws Exception {
+        ToolDefinition tool = tool((context, args) -> ToolExecutionResult.success("ok"));
+        List<String> warned = new CopyOnWriteArrayList<>();
+        try (AgentRunner runner =
+                AgentRunner.builder("http://[fd7a:115c:a1e0::e937:334e]:18181", home)
+                        .tools(Collections.singletonList(tool))
+                        .onStatus(warned::add)
+                        .build()) {
+            assertNotNull(runner.runnerId());
+        }
+        assertEquals(1, warned.size());
+        assertTrue(warned.get(0).contains("unencrypted"));
+        List<String> loopback = new CopyOnWriteArrayList<>();
+        try (AgentRunner runner =
+                AgentRunner.builder("http://127.0.0.1:18181", home.resolve("loopback"))
+                        .tools(Collections.singletonList(tool))
+                        .onStatus(loopback::add)
+                        .build()) {
+            assertNotNull(runner.runnerId());
+        }
+        assertTrue(loopback.isEmpty());
+    }
+
+    @Test
     void oneTerminalUsesEachProjectsWorkspaceAndRejectsDisabledTools() throws Exception {
         AtomicInteger effects = new AtomicInteger();
         ToolDefinition tool =
@@ -267,6 +293,18 @@ class AgentRunnerTest {
             assertTrue(server.chats.isEmpty());
             runner.close();
             receive.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    private void awaitStateDirectoryReleased() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (true) {
+            try (RunnerFiles.Lease ignored = RunnerFiles.lock(home)) {
+                return;
+            } catch (IllegalStateException stillRunning) {
+                if (System.nanoTime() >= deadline) throw stillRunning;
+                Thread.sleep(10);
+            }
         }
     }
 

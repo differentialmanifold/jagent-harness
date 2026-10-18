@@ -40,6 +40,7 @@ class ConversationProtocolTest {
     @Autowired SessionManager manager;
     @Autowired SessionStore sessions;
     @Autowired Scripted model;
+    @Autowired RunInputCoordinator inputs;
     @Autowired JdbcTemplate db;
     @LocalServerPort int port;
 
@@ -119,6 +120,58 @@ class ConversationProtocolTest {
         assertEquals(calls, model.calls.get());
         assertEquals("COMPLETED", service.chat(results(remaining), null).status);
         assertEquals(calls + 1, model.calls.get());
+    }
+
+    @Test
+    void queuedInputsReachTheModelAsSoonAsAllClientResultsArrive() {
+        int firstRequest = model.requests.size();
+        ChatResponse pending = service.chat(user("mixed"), null);
+        String inputId = "steer_" + UUID.randomUUID();
+        inputs.submitInput(pending.runId, "Use the existing implementation", inputId);
+        inputs.submitInput(
+                pending.runId,
+                "",
+                Collections.singletonList(
+                        new MessageImage(
+                                "reference.png", "image/png", "https://example.com/reference.png")),
+                inputId + "_image");
+
+        ChatRequest first = results(pending);
+        first.messages.remove(1);
+        ChatResponse remaining = service.chat(first, null);
+        assertEquals("REQUIRES_ACTION", remaining.status);
+        assertEquals(firstRequest + 1, model.requests.size());
+        assertEquals(
+                "ACCEPTED",
+                db.queryForObject(
+                        "select status from agent_run_inputs where input_id = ?",
+                        String.class,
+                        inputId));
+
+        List<StreamEvent> events = new ArrayList<>();
+        ChatResponse completed = service.chat(results(remaining), events::add);
+        assertEquals("COMPLETED", completed.status);
+        assertEquals(pending.runId, completed.runId);
+        // Steering must affect this model request, without first producing an obsolete answer.
+        assertEquals(firstRequest + 2, model.requests.size());
+        ModelRequest resumed = model.requests.get(firstRequest + 1);
+        List<AgentMessage> users = new ArrayList<>();
+        for (AgentMessage message : resumed.getMessages())
+            if ("user".equals(message.getRole())) users.add(message);
+        assertEquals(3, users.size());
+        assertEquals("Use the existing implementation", users.get(1).getContent());
+        assertEquals("https://example.com/reference.png", users.get(2).getImages().get(0).getUrl());
+        assertEquals(
+                1,
+                events.stream()
+                        .filter(event -> "run_input_batch_applied".equals(event.type))
+                        .count());
+        assertEquals(
+                "CLAIMED",
+                db.queryForObject(
+                        "select status from agent_run_inputs where input_id = ?",
+                        String.class,
+                        inputId));
     }
 
     @Test
@@ -227,9 +280,17 @@ class ConversationProtocolTest {
     void stoppedPendingToolsCanReturnResultsWithoutAnotherModelCall() {
         ChatResponse pending = service.chat(user("mixed"), null);
         int calls = model.calls.get();
+        String inputId = "stopped_steer_" + UUID.randomUUID();
+        inputs.submitInput(pending.runId, "Do not consume after stopping", inputId);
         service.cancel(pending.runId);
         assertEquals("CANCELLED", service.chat(results(pending), null).status);
         assertEquals(calls, model.calls.get());
+        assertEquals(
+                "CANCELLED",
+                db.queryForObject(
+                        "select status from agent_run_inputs where input_id = ?",
+                        String.class,
+                        inputId));
         ChatRequest next = user("hello");
         next.sessionId = pending.sessionId;
         assertEquals("COMPLETED", service.chat(next, null).status);
@@ -287,6 +348,7 @@ class ConversationProtocolTest {
 
     static class Scripted implements ModelProvider {
         final AtomicInteger calls = new AtomicInteger();
+        final List<ModelRequest> requests = new CopyOnWriteArrayList<>();
         volatile CountDownLatch entered, release;
 
         public String getName() {
@@ -304,6 +366,7 @@ class ConversationProtocolTest {
 
         public ModelResponse chat(ModelRequest request) {
             calls.incrementAndGet();
+            requests.add(request);
             if (entered != null && release != null) {
                 entered.countDown();
                 try {

@@ -104,7 +104,7 @@ See [Quick start](QUICK_START.md) for independent startup, manual commands, remo
 - [Java client SDK](sdk/java/README.md): register native tools with `AgentRunner`, or start conversations with `AgentClient`.
 - [HTTP/JSON protocol](protocol/README.md): implement another runner or frontend.
 
-This source tree targets `1.2.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
+This source tree targets `1.2.1`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
 
 The source layout follows these roles: `jagent-harness-sdk/` contains the server libraries, `sdk/java/` contains the reusable client and runner runtime, `examples/` contains the server host and coding tool host, `console/` contains the frontend, and `protocol/` contains the language-independent contract and its tests.
 

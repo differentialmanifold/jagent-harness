@@ -18,10 +18,10 @@
 mvn -pl examples/coding-runner -am package
 ```
 
-将 `examples/coding-runner/target/jagent-coding-runner-1.2.0.jar` 复制到目标机器。在环境变量中将 `JAGENT_CLIENT_TOKEN` 设置为服务端 API 令牌，然后执行：
+将 `examples/coding-runner/target/jagent-coding-runner-1.2.1.jar` 复制到目标机器。在环境变量中将 `JAGENT_CLIENT_TOKEN` 设置为服务端 API 令牌，然后执行：
 
 ```sh
-java -jar jagent-coding-runner-1.2.0.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-1.2.1.jar --server https://agent.example.com --name linux-dev
 ```
 
 打开 Web 前端，添加项目并选择 **linux-dev**，浏览或输入该终端上的工作目录。一个 Runner 代表一台执行终端，可以服务多个工作目录不同的项目。
@@ -51,7 +51,7 @@ Runner 所在机器不需要模型密钥，也不监听端口。除本机回环�
 需要恢复中断任务中的待回传结果时，先停止 `serve`，检查会话和本地实际执行效果，再显式提交已保存的结果：
 
 ```sh
-java -jar jagent-coding-runner-1.2.0.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-1.2.1.jar recover --server https://agent.example.com --session ses_example
 ```
 
 恢复时使用原来的状态目录和可执行文件版本；工作目录和工具清单取自已保存的任务。缺失或未完成的结果以 `UNKNOWN` 回传；模型收到结果后可能发起新的工具调用。恢复完成后重新启动 `serve`。

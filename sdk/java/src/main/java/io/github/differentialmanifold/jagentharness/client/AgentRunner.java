@@ -40,6 +40,7 @@ public final class AgentRunner implements AutoCloseable {
     }
 
     private AgentRunner(Builder b) throws IOException {
+        status = b.status;
         String server = serverUrl(b.server);
         if (b.tools.isEmpty()) throw new IllegalArgumentException("Register at least one tool");
         // Validate duplicates before acquiring resources or creating identity files.
@@ -48,7 +49,6 @@ public final class AgentRunner implements AutoCloseable {
         toolContext = b.toolContext;
         workspaces = b.workspaces;
         events = b.events;
-        status = b.status;
         lease = RunnerFiles.lock(home);
         try {
             Map<String, Object> config = identity(home, server);
@@ -379,18 +379,19 @@ public final class AgentRunner implements AutoCloseable {
         return config;
     }
 
-    private static String serverUrl(String server) throws IOException {
+    private String serverUrl(String server) throws IOException {
         String normalized = Objects.requireNonNull(server).replaceAll("/$", "");
         URL url = new URL(normalized);
         if (url.getUserInfo() != null
                 || url.getQuery() != null
                 || url.getRef() != null
                 || !("".equals(url.getPath()) || "/".equals(url.getPath()))
-                || !("https".equals(url.getProtocol())
-                        || ("http".equals(url.getProtocol())
-                                && Arrays.asList("localhost", "127.0.0.1", "[::1]")
-                                        .contains(url.getHost()))))
-            throw new IllegalArgumentException("Use HTTPS, or loopback HTTP for development");
+                || !Arrays.asList("http", "https").contains(url.getProtocol()))
+            throw new IllegalArgumentException("Use a plain http(s) server origin");
+        if ("http".equals(url.getProtocol())
+                && !Arrays.asList("localhost", "127.0.0.1", "[::1]").contains(url.getHost()))
+            report(
+                    "Plain HTTP to a non-loopback server; the token and job traffic are sent unencrypted");
         return normalized;
     }
 
