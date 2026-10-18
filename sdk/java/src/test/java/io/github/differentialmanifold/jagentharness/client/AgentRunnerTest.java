@@ -73,6 +73,8 @@ class AgentRunnerTest {
                 assertEquals(2, server.chats.size());
                 runner.close();
                 receive.get(5, TimeUnit.SECONDS);
+                // close() signals both threads; the result-delivery worker may finish last.
+                awaitStateDirectoryReleased();
             }
             try (AgentRunner restarted =
                     AgentRunner.builder(server.url(), home)
@@ -291,6 +293,18 @@ class AgentRunnerTest {
             assertTrue(server.chats.isEmpty());
             runner.close();
             receive.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    private void awaitStateDirectoryReleased() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (true) {
+            try (RunnerFiles.Lease ignored = RunnerFiles.lock(home)) {
+                return;
+            } catch (IllegalStateException stillRunning) {
+                if (System.nanoTime() >= deadline) throw stillRunning;
+                Thread.sleep(10);
+            }
         }
     }
 
