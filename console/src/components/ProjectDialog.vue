@@ -11,10 +11,10 @@
         <p v-else-if="!runners.length" class="runner-workspace">Start a runner to use tools on another machine.</p>
       </el-form-item>
       <el-form-item v-if="selectedRunner?.workspaces" label="Workspace on runner">
-        <RunnerWorkspacePicker v-model="workspace" :runner-id="runnerId" :disabled="submitting" />
+        <RunnerWorkspacePicker :model-value="workspace" :runner-id="runnerId" :disabled="submitting" @update:model-value="updateWorkspacePath" />
       </el-form-item>
       <el-form-item label="Project name" :error="error">
-        <el-input ref="nameInputEl" :model-value="projectName" placeholder="Project name" :disabled="submitting" @update:model-value="$emit('update:projectName', $event)" />
+        <el-input ref="nameInputEl" :model-value="projectName" placeholder="Project name" :disabled="submitting" @update:model-value="updateProjectName" />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -41,9 +41,24 @@ const props = defineProps({
 const emit = defineEmits(['update:runnerId', 'update:projectName', 'submit', 'close'])
 const selectedRunner = computed(() => props.runners.find(runner => runner.runnerId === props.runnerId))
 const workspace = ref('')
+const autoProjectName = ref('')
 const canSubmit = computed(() => props.projectName.trim() && (!selectedRunner.value?.workspaces || workspace.value.trim()))
-function reset() { workspace.value = '' }
+function reset() { updateWorkspacePath('') }
 watch(() => props.runnerId, reset)
+function updateProjectName(value) {
+  if (value !== autoProjectName.value) autoProjectName.value = ''
+  emit('update:projectName', value)
+}
+function updateWorkspacePath(value) {
+  workspace.value = value
+  const currentName = props.projectName.trim()
+  if (!currentName || currentName === autoProjectName.value) {
+    const parts = String(value || '').split(/[\\/]/).filter(Boolean)
+    const nextName = parts.length ? parts[parts.length - 1] : ''
+    autoProjectName.value = nextName
+    emit('update:projectName', nextName)
+  }
+}
 function submit() { if (canSubmit.value && !props.submitting) emit('submit', { workspacePath: workspace.value }) }
 const nameInputEl = ref(null)
 watch(() => props.open, async open => {

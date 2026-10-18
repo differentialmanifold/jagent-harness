@@ -37,6 +37,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item @click="runProjectAction('create-session', project)">New chat</el-dropdown-item>
                   <el-dropdown-item @click="runProjectAction('rename-project', project)">Rename</el-dropdown-item>
+                  <el-dropdown-item :disabled="!project.workspacePath" @click="copyProjectPath(project)">Copy path</el-dropdown-item>
                   <el-dropdown-item :disabled="running" divided @click="runProjectAction('remove-project', project)">
                     Remove
                   </el-dropdown-item>
@@ -74,6 +75,8 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { Folder, FolderOpened, MoreFilled, Plus } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { writeClipboard } from '../utils/clipboard'
 
 const props = defineProps({
   projectGroups: { type: Array, required: true },
@@ -131,6 +134,16 @@ function projectTitle(project) {
 
 function runProjectAction(action, project) {
   emit(action, project)
+}
+
+async function copyProjectPath(project) {
+  if (!project.workspacePath) return
+  try {
+    await writeClipboard(project.workspacePath)
+    ElMessage.success('Copied project path.')
+  } catch {
+    ElMessage.error('Could not copy project path.')
+  }
 }
 
 function runChatAction(action, session) {

@@ -182,6 +182,30 @@ class AgentRunnerTest {
     }
 
     @Test
+    void plainHttpBeyondLoopbackIsAllowedWithAWarning() throws Exception {
+        ToolDefinition tool = tool((context, args) -> ToolExecutionResult.success("ok"));
+        List<String> warned = new CopyOnWriteArrayList<>();
+        try (AgentRunner runner =
+                AgentRunner.builder("http://[fd7a:115c:a1e0::e937:334e]:18181", home)
+                        .tools(Collections.singletonList(tool))
+                        .onStatus(warned::add)
+                        .build()) {
+            assertNotNull(runner.runnerId());
+        }
+        assertEquals(1, warned.size());
+        assertTrue(warned.get(0).contains("unencrypted"));
+        List<String> loopback = new CopyOnWriteArrayList<>();
+        try (AgentRunner runner =
+                AgentRunner.builder("http://127.0.0.1:18181", home.resolve("loopback"))
+                        .tools(Collections.singletonList(tool))
+                        .onStatus(loopback::add)
+                        .build()) {
+            assertNotNull(runner.runnerId());
+        }
+        assertTrue(loopback.isEmpty());
+    }
+
+    @Test
     void oneTerminalUsesEachProjectsWorkspaceAndRejectsDisabledTools() throws Exception {
         AtomicInteger effects = new AtomicInteger();
         ToolDefinition tool =

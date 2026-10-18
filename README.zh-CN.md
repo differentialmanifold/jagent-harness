@@ -104,7 +104,7 @@ node scripts/dev.mjs
 - [Java 客户端 SDK](sdk/java/README.md)：通过 `AgentRunner` 托管原生工具，或通过 `AgentClient` 发起对话。
 - [HTTP/JSON 协议](protocol/README.md)：实现其他语言的 Runner 或其他形式的前端。
 
-除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `1.2.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
+除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `1.2.1`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
 
 源码目录按职责划分：`jagent-harness-sdk/` 是服务端库，`sdk/java/` 是包含 Runner 运行能力的通用客户端 SDK，`examples/` 是服务端与 coding 工具宿主示例，`console/` 是前端，`protocol/` 是跨语言协议及其测试。
 

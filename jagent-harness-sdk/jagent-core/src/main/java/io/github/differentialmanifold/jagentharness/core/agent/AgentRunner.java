@@ -181,33 +181,9 @@ public class AgentRunner implements AgentHarness {
                         turnPayload(sessionId, runId, turnId, turnCount, toolContext));
 
                 if (!pendingUserMessages.isEmpty()) {
-                    for (AgentMessage userMessage : pendingUserMessages) {
-                        userMessage.setRunId(runId);
-                        if (userMessage.getTurnId() == null) userMessage.setTurnId(turnId);
-                        userMessage.setParentMessageId(parentMessageId);
-                        parentMessageId = userMessage.getMessageId();
-                    }
-                    sessionStore.appendMessages(pendingUserMessages);
-                    for (AgentMessage userMessage : pendingUserMessages) {
-                        if ("tool".equals(userMessage.getRole())) {
-                            Map<String, Object> payload = new LinkedHashMap<>();
-                            payload.put("toolCallId", userMessage.getToolCallId());
-                            payload.put("toolName", userMessage.getToolName());
-                            payload.put("result", userMessage.getContent());
-                            publish(
-                                    sessionId,
-                                    runId,
-                                    userMessage.getTurnId(),
-                                    AgentEvent.TOOL_EXECUTION_END,
-                                    payload);
-                        }
-                        publish(
-                                sessionId,
-                                runId,
-                                turnId,
-                                AgentEvent.MESSAGE_END,
-                                eventPayload("message", userMessage));
-                    }
+                    parentMessageId =
+                            appendInputMessages(
+                                    sessionId, runId, turnId, pendingUserMessages, parentMessageId);
                     pendingUserMessages = Collections.emptyList();
                 }
 
@@ -226,6 +202,28 @@ public class AgentRunner implements AgentHarness {
                             completedTurnPayload(turnCount, true));
                     currentTurnEnded = true;
                     break;
+                }
+
+                // A client-tool batch crosses HTTP requests. Its results complete the previous
+                // turn, so consume steering before the next model call, just as for server tools.
+                if (turnCount == 1 && "tool".equals(messages.get(0).getRole())) {
+                    String completedTurnId = messages.get(messages.size() - 1).getTurnId();
+                    List<RunInput> pendingInputs =
+                            claimPendingInputs(
+                                    effectiveOptions.getRunInputSource(),
+                                    sessionId,
+                                    runId,
+                                    completedTurnId);
+                    if (!pendingInputs.isEmpty()) {
+                        parentMessageId =
+                                appendInputMessages(
+                                        sessionId,
+                                        runId,
+                                        turnId,
+                                        runInputMessages(sessionId, pendingInputs),
+                                        parentMessageId);
+                        publishRunInputsApplied(sessionId, runId, completedTurnId, pendingInputs);
+                    }
                 }
                 publish(
                         sessionId,
@@ -442,6 +440,42 @@ public class AgentRunner implements AgentHarness {
         }
         sessionStore.touch(sessionId);
         return result;
+    }
+
+    private String appendInputMessages(
+            String sessionId,
+            String runId,
+            String turnId,
+            List<AgentMessage> messages,
+            String parentMessageId) {
+        for (AgentMessage message : messages) {
+            message.setRunId(runId);
+            if (message.getTurnId() == null) message.setTurnId(turnId);
+            message.setParentMessageId(parentMessageId);
+            parentMessageId = message.getMessageId();
+        }
+        sessionStore.appendMessages(messages);
+        for (AgentMessage message : messages) {
+            if ("tool".equals(message.getRole())) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("toolCallId", message.getToolCallId());
+                payload.put("toolName", message.getToolName());
+                payload.put("result", message.getContent());
+                publish(
+                        sessionId,
+                        runId,
+                        message.getTurnId(),
+                        AgentEvent.TOOL_EXECUTION_END,
+                        payload);
+            }
+            publish(
+                    sessionId,
+                    runId,
+                    turnId,
+                    AgentEvent.MESSAGE_END,
+                    eventPayload("message", message));
+        }
+        return parentMessageId;
     }
 
     private String executeToolCalls(

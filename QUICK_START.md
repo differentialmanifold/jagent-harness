@@ -79,7 +79,7 @@ Set your model name, API endpoint, and API key, then start the server:
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-java -jar examples/server-demo/target/server-demo-1.2.0.jar
+java -jar examples/server-demo/target/server-demo-1.2.1.jar
 ```
 
 Omit the API key if your model endpoint does not require one. Wait for the server to report that it has started. SQLite storage is created automatically as `agent-server.db` in the working directory.
@@ -87,7 +87,7 @@ Omit the API key if your model endpoint does not require one. Wait for the serve
 ### 3. Terminal 2: runner
 
 ```sh
-java -jar examples/coding-runner/target/jagent-coding-runner-1.2.0.jar
+java -jar examples/coding-runner/target/jagent-coding-runner-1.2.1.jar
 ```
 
 No arguments or environment variables are needed. Wait for `Runner <machine-name> online`. The runner registers all coding tools and keeps receiving work. Choose project directories in the frontend after startup.
@@ -142,7 +142,7 @@ On the runner machine, set the remote address and token, then use the same start
 ```sh
 export JAGENT_SERVER_URL='https://agent.example.com'
 export JAGENT_CLIENT_TOKEN='your-shared-token'
-java -jar jagent-coding-runner-1.2.0.jar
+java -jar jagent-coding-runner-1.2.1.jar
 ```
 
 The standalone JAR includes the SDK and coding tools. See the [Runner guide](examples/coding-runner/README.md) for distribution and recovery.
@@ -157,5 +157,5 @@ With a source checkout, put these optional settings in `.env.local` and run `nod
 - **Write or bash missing:** enable it in the project’s Client tools selection. Tools use the runner OS account’s permissions; the selected directory is a working directory, not a sandbox.
 - **Port occupied:** stop the previous server/frontend or change its port. The runner uses no listening port.
 - **401 response:** check the shared API token in all three processes.
-- **Remote connection fails:** use HTTPS for a remote server; loopback HTTP is allowed for local development.
+- **Remote connection fails:** plain HTTP to a remote server is accepted with an unencrypted-traffic warning; prefer HTTPS so the shared token and job traffic stay encrypted.
 - **Interrupted task:** inspect local effects and follow [recovery instructions](examples/coding-runner/README.md#state-cancellation-and-recovery).

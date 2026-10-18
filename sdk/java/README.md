@@ -17,7 +17,7 @@ Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and prot
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>1.2.0</version>
+  <version>1.2.1</version>
 </dependency>
 ```
 

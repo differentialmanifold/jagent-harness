@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
 import io.github.differentialmanifold.jagentharness.client.*;
+import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
 import io.github.differentialmanifold.jagentharness.core.session.*;
 import io.github.differentialmanifold.jagentharness.core.tool.*;
@@ -36,6 +38,7 @@ class RunnerProtocolTest {
     @Autowired SessionManager sessions;
     @Autowired SessionStore history;
     @Autowired ChatService chat;
+    @Autowired ConversationProtocolTest.Scripted model;
     @LocalServerPort int port;
     final ObjectMapper json = new ObjectMapper();
     final String secret = "secret-for-tests-with-at-least-32-characters";
@@ -79,7 +82,7 @@ class RunnerProtocolTest {
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path runnerHome;
 
     @Test
-    void sdkHostsWorkspaceFreeToolsThroughPersistedServerDispatch() throws Exception {
+    void sdkHostsWorkspaceFreeToolsAndSteersBeforeTheNextModelRequest() throws Exception {
         Object device = new Object();
         java.util.concurrent.atomic.AtomicInteger effects =
                 new java.util.concurrent.atomic.AtomicInteger();
@@ -99,10 +102,20 @@ class RunnerProtocolTest {
                             return json.createObjectNode().put("type", "object");
                         }
 
-                        public ToolExecutionResult execute(ToolContext context, JsonNode args) {
+                        public ToolExecutionResult execute(ToolContext context, JsonNode args)
+                                throws Exception {
                             assertNull(context.getWorkspaceRoot());
                             assertSame(device, context.requireLocalContext(Object.class));
-                            effects.incrementAndGet();
+                            if (effects.incrementAndGet() == 1) {
+                                Map<String, String> input = new LinkedHashMap<>();
+                                input.put("inputId", "steer_" + UUID.randomUUID());
+                                input.put("content", "Keep the existing device configuration");
+                                new HttpAgentTransport("http://127.0.0.1:" + port, "test-token")
+                                        .management(
+                                                "POST",
+                                                "/api/v1/runs/" + context.getRunId() + "/inputs",
+                                                input);
+                            }
                             return ToolExecutionResult.success(
                                     Collections.singletonMap("device", "ready"));
                         }
@@ -146,6 +159,16 @@ class RunnerProtocolTest {
             assertEquals("COMPLETED", store.job(request.runId).status);
             assertNull(store.job(request.runId).workspace);
             assertEquals(2, effects.get());
+            List<ModelRequest> modelRequests = new ArrayList<>();
+            for (ModelRequest call : model.requests)
+                if (request.sessionId.equals(call.getMessages().get(0).getSessionId()))
+                    modelRequests.add(call);
+            assertEquals(2, modelRequests.size());
+            List<AgentMessage> messages = modelRequests.get(1).getMessages();
+            assertEquals("user", messages.get(messages.size() - 1).getRole());
+            assertEquals(
+                    "Keep the existing device configuration",
+                    messages.get(messages.size() - 1).getContent());
             runner.close();
             running.get(5, TimeUnit.SECONDS);
         } finally {

@@ -1524,8 +1524,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
+  min-width: 36px;
   height: 22px;
+  padding: 0 6px;
   flex: 0 0 auto;
   border: 1px solid #9fc4a7;
   border-radius: 999px;
@@ -1533,6 +1534,7 @@ textarea {
   color: #206a3b;
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .message.failed .tool-status {
@@ -1542,7 +1544,6 @@ textarea {
 }
 
 .message.stopped .tool-status {
-  width: 42px;
   border-color: #d9b36c;
   background: #fff5df;
   color: #8a5a00;
