@@ -132,7 +132,8 @@ public class VirtualFileController {
         }
 
         KnowledgeScope knowledgeScope = scope(scope, sessionId);
-        Map<String, String> files = SkillArchive.read(file.getInputStream(), file.getOriginalFilename());
+        Map<String, String> files =
+                SkillArchive.read(file.getInputStream(), file.getOriginalFilename());
         // Validate the complete archive before writing any files.
         for (String path : files.keySet()) {
             normalizeSkillPath(path);
@@ -148,6 +149,7 @@ public class VirtualFileController {
         if (scope == null || scope.trim().isEmpty() || "global".equalsIgnoreCase(scope.trim())) {
             return KnowledgeScope.global();
         }
+        if ("agent-global".equalsIgnoreCase(scope.trim())) return KnowledgeScope.agentGlobal();
         if (!"project".equalsIgnoreCase(scope.trim())) {
             throw new IllegalArgumentException("Unsupported knowledge scope: " + scope);
         }

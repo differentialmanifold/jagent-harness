@@ -1,20 +1,22 @@
+import { isRuntimeContextMessage } from '../utils/runtimeContext.js'
 import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { request } from '../api/http'
-import { loadJson, saveJson } from '../utils/storage'
-import { projectName, projectPathLabel } from '../utils/workspace'
+import { request } from '../api/http.js'
+import { loadJson, saveJson } from '../utils/storage.js'
+import { projectName, projectPathLabel } from '../utils/workspace.js'
 import {
   MAX_IMAGE_COUNT,
   MAX_TOTAL_IMAGE_BYTES,
   readImageAttachment,
   toImageRequest,
   validateImageFiles
-} from '../utils/images'
+} from '../utils/images.js'
 
 const DEFAULT_PROJECT_NAME = 'Default Project'
 
-export function useAgentHarness() {
+export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} } = {}) {
   const runners = ref([])
   const projectRunnerDraft = ref('')
+  const projectOwner = ref('')
   const sessions = ref([])
   const currentSession = ref(null)
   const sessionRuntimeStates = reactive(new Map())
@@ -122,8 +124,21 @@ export function useAgentHarness() {
     return Array.from(groups.values())
   })
 
-  onMounted(bootstrap)
+  let refreshTimer, observerRetry, observer = null, observedSession = '', refreshing = false
+  const observedIds = new Set()
+  onMounted(() => {
+    if (!autoStart) return
+    bootstrap()
+    refreshTimer = window.setInterval(async () => {
+      if (refreshing || document.hidden) return
+      refreshing = true
+      try { await loadSessions() } catch (error) { console.debug('Project refresh deferred', error.message) }
+      finally { refreshing = false }
+    }, 2500)
+  })
   onBeforeUnmount(() => {
+    window.clearInterval(refreshTimer)
+    stopObserving()
     for (const state of sessionRuntimeStates.values()) {
       clearStopFallback(state)
       cancelDeltaFlush(state)
@@ -167,8 +182,25 @@ export function useAgentHarness() {
     tools.value = agentContext.value.tools || []
   }
 
+  const sessionCollectionUrl = () => '/api/v1/sessions' + (projectOwner.value ? '?ownerAgentId=' + encodeURIComponent(projectOwner.value) : '')
   async function loadSessions() {
-    sessions.value = await request('/api/v1/sessions')
+    const owner = projectOwner.value
+    const rows = await request(sessionCollectionUrl())
+    if (owner !== projectOwner.value) return
+    sessions.value = rows
+    if (currentSession.value && !rows.some(row => row.sessionId === currentSession.value.sessionId)) {
+      invalidateSession(currentSession.value.sessionId)
+    }
+  }
+  async function setProjectOwner(owner = '') {
+    stopObserving()
+    projectOwner.value = owner || ''
+    ++sessionSelectionVersion
+    currentSession.value = null
+    sessions.value = []
+    await loadSessions()
+    if (sessions.value.length) await selectSession(sessions.value[0].sessionId)
+    else await loadAgentContext()
   }
 
   async function createSession(project = null) {
@@ -181,7 +213,7 @@ export function useAgentHarness() {
     projectError.value = ''
     showProject(projectKey(targetProjectName))
     const title = `New Chat - ${projectAliases.value[projectKey(targetProjectName)] || targetProjectName}`
-    const session = await request('/api/v1/sessions', {
+    const session = await request(sessionCollectionUrl(), {
       method: 'POST',
       body: JSON.stringify({
         title,
@@ -214,7 +246,7 @@ export function useAgentHarness() {
 
   async function openProjectDialog() {
     await loadRunners()
-    projectRunnerDraft.value = ''
+    projectRunnerDraft.value = runners.value.find(runner => runner.online)?.runnerId || ''
     projectError.value = ''
     projectNameDraft.value = ''
     projectDialogOpen.value = true
@@ -357,6 +389,75 @@ export function useAgentHarness() {
     }
     releaseInactiveMessageHistory(id)
     await loadAgentContext(id)
+    if (selectionVersion === sessionSelectionVersion) observeSession(details.session)
+  }
+
+  function stopObserving() {
+    window.clearTimeout(observerRetry)
+    observer?.close()
+    observer = null
+    observedSession = ''
+    observedIds.clear()
+  }
+
+  function invalidateSession(sessionId) {
+    if (currentSession.value?.sessionId !== sessionId) return
+    stopObserving()
+    ++sessionSelectionVersion
+    currentSession.value = null
+    sessions.value = sessions.value.filter(row => row.sessionId !== sessionId)
+    tools.value = []
+    onSessionMissing(sessionId)
+  }
+
+  function observeSession(session) {
+    if (observedSession === session.sessionId && observer) {
+      currentSession.value = { ...currentSession.value, ...session }
+      return
+    }
+    stopObserving()
+    currentSession.value = session
+    observedSession = session.sessionId
+    const state = runtimeState(session.sessionId)
+    const source = new EventSource(`/api/v1/sessions/${encodeURIComponent(session.sessionId)}/events`)
+    observer = source
+    source.onerror = () => {
+      // Native EventSource reconnects transport failures, but closes permanently on
+      // an invalid proxy response while the server is restarting.
+      if (observer !== source || source.readyState !== EventSource.CLOSED) return
+      source.close()
+      observer = null
+      observedSession = ''
+      observerRetry = window.setTimeout(() => {
+        if (currentSession.value?.sessionId === session.sessionId) observeSession(currentSession.value)
+      }, 2000)
+    }
+    source.addEventListener('session_missing', () => {
+      if (observer === source) invalidateSession(session.sessionId)
+    })
+    source.addEventListener('snapshot', (message) => {
+      if (observer !== source || state.streamController) return
+      const snapshot = JSON.parse(message.data)
+      const events = snapshot.events || []
+      observedIds.clear()
+      for (const event of events) if (event.eventId) observedIds.add(event.eventId)
+      replayTimelineEvents(events, state)
+      const lifecycle = [...events].reverse().find(event => ['agent_start', 'agent_end', 'agent_stopped', 'agent_error'].includes(event.type))
+      if (lifecycle?.type === 'agent_start') {
+        state.running = true
+        state.activeRunId = lifecycle.runId
+        state.stopReady = true
+      }
+    })
+    source.addEventListener('event', (message) => {
+      if (observer !== source || state.streamController) return
+      const event = JSON.parse(message.data)
+      if (event.sessionId !== state.sessionId) return
+      if (event.eventId && observedIds.has(event.eventId)) return
+      if (event.eventId) observedIds.add(event.eventId)
+      handleAgentEvent(event.type, event, state, { observed: true })
+      if (event.type === 'agent_start') state.stopReady = true
+    })
   }
 
   async function addDraftImages(files) {
@@ -407,9 +508,7 @@ export function useAgentHarness() {
       await submitRuntimeInput(content, images, state)
       return
     }
-    if (shouldAutoNameChat(currentSession.value, state.messages)) {
-      await renameChatFromPrompt(sessionId, content, images)
-    }
+    const autoName = shouldAutoNameChat(currentSession.value, state.messages)
     state.draft = ''
     state.draftImages.splice(0)
     state.imageError = ''
@@ -421,6 +520,15 @@ export function useAgentHarness() {
     resetTransientRunState(state)
     state.activeRunId = null
     state.streamController = markRaw(new AbortController())
+    state.pendingUserMessageId = `local-user:${crypto.randomUUID()}`
+    state.messages.push({
+      messageId: state.pendingUserMessageId,
+      sessionId, role: 'user', content, images,
+      createdAt: new Date().toISOString()
+    })
+    markMessagesChanged(state)
+    // Naming must not delay sending or displaying the first message.
+    if (autoName) void renameChatFromPrompt(sessionId, content, images)
     let requestAccepted = false
     try {
       await streamRequest(
@@ -437,11 +545,14 @@ export function useAgentHarness() {
     } catch (error) {
       if (!(error.name === 'AbortError' && state.stopRequested)) {
         if (!requestAccepted) {
+          const index = state.messages.findIndex(message => message.messageId === state.pendingUserMessageId)
+          if (index >= 0) state.messages.splice(index, 1)
           restoreDraft(state, content, images)
         }
         appendLocalErrorMessage(state, error.message, error.runDurationMillis)
       }
     } finally {
+      state.pendingUserMessageId = null
       clearStopFallback(state)
       cancelRuntimeInputSubmission(state)
       state.pendingInputs.splice(0)
@@ -685,8 +796,15 @@ export function useAgentHarness() {
       completePendingTools('completed', state)
       completeRunTiming(event, payload, state)
       finishRun(event, payload, state)
-      if (options.replay) {
+      if (options.replay || options.observed) {
         resetTransientRunState(state)
+        state.running = false
+        state.stopReady = false
+        state.finishing = false
+        state.stopping = false
+        clearStopFallback(state)
+        cancelRuntimeInputSubmission(state)
+        state.pendingInputs.splice(0)
       } else {
         cancelRuntimeInputSubmission(state)
         state.pendingInputs.splice(0)
@@ -723,7 +841,9 @@ export function useAgentHarness() {
       state.activeRunId = null
       state.finishing = false
       finishActiveTurn('failed', state)
-      if (options.replay) {
+      if (options.replay || options.observed) {
+        state.running = false
+        state.stopReady = false
         appendCustomEventMessage(event, type, payload, state, runDurationMillis)
       } else {
         const error = new Error(payload.message || payload.error || 'Agent stream failed')
@@ -749,7 +869,15 @@ export function useAgentHarness() {
   }
 
   function finishRun(event, payload, state) {
-    const runId = eventRunId(event, payload)
+    const runId = eventRunId(event, payload) || state.activeRunId
+    const finalMessage = [...state.messages].reverse().find(message =>
+      message.role === 'assistant' && message.runId === runId)
+    if (finalMessage && !finalMessage.toolCalls?.length
+        && !finalMessage.failed && finalMessage.stopReason !== 'aborted'
+        && String(finalMessage.content || '').trim()) {
+      finalMessage.runCompleted = true
+      markMessagesChanged(state)
+    }
     if (!runId || runId === state.activeRunId) {
       state.activeRunId = null
     }
@@ -1109,6 +1237,15 @@ export function useAgentHarness() {
 
   function mergeMessage(message, state) {
     if (!message || !message.messageId) return
+    if (message.role === 'user' && !isRuntimeContextMessage(message) && state.pendingUserMessageId) {
+      const index = state.messages.findIndex(item => item.messageId === state.pendingUserMessageId)
+      state.pendingUserMessageId = null
+      if (index >= 0) {
+        state.messages.splice(index, 1, message)
+        markMessagesChanged(state)
+        return
+      }
+    }
     if (message.role === 'assistant' && state.activeStreamId) {
       cancelDeltaFlush(state)
       replaceStreamingMessage(message, state)
@@ -1458,6 +1595,7 @@ export function useAgentHarness() {
       activeRunId: null,
       activeTurnId: null,
       activeStreamId: null,
+      pendingUserMessageId: null,
       streamController: null,
       runtimeInputController: null,
       runtimeInputId: null,
@@ -1505,6 +1643,10 @@ export function useAgentHarness() {
   }
 
   return {
+    observeSession,
+    stopObserving,
+    projectOwner,
+    setProjectOwner,
     sessions,
     currentSession,
     messages,
@@ -1541,6 +1683,7 @@ export function useAgentHarness() {
     renameDialogLabel,
     projectGroups,
     loadAgentContext,
+    loadSessions,
     bootstrap,
     openProjectDialog,
     closeProjectDialog,

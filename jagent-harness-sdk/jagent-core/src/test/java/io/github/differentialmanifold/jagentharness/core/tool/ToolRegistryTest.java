@@ -15,6 +15,20 @@ import org.junit.jupiter.api.Test;
 class ToolRegistryTest {
 
     @Test
+    void providerOrderingDoesNotChangeTheModelToolCatalog() {
+        List<ToolDefinition> provided = new ArrayList<>();
+        provided.add(new StubTool("write", "Write"));
+        provided.add(new StubTool("read", "Read"));
+        ToolRegistry registry =
+                new ToolRegistry(
+                        Collections.emptyList(), Collections.singletonList(context -> provided));
+        List<ToolDefinition> first = new ArrayList<>(registry.all());
+        Collections.reverse(provided);
+        assertEquals(first, new ArrayList<>(registry.all()));
+        assertEquals("read", first.get(0).getName());
+    }
+
+    @Test
     void laterRegisteredToolOverridesEarlierToolWithSameName() {
         ToolRegistry registry = new ToolRegistry();
         ToolDefinition original = new StubTool("read", "original");

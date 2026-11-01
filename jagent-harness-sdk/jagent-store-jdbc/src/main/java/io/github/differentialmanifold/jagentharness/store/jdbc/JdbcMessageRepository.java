@@ -44,8 +44,8 @@ public class JdbcMessageRepository implements MessageRepository {
                         + "(application_id, message_id, session_id, run_id, turn_id, parent_message_id, role, content, "
                         + "images_json, reasoning_content, "
                         + "tool_call_id, tool_name, tool_calls_json, "
-                        + "stop_reason, created_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "stop_reason, metadata_json, created_at) "
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 applicationId,
                 message.getMessageId(),
                 message.getSessionId(),
@@ -60,6 +60,7 @@ public class JdbcMessageRepository implements MessageRepository {
                 message.getToolName(),
                 writeToolCalls(message.getToolCalls()),
                 message.getStopReason(),
+                message.getMetadataJson(),
                 JdbcTimeCodec.encode(message.getCreatedAt()));
     }
 
@@ -89,9 +90,47 @@ public class JdbcMessageRepository implements MessageRepository {
             message.setToolName(rs.getString("tool_name"));
             message.setToolCalls(readToolCalls(rs.getString("tool_calls_json")));
             message.setStopReason(rs.getString("stop_reason"));
+            message.setMetadataJson(rs.getString("metadata_json"));
             message.setCreatedAt(JdbcTimeCodec.decode(rs.getString("created_at")));
             return message;
         };
+    }
+
+    @Override
+    public List<AgentMessage> search(
+            java.util.Collection<String> sessionIds, String query, int limit) {
+        if (sessionIds.isEmpty()) return java.util.Collections.emptyList();
+        // A literal substring also works for CJK; no tokenizer or database-specific extension is
+        // required.
+        String pattern =
+                "%"
+                        + query.toLowerCase(java.util.Locale.ROOT)
+                                .replace("!", "!!")
+                                .replace("%", "!%")
+                                .replace("_", "!_")
+                        + "%";
+        List<String> ids = new ArrayList<>(sessionIds);
+        List<AgentMessage> matches = new ArrayList<>();
+        for (int start = 0; start < ids.size(); start += 100) {
+            List<String> batch = ids.subList(start, Math.min(start + 100, ids.size()));
+            List<Object> args = new ArrayList<>();
+            args.add(applicationId);
+            args.addAll(batch);
+            args.add(pattern);
+            args.add(Math.min(50, Math.max(1, limit)));
+            matches.addAll(
+                    jdbcTemplate.query(
+                            "select * from messages where application_id=? and session_id in ("
+                                    + String.join(
+                                            ",", java.util.Collections.nCopies(batch.size(), "?"))
+                                    + ") and lower(content) like ? escape '!' order by id desc limit ?",
+                            mapper(),
+                            args.toArray()));
+        }
+        return matches.stream()
+                .sorted(java.util.Comparator.comparing(AgentMessage::getCreatedAt).reversed())
+                .limit(Math.min(50, Math.max(1, limit)))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     private String writeToolCalls(List<ToolCall> toolCalls) {

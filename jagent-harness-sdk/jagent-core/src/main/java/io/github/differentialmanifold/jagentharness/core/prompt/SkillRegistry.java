@@ -61,6 +61,15 @@ public class SkillRegistry {
         for (RankedSkill skill : skills.values()) {
             result.add(skill.getSkill());
         }
+        result.sort(
+                java.util.Comparator.comparing(
+                                SkillDescriptor::getName,
+                                java.util.Comparator.nullsFirst(
+                                        java.util.Comparator.naturalOrder()))
+                        .thenComparing(
+                                SkillDescriptor::getFilePath,
+                                java.util.Comparator.nullsFirst(
+                                        java.util.Comparator.naturalOrder())));
         return result;
     }
 

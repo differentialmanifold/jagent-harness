@@ -45,6 +45,40 @@ public class JdbcSessionRepository implements SessionRepository {
     @Override
     public SessionRecord create(
             String title, String workspacePath, String projectName, String projectId) {
+        return create(title, workspacePath, projectName, projectId, null);
+    }
+
+    @Override
+    public SessionRecord create(
+            String title,
+            String workspacePath,
+            String projectName,
+            String projectId,
+            String ownerAgentId) {
+        List<SessionRecord> existing =
+                jdbcTemplate.query(
+                        "select * from sessions where application_id=? and project_id=?",
+                        mapper,
+                        applicationId,
+                        projectId);
+        if (existing.stream()
+                .anyMatch(s -> !java.util.Objects.equals(ownerAgentId, s.getOwnerAgentId())))
+            throw new IllegalArgumentException("Project belongs to a different owner");
+        return insert(title, workspacePath, projectName, projectId, false, ownerAgentId);
+    }
+
+    @Override
+    public SessionRecord createStandalone(String title) {
+        return insert(title, null, null, "", true, null);
+    }
+
+    private SessionRecord insert(
+            String title,
+            String workspacePath,
+            String projectName,
+            String projectId,
+            boolean standalone,
+            String ownerAgentId) {
         Instant now = Instant.now();
         SessionRecord session = new SessionRecord();
         session.setSessionId(Ids.newId("ses"));
@@ -56,7 +90,11 @@ public class JdbcSessionRepository implements SessionRepository {
         session.setStatus(SessionRecord.STATUS_ACTIVE);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        upsertProject(session, now);
+        if (standalone) session.setMetadataJson(SessionRecord.STANDALONE_METADATA);
+        else {
+            if (ownerAgentId != null) session.setOwnerAgentId(ownerAgentId);
+            upsertProject(session, now);
+        }
         jdbcTemplate.update(
                 "insert into sessions "
                         + "(application_id, session_id, title, project_id, project_name, workspace_path, status, metadata_json, "
@@ -73,6 +111,56 @@ public class JdbcSessionRepository implements SessionRepository {
                 JdbcTimeCodec.encode(session.getCreatedAt()),
                 JdbcTimeCodec.encode(session.getUpdatedAt()));
         return session;
+    }
+
+    @Override
+    public boolean assignProjectOwnerIfUnowned(String projectId, String agentId) {
+        if (projectId == null || projectId.isEmpty() || agentId == null || agentId.isEmpty())
+            return false;
+        return Boolean.TRUE.equals(
+                new org.springframework.transaction.support.TransactionTemplate(
+                                new org.springframework.jdbc.datasource
+                                        .DataSourceTransactionManager(jdbcTemplate.getDataSource()))
+                        .execute(
+                                status -> {
+                                    List<SessionRecord> existing =
+                                            jdbcTemplate.query(
+                                                    "select * from sessions where application_id=? and project_id=?",
+                                                    mapper,
+                                                    applicationId,
+                                                    projectId);
+                                    if (existing.isEmpty()
+                                            || existing.stream()
+                                                    .anyMatch(s -> s.getOwnerAgentId() != null))
+                                        return false;
+                                    for (SessionRecord session : existing) {
+                                        String previous = session.getMetadataJson();
+                                        session.setOwnerAgentId(agentId);
+                                        int changed =
+                                                jdbcTemplate.update(
+                                                        "update sessions set metadata_json=? where application_id=? and session_id=? and "
+                                                                + (previous == null
+                                                                        ? "metadata_json is null"
+                                                                        : "metadata_json=?"),
+                                                        previous == null
+                                                                ? new Object[] {
+                                                                    session.getMetadataJson(),
+                                                                    applicationId,
+                                                                    session.getSessionId()
+                                                                }
+                                                                : new Object[] {
+                                                                    session.getMetadataJson(),
+                                                                    applicationId,
+                                                                    session.getSessionId(),
+                                                                    previous
+                                                                });
+                                        if (changed != 1) {
+                                            status.setRollbackOnly();
+                                            return false;
+                                        }
+                                    }
+                                    return true;
+                                }));
     }
 
     private void upsertProject(SessionRecord session, Instant now) {

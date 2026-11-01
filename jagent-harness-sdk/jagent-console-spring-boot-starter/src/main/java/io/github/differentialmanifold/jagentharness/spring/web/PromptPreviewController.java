@@ -21,6 +21,9 @@ public class PromptPreviewController {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private RunnerService runners;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore personal;
+
     private final PromptProvider promptProvider;
     private final ToolRegistry toolRegistry;
     private final AgentSettings settings;
@@ -48,25 +51,11 @@ public class PromptPreviewController {
                 session != null
                         && runners != null
                         && runners.binding(session.getSessionId()) != null;
-        Path workspaceRoot =
-                session == null || remote
-                        ? null
-                        : workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
         AgentContext context =
-                new AgentContext(
-                        session == null ? null : session.getSessionId(),
-                        null,
-                        null,
-                        null,
-                        workspaceRoot,
-                        settings.getConfigRoot(),
-                        null,
-                        session == null ? null : session.getProjectId());
-        if (request != null)
-            context.setClientCapabilities(
-                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
-                            request.getClientTools(), request.getClientInstructions()));
-        if (remote) context.setClientCapabilities(runners.capabilities(session));
+                RuntimeContextFactory.create(
+                        session, request, settings, workspaceRootResolver, runners, personal);
+        Path workspaceRoot = context.getWorkspaceRoot();
+        Path configRoot = settings.getConfigRoot();
         String prompt =
                 promptProvider.buildSystemPrompt(
                         new PromptContext(toolRegistry.all(context), context));

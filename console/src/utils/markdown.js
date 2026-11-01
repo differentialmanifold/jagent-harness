@@ -1,3 +1,18 @@
+import MarkdownIt from 'markdown-it'
+
+// Model output is untrusted. Raw HTML is disabled and MarkdownIt rejects unsafe link protocols.
+const renderer = new MarkdownIt({ html: false, linkify: true, breaks: true })
+renderer.renderer.rules.image = (tokens, index) => {
+  const token = tokens[index]
+  const url = token.attrGet('src') || ''
+  const label = renderer.utils.escapeHtml(token.content || 'Image')
+  // Do not fetch arbitrary remote images merely because they appear in a model reply.
+  return renderer.validateLink(url) ? `<a href="${renderer.utils.escapeHtml(url)}" rel="noreferrer">${label}</a>` : label
+}
+export function renderMarkdown(content) {
+  return renderer.render(String(content || ''))
+}
+
 export function markdownBlocks(content) {
   const blocks = []
   const lines = String(content || '').split(/\r?\n/)

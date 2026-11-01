@@ -34,26 +34,46 @@ public class DefaultSessionManager implements SessionManager {
     @Override
     public SessionRecord createSession(
             String title, String workspacePath, String projectName, String projectId) {
+        return createSession(title, workspacePath, projectName, projectId, null);
+    }
+
+    @Override
+    public SessionRecord createSession(
+            String title,
+            String workspacePath,
+            String projectName,
+            String projectId,
+            String ownerAgentId) {
         String normalizedProjectId = projectId == null ? "" : projectId.trim();
+        if (!normalizedProjectId.isEmpty()) {
+            for (SessionRecord existing : sessionRepository.findAll()) {
+                if (normalizedProjectId.equals(existing.getProjectId())
+                        && !java.util.Objects.equals(ownerAgentId, existing.getOwnerAgentId()))
+                    throw new IllegalArgumentException("Project belongs to a different owner");
+            }
+        }
         return sessionRepository.create(
                 title,
                 normalizeWorkspacePath(workspacePath),
                 normalizeProjectName(projectName),
-                normalizedProjectId.isEmpty() ? Ids.newId("project") : normalizedProjectId);
+                normalizedProjectId.isEmpty() ? Ids.newId("project") : normalizedProjectId,
+                ownerAgentId);
     }
 
     @Override
     public SessionRecord requireSession(String sessionId) {
         SessionRecord session = sessionRepository.findBySessionId(sessionId);
         if (session == null) {
-            throw new IllegalArgumentException("Session not found: " + sessionId);
+            throw new SessionNotFoundException(sessionId);
         }
         return session;
     }
 
     @Override
     public List<SessionRecord> listSessions() {
-        return sessionRepository.findAll();
+        return sessionRepository.findAll().stream()
+                .filter(s -> !s.isStandalone())
+                .collect(java.util.stream.Collectors.toList());
     }
 
     @Override

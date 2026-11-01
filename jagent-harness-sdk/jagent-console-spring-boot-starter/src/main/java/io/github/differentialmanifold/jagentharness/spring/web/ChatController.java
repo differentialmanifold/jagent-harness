@@ -26,14 +26,7 @@ public class ChatController {
     private final ChatService service;
     private final io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator
             inputs;
-    private final ExecutorService tasks =
-            new ThreadPoolExecutor(
-                    2,
-                    32,
-                    60,
-                    TimeUnit.SECONDS,
-                    new SynchronousQueue<>(),
-                    new ThreadPoolExecutor.AbortPolicy());
+    private final ExecutorService tasks = Executors.newCachedThreadPool();
 
     public ChatController(
             ChatService service,
@@ -75,7 +68,7 @@ public class ChatController {
                         }
                     });
         } catch (RejectedExecutionException error) {
-            throw new ProtocolException(503, "CAPACITY", "Agent server is at capacity");
+            throw new ProtocolException(503, "UNAVAILABLE", "Agent server is shutting down");
         }
         return emitter;
     }

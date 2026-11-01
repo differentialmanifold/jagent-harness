@@ -6,6 +6,7 @@
         <p>{{ statusText }}</p>
       </div>
       <el-tag
+        v-if="showModelStatus"
         round
         :type="modelConfigured ? 'success' : 'warning'"
       >
@@ -14,11 +15,10 @@
     </header>
 
     <div class="messages" ref="messagesEl" @scroll.passive="handleMessagesScroll">
-      <MessageItem
-        v-for="message in visibleMessages"
-        :key="message.role === 'assistant' && message.turnId ? `assistant:${message.turnId}` : message.messageId"
-        :message="message"
-      />
+      <template v-for="entry in chatEntries" :key="entry.key">
+        <CompletedReply v-if="entry.process" :entry="entry" />
+        <MessageItem v-else :message="entry.message" />
+      </template>
     </div>
 
     <form class="composer" @submit.prevent="submit">
@@ -52,7 +52,8 @@
       <ComposerInput
         :key="currentSession?.sessionId || 'no-session'"
         :model-value="draft"
-        :disabled="!currentSession"
+        :rows="composerRows"
+        :disabled="!currentSession || disabled"
         :placeholder="composerPlaceholder"
         @update:model-value="$emit('update:draft', $event)"
         @keydown="handleKeydown"
@@ -78,6 +79,7 @@
       <div class="composer-footer">
         <div class="composer-left">
           <button
+            v-if="allowImages"
             class="composer-image-trigger"
             type="button"
             :disabled="!currentSession || addingImages || stopping"
@@ -125,10 +127,19 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { Close, Picture, Top } from '@element-plus/icons-vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import MessageItem from './MessageItem.vue'
+import CompletedReply from './CompletedReply.vue'
+import { groupCompletedReplies } from '../utils/chatTimeline'
 import ComposerInput from './ComposerInput.vue'
 import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
+  composerRows: { type: Number, default: 3 },
+  showModelStatus: { type: Boolean, default: true },
+  allowImages: { type: Boolean, default: true },
+  allowStop: { type: Boolean, default: true },
+  allowQueue: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
+  placeholder: { type: String, default: '' },
   currentSession: { type: Object, default: null },
   messages: { type: Array, required: true },
   provider: { type: Object, default: null },
@@ -172,23 +183,27 @@ const visibleMessages = computed(() => props.messages.filter((message) => {
   return !isToolOnlyAssistant
 }))
 
+const chatEntries = computed(() => groupCompletedReplies(visibleMessages.value))
+
 const modelConfigured = computed(() => Boolean(
   String(props.provider?.model || '').trim()
   && String(props.provider?.baseUrl || '').trim()
 ))
 const composerPlaceholder = computed(() => {
+  if (props.placeholder) return props.placeholder
   if (!props.running) return 'Ask the agent to inspect, edit, or plan work...'
   return 'Send another message...'
 })
 const hasMessage = computed(() => Boolean(props.draft.trim() || props.draftImages.length))
-const showStopAction = computed(() => props.running && (props.stopping || !hasMessage.value))
+const showStopAction = computed(() => props.allowStop && props.running && (props.stopping || !hasMessage.value))
 const canSubmit = computed(() => Boolean(
   props.currentSession
+  && !props.disabled
   && hasMessage.value
   && !props.addingImages
   && !props.submittingInput
   && !props.stopping
-  && (!props.running || (props.stopReady && props.activeRunId))
+  && (props.allowQueue || !props.running || (props.stopReady && props.activeRunId))
 ))
 
 watch(
@@ -234,6 +249,7 @@ function handleImageSelection(event) {
 }
 
 function handlePaste(event) {
+  if (!props.allowImages) return
   const files = Array.from(event.clipboardData?.files || [])
     .filter((file) => String(file.type || '').startsWith('image/'))
   if (files.length === 0) return

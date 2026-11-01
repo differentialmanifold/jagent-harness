@@ -331,6 +331,14 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "workspaceRoot": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048,
+          "description": "Optional absolute root on the Runner for automatic user/<projectId> and agents/<agentId>/<projectId> directories. The Runner creates managed directories on first execution."
         }
       },
       "required": [

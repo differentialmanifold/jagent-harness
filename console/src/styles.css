@@ -1202,18 +1202,13 @@ textarea {
 }
 
 .session-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px;
-  align-items: center;
+  position: relative;
   width: 100%;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: #18212f;
-  cursor: pointer;
   min-height: 34px;
-  padding: 4px 4px 4px 8px;
   transition: background-color 0.16s ease, color 0.16s ease;
 }
 
@@ -1230,12 +1225,26 @@ textarea {
   display: block;
   width: 100%;
   min-width: 0;
+  min-height: 34px;
   border: 0;
+  border-radius: inherit;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  padding: 0;
+  padding: 7px 40px 7px 8px;
   text-align: left;
+}
+
+.session-main:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
+}
+
+.session-item > .chat-actions {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
 }
 
 .session-main span {
@@ -1298,8 +1307,11 @@ textarea {
 
 .message.user {
   align-self: flex-end;
-  border-color: #b7c9e8;
-  background: #f4f8ff;
+  max-width: min(80%, 760px);
+  border-color: #a6d686;
+  border-radius: 14px 4px 14px 14px;
+  background: #c9ecb6;
+  color: #20301c;
 }
 
 .message.assistant.interrupted {
@@ -2992,3 +3004,22 @@ dd {
   color: #64748b;
   font-size: 13px;
 }
+
+/* Shared project and personal Agent conversation content. */
+.message-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.65; }
+.chat-markdown { min-width: 0; overflow-wrap: anywhere; line-height: 1.7; }
+.chat-markdown > :first-child { margin-top: 0; }
+.chat-markdown > :last-child { margin-bottom: 0; }
+.chat-markdown p { margin: 0.65em 0; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { margin: 1em 0 0.5em; line-height: 1.35; }
+.chat-markdown h1 { font-size: 1.5em; }
+.chat-markdown h2 { font-size: 1.3em; }
+.chat-markdown h3 { font-size: 1.15em; }
+.chat-markdown ul, .chat-markdown ol { padding-left: 1.6em; }
+.chat-markdown blockquote { margin: 1em 0; padding: 0.1em 1em; border-left: 3px solid #b8c9dd; color: #58677a; }
+.chat-markdown :not(pre) > code { background: #edf1f6; border-radius: 4px; padding: 2px 5px; font-size: 0.9em; }
+.message .chat-markdown pre { overflow-x: auto; white-space: pre; padding: 14px; border-radius: 8px; background: #f4f6f9; margin: 0.8em 0; }
+.chat-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 1em 0; }
+.chat-markdown th, .chat-markdown td { padding: 6px 12px; border: 1px solid #d7dde6; text-align: left; }
+.chat-markdown th { background: #f4f6f9; }
+.chat-markdown a { color: #2563b5; text-decoration: underline; }

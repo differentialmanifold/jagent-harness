@@ -81,7 +81,7 @@ public class PromptService implements PromptProvider {
         StringBuilder prompt = new StringBuilder();
         appendDefaultSystemPrompt(prompt);
         appendSystemPromptContributors(prompt, effectiveContext);
-        appendAgentRules(prompt, agentContext == null ? null : agentContext.getProjectId());
+        appendAgentRules(prompt, agentContext);
 
         prompt.append("Available tools:\n");
         for (ToolDefinition tool : effectiveContext.getTools()) {
@@ -152,8 +152,8 @@ public class PromptService implements PromptProvider {
         prompt.append("\n\n");
     }
 
-    private void appendAgentRules(StringBuilder prompt, String projectId) {
-        List<String> contents = agentRuleFiles(projectId);
+    private void appendAgentRules(StringBuilder prompt, AgentContext context) {
+        List<String> contents = agentRuleFiles(context);
         if (contents.isEmpty()) {
             return;
         }
@@ -168,10 +168,12 @@ public class PromptService implements PromptProvider {
         prompt.append("\n\n");
     }
 
-    private List<String> agentRuleFiles(String projectId) {
+    private List<String> agentRuleFiles(AgentContext context) {
+        String projectId = context == null ? null : context.getProjectId();
+        KnowledgeScope defaults = KnowledgeScope.globalFor(context);
         List<String> files = new ArrayList<String>();
-        addAgentRuleFile(files, readKnowledgeIfExists(KnowledgeScope.global(), "AGENTS.md"));
-        if (!isBlank(projectId)) {
+        addAgentRuleFile(files, readKnowledgeIfExists(defaults, "AGENTS.md"));
+        if (defaults.equals(KnowledgeScope.global()) && !isBlank(projectId)) {
             addAgentRuleFile(
                     files, readKnowledgeIfExists(KnowledgeScope.project(projectId), "AGENTS.md"));
         }

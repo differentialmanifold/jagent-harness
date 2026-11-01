@@ -107,7 +107,10 @@ public class McpController {
         KnowledgeScope selectedScope = scope(requestedScope, session);
         String effectiveProjectId = selectedScope.isGlobal() ? null : projectId;
         McpScopeConfigSnapshot snapshot = configurationManager.scopeSnapshot(selectedScope);
-        Map<String, McpServerRuntimeStatus> statuses = runtime.statuses(effectiveProjectId);
+        Map<String, McpServerRuntimeStatus> statuses =
+                selectedScope.equals(KnowledgeScope.agentGlobal())
+                        ? runtime.agentStatuses()
+                        : runtime.statuses(effectiveProjectId);
         List<McpServerResponse> servers = new ArrayList<McpServerResponse>();
         for (Map.Entry<String, McpConfigEntry> entry : snapshot.getServers().entrySet()) {
             McpServerRuntimeStatus status = statuses.get(entry.getKey());
@@ -140,6 +143,7 @@ public class McpController {
         if (scope == null || scope.trim().isEmpty() || "global".equalsIgnoreCase(scope.trim())) {
             return KnowledgeScope.global();
         }
+        if ("agent-global".equalsIgnoreCase(scope.trim())) return KnowledgeScope.agentGlobal();
         if (!"project".equalsIgnoreCase(scope.trim())) {
             throw new IllegalArgumentException("Unsupported MCP scope: " + scope);
         }

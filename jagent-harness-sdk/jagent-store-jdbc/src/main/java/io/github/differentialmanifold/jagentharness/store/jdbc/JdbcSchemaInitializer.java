@@ -8,7 +8,7 @@ import org.springframework.core.io.*;
 import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
-/** Initializes a fresh schema; existing installations should use host-managed migrations. */
+/** Initializes bundled schemas; custom schemas remain managed by the host application. */
 public class JdbcSchemaInitializer {
     private final DataSource dataSource;
     private final JdbcStoreProperties properties;

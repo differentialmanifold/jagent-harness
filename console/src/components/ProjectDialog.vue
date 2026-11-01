@@ -10,7 +10,8 @@
         <p v-if="selectedRunner" class="runner-workspace">{{ selectedRunner.tools?.length || 0 }} local tools on this terminal.</p>
         <p v-else-if="!runners.length" class="runner-workspace">Start a runner to use tools on another machine.</p>
       </el-form-item>
-      <el-form-item v-if="selectedRunner?.workspaces" label="Workspace on runner">
+      <el-form-item v-if="selectedRunner?.workspaces" label="Workspace (optional)">
+        <p v-if="selectedRunner.workspaceRoot" class="runner-workspace">Leave empty to create a new project directory in your default workspace.</p>
         <RunnerWorkspacePicker :model-value="workspace" :runner-id="runnerId" :disabled="submitting" @update:model-value="updateWorkspacePath" />
       </el-form-item>
       <el-form-item label="Project name" :error="error">
@@ -42,7 +43,7 @@ const emit = defineEmits(['update:runnerId', 'update:projectName', 'submit', 'cl
 const selectedRunner = computed(() => props.runners.find(runner => runner.runnerId === props.runnerId))
 const workspace = ref('')
 const autoProjectName = ref('')
-const canSubmit = computed(() => props.projectName.trim() && (!selectedRunner.value?.workspaces || workspace.value.trim()))
+const canSubmit = computed(() => props.projectName.trim() && (!selectedRunner.value?.workspaces || selectedRunner.value.workspaceRoot || workspace.value.trim()))
 function reset() { updateWorkspacePath('') }
 watch(() => props.runnerId, reset)
 function updateProjectName(value) {

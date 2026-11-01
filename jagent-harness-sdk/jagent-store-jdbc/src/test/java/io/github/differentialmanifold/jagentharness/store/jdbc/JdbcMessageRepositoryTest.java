@@ -19,6 +19,27 @@ class JdbcMessageRepositoryTest {
     @TempDir Path tempDir;
 
     @Test
+    void persistsRuntimeContextMetadataAlongsideUserMessages() {
+        JdbcTemplate db = createDatabase();
+        JdbcMessageRepository repository =
+                new JdbcMessageRepository(db, new ObjectMapper(), new JdbcStoreProperties());
+        AgentMessage user = AgentMessage.user("session", "Original user message");
+        user.setRunId("run-user");
+        user.setTurnId("turn-user");
+        repository.append(user);
+        AgentMessage runtime = AgentMessage.runtimeContext("session", "Current memory and tasks");
+        runtime.setRunId("run-new");
+        runtime.setTurnId("turn-new");
+        repository.append(runtime);
+        List<AgentMessage> saved = repository.findBySessionId("session");
+        assertEquals(2, saved.size());
+        assertEquals("Original user message", saved.get(0).getContent());
+        assertEquals(false, AgentMessage.isRuntimeContext(saved.get(0)));
+        assertEquals(true, AgentMessage.isRuntimeContext(saved.get(1)));
+        assertEquals(runtime.getMetadataJson(), saved.get(1).getMetadataJson());
+    }
+
+    @Test
     void persistsReasoningContent() {
         JdbcTemplate jdbcTemplate = createDatabase();
         JdbcStoreProperties properties = new JdbcStoreProperties();

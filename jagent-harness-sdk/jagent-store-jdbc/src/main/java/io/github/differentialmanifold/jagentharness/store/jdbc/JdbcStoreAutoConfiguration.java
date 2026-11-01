@@ -34,6 +34,17 @@ public class JdbcStoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(
+            io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.class)
+    public JdbcPersonalAgentStore jdbcPersonalAgentStore(
+            JdbcTemplate db,
+            JdbcSchemaInitializer schema,
+            ObjectMapper json,
+            JdbcStoreProperties properties) {
+        return new JdbcPersonalAgentStore(db, json, properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(
             io.github.differentialmanifold.jagentharness.core.runner.RunnerStore.class)
     public JdbcRunnerStore jdbcRunnerStore(
             JdbcTemplate db,

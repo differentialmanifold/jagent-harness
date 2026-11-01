@@ -43,6 +43,7 @@ class AgentRunnerDynamicToolTest {
     void executesToolProvidedForCurrentAgentContext() {
         FakeSessionStore store = new FakeSessionStore();
         AtomicBoolean executed = new AtomicBoolean();
+        AtomicInteger mapped = new AtomicInteger();
         ToolDefinition dynamicTool =
                 new ToolDefinition() {
                     @Override
@@ -103,11 +104,18 @@ class AgentRunnerDynamicToolTest {
                                 "ping",
                                 AgentRunOptions.builder()
                                         .runId("run-1")
+                                        .finalAnswerMapper(
+                                                raw -> {
+                                                    mapped.incrementAndGet();
+                                                    assertEquals("done", raw);
+                                                    return "decoded";
+                                                })
                                         .eventConsumer(events::add)
                                         .runInputSource(runInputSource)
                                         .build());
 
-        assertEquals("done", result.getAnswer());
+        assertEquals("decoded", result.getAnswer());
+        assertEquals(1, mapped.get());
         assertEquals("run-1", result.getRunId());
         assertEquals(2, result.getTurnCount());
         assertNotEquals(result.getFirstTurnId(), result.getLastTurnId());

@@ -142,6 +142,13 @@ public class AgentRunner implements AgentHarness {
         String runId = valueOrNewRunId(effectiveOptions.getRunId());
         String parentMessageId = lastMessageId(sessionStore.findMessages(sessionId));
         List<AgentMessage> pendingUserMessages = new ArrayList<>(messages);
+        if ("user".equals(messages.get(0).getRole())
+                && effectiveOptions.getRuntimeContext() != null
+                && !effectiveOptions.getRuntimeContext().trim().isEmpty()) {
+            AgentMessage runtime =
+                    AgentMessage.runtimeContext(sessionId, effectiveOptions.getRuntimeContext());
+            pendingUserMessages.add(0, runtime);
+        }
         List<ToolCall> pendingClientCalls = new ArrayList<ToolCall>();
         String answer = "";
         int turnCount = 0;
@@ -265,6 +272,10 @@ public class AgentRunner implements AgentHarness {
                                 new ModelDeltaConsumer() {
                                     @Override
                                     public void onContentDelta(String delta) {
+                                        // A per-run decoder owns final text; never expose its
+                                        // envelope,
+                                        // including partial content on cancellation or retry.
+                                        if (effectiveOptions.getFinalAnswerMapper() != null) return;
                                         partialAnswer.append(delta);
                                         publishAssistantTextUpdate(
                                                 sessionId,
@@ -305,6 +316,11 @@ public class AgentRunner implements AgentHarness {
                         call.setClientExecution(
                                 toolRegistry.isClientTool(call.getName(), toolContext));
                     }
+                }
+                if (effectiveOptions.getFinalAnswerMapper() != null
+                        && (response.getToolCalls() == null || response.getToolCalls().isEmpty())) {
+                    response.setContent(
+                            effectiveOptions.getFinalAnswerMapper().apply(response.getContent()));
                 }
                 AgentMessage assistantMessage =
                         AgentMessage.assistant(

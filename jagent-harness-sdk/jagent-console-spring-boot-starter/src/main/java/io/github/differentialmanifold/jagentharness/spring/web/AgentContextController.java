@@ -31,6 +31,9 @@ public class AgentContextController {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private RunnerService runners;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore personal;
+
     private final ToolRegistry toolRegistry;
     private final SkillRegistry skillRegistry;
     private final AgentSettings settings;
@@ -66,30 +69,14 @@ public class AgentContextController {
                 session != null
                         && runners != null
                         && runners.binding(session.getSessionId()) != null;
-        Path workspaceRoot =
-                session == null || remote
-                        ? null
-                        : workspaceRootResolver.resolveWorkspaceRoot(session.getWorkspacePath());
-        Path configRoot = settings.getConfigRoot();
         AgentContext agentContext =
-                new AgentContext(
-                        session == null ? null : session.getSessionId(),
-                        null,
-                        null,
-                        null,
-                        workspaceRoot,
-                        configRoot,
-                        null,
-                        session == null ? null : session.getProjectId());
-
-        if (request != null)
-            agentContext.setClientCapabilities(
-                    new io.github.differentialmanifold.jagentharness.core.agent.ClientCapabilities(
-                            request.getClientTools(), request.getClientInstructions()));
-        if (remote) agentContext.setClientCapabilities(runners.capabilities(session));
+                RuntimeContextFactory.create(
+                        session, request, settings, workspaceRootResolver, runners, personal);
+        Path workspaceRoot = agentContext.getWorkspaceRoot();
+        Path configRoot = settings.getConfigRoot();
         return new AgentContextResponse(
                 tools(agentContext),
-                promptFiles(session == null ? null : session.getProjectId()),
+                promptFiles(agentContext),
                 skills(agentContext),
                 configRoot == null ? null : configRoot.toString(),
                 remote
@@ -108,22 +95,31 @@ public class AgentContextController {
     private List<ToolInfoResponse> tools(AgentContext context) {
         List<ToolInfoResponse> tools = new ArrayList<ToolInfoResponse>();
         for (ToolDefinition tool : toolRegistry.all(context)) {
-            tools.add(
+            ToolInfoResponse info =
                     new ToolInfoResponse(
-                            tool.getName(), tool.getDescription(), tool.getParametersSchema()));
+                            tool.getName(), tool.getDescription(), tool.getParametersSchema());
+            info.setExecutionTarget(
+                    toolRegistry.isClientTool(tool.getName(), context) ? "runner" : "server");
+            tools.add(info);
         }
         return tools;
     }
 
-    private List<PromptFileResponse> promptFiles(String projectId) {
+    private List<PromptFileResponse> promptFiles(AgentContext context) {
+        String projectId = context == null ? null : context.getProjectId();
+        KnowledgeScope defaults = KnowledgeScope.globalFor(context);
         List<PromptFileResponse> files = new ArrayList<PromptFileResponse>();
         addDatabasePromptFile(
                 files,
-                KnowledgeScope.global(),
+                defaults,
                 "AGENTS.md",
-                "global",
-                "Global database agent rules.");
-        if (projectId != null && !projectId.trim().isEmpty()) {
+                defaults.getType(),
+                defaults.equals(KnowledgeScope.agentGlobal())
+                        ? "Global rules for personal Agents."
+                        : "Global rules for projects.");
+        if (defaults.equals(KnowledgeScope.global())
+                && projectId != null
+                && !projectId.trim().isEmpty()) {
             addDatabasePromptFile(
                     files,
                     KnowledgeScope.project(projectId),

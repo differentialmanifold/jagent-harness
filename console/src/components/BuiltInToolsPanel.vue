@@ -10,7 +10,7 @@
         </div>
         <p>{{ selection.length }} of {{ tools.length }} server tools enabled</p>
       </div>
-      <div class="built-in-tools-actions">
+      <div v-if="serverEditable" class="built-in-tools-actions">
         <el-button text :disabled="loading || !tools.length" @click="selectAll">Select all</el-button>
         <el-button text :disabled="loading || !tools.length" @click="clearAll">Clear all</el-button>
         <el-popconfirm
@@ -36,20 +36,22 @@
       <span>Loading built-in tools...</span>
     </div>
 
+    <p v-if="!serverEditable">Server tools are provided by the server. Select this project's Runner tools below.</p>
     <h3 v-if="!loading" class="tool-location-heading">Server tools</h3>
-    <el-checkbox-group v-if="!loading" v-model="selection" class="built-in-tool-list">
+    <el-checkbox-group v-if="!loading" :disabled="!serverEditable" v-model="selection" class="built-in-tool-list">
       <div v-for="tool in tools" :key="tool.name" class="built-in-tool-row">
         <div class="built-in-tool-main">
           <el-checkbox :value="tool.name">
             <code>{{ tool.name }}</code>
           </el-checkbox>
-          <el-button size="small" :icon="VideoPlay" @click="openDebugger(tool)">Test</el-button>
+          <el-button v-if="serverEditable" size="small" :icon="VideoPlay" @click="openDebugger(tool)">Test</el-button>
         </div>
         <p>{{ tool.description || 'No description provided.' }}</p>
       </div>
       <div v-if="!tools.length" class="built-in-tools-empty">No server tools are registered.</div>
     </el-checkbox-group>
 
+    <p v-if="sessionId && !loading && !clientTools.length && !clientError">No Runner tools are registered for this project.</p>
     <p v-if="clientError" class="mcp-error" role="alert">{{ clientError }}</p>
     <section v-if="!loading && clientTools.length" class="client-tools-section">
       <h3 class="tool-location-heading">Client tools <el-tag size="small" type="success">{{ clientTools.length }}</el-tag></h3>
@@ -121,6 +123,7 @@ import { ElCheckbox, ElCheckboxGroup, ElMessage } from 'element-plus'
 import { request } from '../api/http'
 
 const props = defineProps({
+  serverEditable: { type: Boolean, default: true },
   sessionId: { type: String, default: '' }
 })
 

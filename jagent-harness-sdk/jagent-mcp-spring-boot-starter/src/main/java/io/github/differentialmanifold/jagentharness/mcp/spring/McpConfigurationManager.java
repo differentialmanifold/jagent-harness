@@ -42,6 +42,21 @@ public class McpConfigurationManager {
     }
 
     public synchronized McpConfigSnapshot runtimeSnapshot(String projectId) {
+        return runtimeSnapshot(projectId, false);
+    }
+
+    public synchronized McpConfigSnapshot runtimeSnapshot(String projectId, boolean personal) {
+        if (personal) {
+            String content = configContent(KnowledgeScope.agentGlobal());
+            Map<String, McpConfigEntry> entries = new LinkedHashMap<>();
+            for (Map.Entry<String, McpServerConfig> entry :
+                    readContent(content, "agent global database " + configFile).entrySet())
+                entries.put(
+                        entry.getKey(),
+                        new McpConfigEntry(
+                                entry.getValue().copy(), "agent-global", Collections.emptyList()));
+            return new McpConfigSnapshot(entries, fingerprint("agent-global", content, null));
+        }
         String normalizedProjectId = projectId == null ? "" : projectId.trim();
         String globalContent = configContent(KnowledgeScope.global());
         String projectContent =
@@ -59,7 +74,7 @@ public class McpConfigurationManager {
         String content = configContent(selectedScope);
         Map<String, McpServerConfig> configs =
                 readContent(content, selectedScope.getType() + " database " + configFile);
-        String source = selectedScope.isGlobal() ? SOURCE_GLOBAL : SOURCE_PROJECT;
+        String source = selectedScope.getType();
         Map<String, McpConfigEntry> servers = new LinkedHashMap<String, McpConfigEntry>();
         for (Map.Entry<String, McpServerConfig> entry : configs.entrySet()) {
             servers.put(

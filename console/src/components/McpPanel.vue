@@ -229,7 +229,7 @@ const props = defineProps({
   scope: {
     type: String,
     default: 'global',
-    validator: (value) => ['global', 'project'].includes(value)
+    validator: (value) => ['global', 'agent-global', 'project'].includes(value)
   }
 })
 
@@ -273,7 +273,7 @@ const jsonPlaceholder = JSON.stringify({
 const selectedServer = computed(() => servers.value.find((server) => server.name === selectedName.value) || null)
 const availableCount = computed(() => servers.value.filter((server) => server.status === 'available').length)
 const hasDatabaseConfig = computed(() => databaseConfig.value !== null)
-const scopeLabel = computed(() => props.scope === 'project' ? 'project' : 'global')
+const scopeLabel = computed(() => props.scope === 'project' ? 'project' : props.scope === 'agent-global' ? 'Agent defaults' : 'Project defaults')
 const availableToolDetails = computed(() => {
   const details = new Map()
   for (const tool of selectedServer.value?.toolDetails || []) {

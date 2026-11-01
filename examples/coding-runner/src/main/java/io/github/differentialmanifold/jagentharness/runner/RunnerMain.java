@@ -57,8 +57,10 @@ public final class RunnerMain {
                         "server",
                         System.getenv()
                                 .getOrDefault("JAGENT_SERVER_URL", "http://127.0.0.1:18181"));
+        Path stateDirectory = AgentRunner.stateDirectory(server, home);
         CodingTools coding = new CodingTools();
         Map<String, String> diagnostics = coding.toolDiagnostics();
+        System.out.println("Runner state: " + stateDirectory);
         System.out.println("Search backend (find, grep): " + diagnostics.get("grep"));
         try (AgentRunner runner =
                 AgentRunner.builder(server, home)
@@ -109,7 +111,7 @@ public final class RunnerMain {
                         + "Optional recovery of an interrupted operation (not a startup step):\n"
                         + "  recover --session <id> [--server <url>] [--home <path>]\n"
                         + "JAGENT_SERVER_URL overrides the default server address. --help prints this help.\n"
-                        + "Use --home <path> for another runner identity. Authentication: JAGENT_CLIENT_TOKEN.\n"
+                        + "State is isolated by server under --home <path>. Authentication: JAGENT_CLIENT_TOKEN.\n"
                         + "Select the workspace and enabled tools per project in the console. Selected tools run with full access under the runner OS account.");
     }
 }

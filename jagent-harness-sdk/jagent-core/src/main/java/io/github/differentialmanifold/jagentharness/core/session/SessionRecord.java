@@ -3,6 +3,40 @@ package io.github.differentialmanifold.jagentharness.core.session;
 import java.time.Instant;
 
 public class SessionRecord {
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Null identifies a user project; personal Agent projects have one owner. */
+    public String getOwnerAgentId() {
+        try {
+            return metadataJson == null
+                    ? null
+                    : JSON.readTree(metadataJson).path("ownerAgentId").asText(null);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Invalid session metadata", e);
+        }
+    }
+
+    public void setOwnerAgentId(String agentId) {
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode metadata =
+                    metadataJson == null
+                            ? JSON.createObjectNode()
+                            : (com.fasterxml.jackson.databind.node.ObjectNode)
+                                    JSON.readTree(metadataJson);
+            if (agentId == null || agentId.isEmpty()) metadata.remove("ownerAgentId");
+            else metadata.put("ownerAgentId", agentId);
+            metadataJson = JSON.writeValueAsString(metadata);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Invalid session metadata", e);
+        }
+    }
+
+    public static final String STANDALONE_METADATA = "{\"kind\":\"standalone\"}";
+
+    public boolean isStandalone() {
+        return STANDALONE_METADATA.equals(metadataJson);
+    }
 
     public static final String STATUS_ACTIVE = "active";
     public static final String STATUS_DELETED = "deleted";

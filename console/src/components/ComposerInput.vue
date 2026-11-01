@@ -3,7 +3,7 @@
     ref="inputEl"
     v-model="text"
     class="composer-input"
-    rows="3"
+    :rows="rows"
     aria-label="Message"
     @input="resize"
   />
@@ -12,7 +12,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-const props = defineProps({ modelValue: { type: String, default: '' } })
+const props = defineProps({ modelValue: { type: String, default: '' }, rows: { type: Number, default: 3 } })
 const emit = defineEmits(['update:modelValue'])
 const inputEl = ref(null)
 const text = computed({

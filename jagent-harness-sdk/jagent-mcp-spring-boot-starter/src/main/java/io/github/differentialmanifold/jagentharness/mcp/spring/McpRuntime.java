@@ -51,7 +51,13 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     public Collection<ToolDefinition> listTools(AgentContext context) {
         ensureInitialized();
         String projectId = context == null ? null : context.getProjectId();
-        return scope(projectId).tools;
+        boolean personal =
+                io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope.globalFor(
+                                context)
+                        .equals(
+                                io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope
+                                        .agentGlobal());
+        return scope(projectId, personal).tools;
     }
 
     public synchronized Map<String, McpServerRuntimeStatus> statuses(String projectId) {
@@ -59,6 +65,11 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
         Scope scope = scope(projectId);
         return Collections.unmodifiableMap(
                 new LinkedHashMap<String, McpServerRuntimeStatus>(scope.statuses));
+    }
+
+    public synchronized Map<String, McpServerRuntimeStatus> agentStatuses() {
+        ensureInitialized();
+        return Collections.unmodifiableMap(new LinkedHashMap<>(scope(null, true).statuses));
     }
 
     public McpTestResult test(String name, McpServerConfig input) {
@@ -112,8 +123,12 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     }
 
     private synchronized Scope scope(String projectId) {
-        String key = scopeKey(projectId);
-        McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(projectId);
+        return scope(projectId, false);
+    }
+
+    private synchronized Scope scope(String projectId, boolean personal) {
+        String key = personal ? "agent-global" : "project:" + scopeKey(projectId);
+        McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(projectId, personal);
         Scope existing = scopes.get(key);
         if (existing != null && existing.fingerprint.equals(snapshot.getFingerprint())) {
             return existing;

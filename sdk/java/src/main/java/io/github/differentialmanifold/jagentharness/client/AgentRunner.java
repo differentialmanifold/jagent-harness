@@ -9,7 +9,6 @@ import java.net.URL;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 import java.util.function.Consumer;
 
 /**
@@ -27,25 +26,34 @@ public final class AgentRunner implements AutoCloseable {
     private final Consumer<StreamEvent> events;
     private final Consumer<String> status;
     private final Signal closing = new Signal();
-    private final AtomicReference<Active> active = new AtomicReference<>();
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ConcurrentMap<String, Active> active = new ConcurrentHashMap<>();
+    private final ExecutorService worker = Executors.newCachedThreadPool();
     private boolean running;
     private boolean released;
     private volatile Thread receiver;
-    private volatile Thread executor;
 
-    /** Creates a runner with a persistent identity and local execution journal. */
-    public static Builder builder(String server, Path stateDirectory) {
-        return new Builder(server, stateDirectory);
+    /** Creates a runner whose identity and journal are isolated by server under the state root. */
+    public static Builder builder(String server, Path stateRoot) {
+        return new Builder(server, stateRoot);
+    }
+
+    /** Resolves this server's state directory, including an existing legacy identity if present. */
+    public static Path stateDirectory(String server, Path stateRoot) throws IOException {
+        return RunnerFiles.stateDirectory(RunnerFiles.serverUrl(server), stateRoot);
     }
 
     private AgentRunner(Builder b) throws IOException {
         status = b.status;
-        String server = serverUrl(b.server);
+        String server = RunnerFiles.serverUrl(b.server);
+        URL origin = new URL(server);
+        if ("http".equals(origin.getProtocol())
+                && !Arrays.asList("localhost", "127.0.0.1", "[::1]").contains(origin.getHost()))
+            report(
+                    "Plain HTTP to a non-loopback server; the token and job traffic are sent unencrypted");
         if (b.tools.isEmpty()) throw new IllegalArgumentException("Register at least one tool");
         // Validate duplicates before acquiring resources or creating identity files.
         new AgentClient(new HttpAgentTransport(server, b.token), b.tools);
-        home = b.home.toAbsolutePath().normalize();
+        home = RunnerFiles.stateDirectory(server, b.home);
         toolContext = b.toolContext;
         workspaces = b.workspaces;
         events = b.events;
@@ -55,16 +63,16 @@ public final class AgentRunner implements AutoCloseable {
             info.runnerId = (String) config.get("runnerId");
             info.name = b.name;
             info.workspaces = workspaces != null;
+            info.workspaceRoot = workspaces == null ? null : workspaces.defaultRoot();
             info.instructions = b.instructions;
             info.toolDiagnostics.putAll(b.toolDiagnostics);
             http =
                     new HttpAgentTransport(server, b.token)
                             .header("X-Runner-Id", info.runnerId)
                             .header("X-Runner-Secret", (String) config.get("secret"));
-            ToolJournal journal = new ToolJournal(home.resolve("results"));
             for (ToolDefinition tool : b.tools) {
                 info.tools.add(tool.descriptor());
-                tools.add(journal.wrap(tool));
+                tools.add(tool);
             }
             RunnerFiles.save(home.resolve("config.json"), config);
         } catch (IOException | RuntimeException e) {
@@ -86,7 +94,7 @@ public final class AgentRunner implements AutoCloseable {
             int failures = 0;
             while (!closing.isAborted()) {
                 try {
-                    Active current = active.get();
+                    Set<String> current = new HashSet<>(active.keySet());
                     RunnerPoll poll =
                             RunnerFiles.JSON.treeToValue(
                                     http.management(
@@ -94,42 +102,44 @@ public final class AgentRunner implements AutoCloseable {
                                             "/api/v1/runners/"
                                                     + info.runnerId
                                                     + "/poll"
-                                                    + (current == null
-                                                            ? ""
-                                                            : "?activeRun="
-                                                                    + current.job.request.runId),
+                                                    + "?activeRun="
+                                                    + String.join(",", current)
+                                                    + "&availableSlots=1",
                                             null,
                                             closing),
                                     RunnerPoll.class);
                     failures = 0;
-                    if (current != null && poll.cancelledRuns.contains(current.job.request.runId)) {
-                        current.signal.stop();
-                        Thread.sleep(200);
+                    for (String cancelled : poll.cancelledRuns) {
+                        Active run = active.get(cancelled);
+                        if (run != null) run.signal.stop();
                     }
                     if (poll.workspaceRequest != null) browse(poll.workspaceRequest);
-                    if (!closing.isAborted() && poll.job != null && active.get() == null) {
+                    if (!closing.isAborted() && poll.job != null) {
+                        validateTarget(poll.job);
                         Active run = new Active(poll.job);
-                        active.set(run);
+                        if (active.putIfAbsent(run.job.request.runId, run) != null) continue;
                         try {
                             worker.submit(
                                     () -> {
-                                        executor = Thread.currentThread();
+                                        run.executor = Thread.currentThread();
                                         try {
                                             if (closing.isAborted()) run.signal.stop();
                                             execute(run);
                                         } catch (Exception e) {
                                             report("Result delivery pending: " + e.getMessage());
                                         } finally {
-                                            executor = null;
-                                            active.compareAndSet(run, null);
+                                            run.executor = null;
+                                            active.remove(run.job.request.runId, run);
                                             releaseIfClosed();
                                         }
                                     });
                         } catch (RejectedExecutionException e) {
-                            active.compareAndSet(run, null);
+                            active.remove(run.job.request.runId, run);
                             if (!closing.isAborted()) throw e;
                         }
                     }
+                    // A tool may take time to stop; avoid repeatedly polling its cancellation.
+                    if (!poll.cancelledRuns.isEmpty()) Thread.sleep(200);
                 } catch (IOException e) {
                     if (closing.isAborted()) break;
                     if (e instanceof AgentHttpException
@@ -181,13 +191,13 @@ public final class AgentRunner implements AutoCloseable {
                     "/api/v1/runners/" + info.runnerId + "/runs/" + pending.runId + "/recover",
                     Collections.emptyMap());
             Active run = new Active(saved);
-            active.set(run);
+            active.put(run.job.request.runId, run);
             if (closing.isAborted()) run.signal.stop();
             ChatResponse response = converse(run, request);
             complete(response);
             return response;
         } finally {
-            active.set(null);
+            active.clear();
             end();
         }
     }
@@ -240,8 +250,11 @@ public final class AgentRunner implements AutoCloseable {
             Set<String> enabled = new HashSet<>();
             for (ToolDescriptor descriptor : request.clientTools) enabled.add(descriptor.name);
             List<ToolDefinition> selected = new ArrayList<>();
+            // Journal wrappers belong to this conversation; a slow tool must not lock
+            // the same tool in other sessions. Active run IDs prevent duplicate execution.
+            ToolJournal journal = new ToolJournal(home.resolve("results"));
             for (ToolDefinition tool : tools)
-                if (enabled.contains(tool.getName())) selected.add(tool);
+                if (enabled.contains(tool.getName())) selected.add(journal.wrap(tool));
             return new AgentClient(http, selected)
                     .run(
                             request,
@@ -313,7 +326,7 @@ public final class AgentRunner implements AutoCloseable {
     }
 
     private synchronized void begin() {
-        if (closing.isAborted() || running || active.get() != null)
+        if (closing.isAborted() || running || !active.isEmpty())
             throw new IllegalStateException("Runner is closed or already running");
         running = true;
         receiver = Thread.currentThread();
@@ -323,28 +336,28 @@ public final class AgentRunner implements AutoCloseable {
         running = false;
         receiver = null;
         // No receiver remains to deliver cancellation if serve exits with an error.
-        Active run = active.get();
-        if (run != null) run.signal.stop();
+        for (Active run : active.values()) run.signal.stop();
         releaseIfClosed();
     }
 
-    /** Stops polling and signals the active tool. Does not install JVM shutdown hooks. */
+    /** Stops polling and signals all active runs. Does not install JVM shutdown hooks. */
     @Override
     public void close() {
         closing.stop();
-        Active run = active.get();
-        if (run != null) run.signal.stop();
+        for (Active run : active.values()) {
+            run.signal.stop();
+            Thread executing = run.executor;
+            if (executing != null && executing != Thread.currentThread()) executing.interrupt();
+        }
         Thread receiving = receiver;
         if (receiving != null && receiving != Thread.currentThread()) receiving.interrupt();
-        Thread executing = executor;
-        if (executing != null && executing != Thread.currentThread()) executing.interrupt();
         // Already accepted jobs still record their cancelled/unknown outcomes.
         worker.shutdown();
         releaseIfClosed();
     }
 
     private synchronized void releaseIfClosed() {
-        if (closing.isAborted() && !running && active.get() == null && !released) {
+        if (closing.isAborted() && !running && active.isEmpty() && !released) {
             released = true;
             try {
                 lease.close();
@@ -369,7 +382,7 @@ public final class AgentRunner implements AutoCloseable {
             Map<String, Object> config = RunnerFiles.JSON.readValue(file.toFile(), Map.class);
             if (!server.equals(config.get("server")))
                 throw new IllegalArgumentException(
-                        "Use another state directory to connect to a different server");
+                        "Runner state directory belongs to a different server");
             return config;
         }
         Map<String, Object> config = new LinkedHashMap<>();
@@ -377,22 +390,6 @@ public final class AgentRunner implements AutoCloseable {
         config.put("secret", UUID.randomUUID().toString() + UUID.randomUUID());
         config.put("server", server);
         return config;
-    }
-
-    private String serverUrl(String server) throws IOException {
-        String normalized = Objects.requireNonNull(server).replaceAll("/$", "");
-        URL url = new URL(normalized);
-        if (url.getUserInfo() != null
-                || url.getQuery() != null
-                || url.getRef() != null
-                || !("".equals(url.getPath()) || "/".equals(url.getPath()))
-                || !Arrays.asList("http", "https").contains(url.getProtocol()))
-            throw new IllegalArgumentException("Use a plain http(s) server origin");
-        if ("http".equals(url.getProtocol())
-                && !Arrays.asList("localhost", "127.0.0.1", "[::1]").contains(url.getHost()))
-            report(
-                    "Plain HTTP to a non-loopback server; the token and job traffic are sent unencrypted");
-        return normalized;
     }
 
     public static final class Builder {
@@ -422,6 +419,7 @@ public final class AgentRunner implements AutoCloseable {
             this.name = Objects.requireNonNull(name);
             return this;
         }
+
         /** Enables per-project directories. Omit for tools without a filesystem workspace. */
         public Builder workspaces(RunnerWorkspaces workspaces) {
             this.workspaces = Objects.requireNonNull(workspaces);
@@ -469,6 +467,7 @@ public final class AgentRunner implements AutoCloseable {
     private static final class Active {
         final RunnerJob job;
         final Signal signal = new Signal();
+        volatile Thread executor;
 
         Active(RunnerJob job) {
             this.job = job;

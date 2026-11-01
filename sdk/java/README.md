@@ -17,7 +17,7 @@ Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and prot
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>1.2.1</version>
+  <version>2.0.0</version>
 </dependency>
 ```
 
@@ -63,7 +63,9 @@ Open the frontend, create a project, and select **My device**. The SDK registers
 
 `serve()` blocks the calling thread. An existing application can run it on a worker thread and call `close()` during shutdown. The SDK does not install JVM shutdown hooks or terminate the process. A standalone application should connect its shutdown lifecycle to `close()`; the [coding CLI](../../examples/coding-runner/src/main/java/io/github/differentialmanifold/jagentharness/runner/RunnerMain.java) demonstrates this.
 
-The state directory stores the runner identity and execution records; it is not a working directory for tools. One instance owns each state directory. Reuse it to reconnect with the same identity, and use a separate directory for another device or server. The API token is not saved.
+The path passed to `builder` is a state root, not a working directory for tools. Each server URL automatically gets its own `servers/<SHA-256 of server URL>/` directory containing the runner identity, execution records, and lock. A trailing slash is ignored. Reconnecting to the same URL reuses its identity; different URLs can run concurrently under one root. Use a separate root for another device. The API token is not saved. `AgentRunner.stateDirectory(server, root)` resolves the directory for tools that also persist local state.
+
+For compatibility, an existing `config.json` directly under the root remains in use only for its original server (unless a scoped identity already exists). Its journals and background jobs stay at their original paths. Other servers automatically use isolated subdirectories, without changing the legacy identity.
 
 ## Scenario-specific dependencies
 
@@ -101,4 +103,10 @@ After inspecting the local effects of an interrupted operation, stop the receive
 
 `AgentClient` alone does not keep a durable journal or retry requests automatically. If a connection fails, inspect `transport.state(sessionId)` and the actual tool effects before continuing. Both entry points submit tool results as ordinary `role=tool` messages under the same session.
 
-The current runner supports one active conversation at a time. Projects select enabled tools in the frontend. Each job freezes that selection, and the SDK rejects calls outside it, including when no tools are selected. Selected tools run with Full access under the host process’s permissions. Application lifecycle remains local. Frontends use the server APIs independently of the SDK. Another language can implement the same [HTTP/JSON protocol](../../protocol/README.md#remote-runners) without MCP.
+A runner executes independent conversations concurrently without a fixed conversation limit. Each session still runs one job at a time; cancelling a run affects only that run. Tool implementations, local context, and event listeners are shared across runs and must support concurrent use. Projects select enabled tools in the frontend. Each job freezes that selection, and the SDK rejects calls outside it, including when no tools are selected. Selected tools run with Full access under the host process’s permissions. Application lifecycle remains local. Frontends use the server APIs independently of the SDK. Another language can implement the same [HTTP/JSON protocol](../../protocol/README.md#remote-runners) without MCP.
+
+With `new LocalWorkspaces()`, projects without an explicit directory use
+`~/.jagent/workspaces/user/project_…` or
+`~/.jagent/workspaces/agents/agent_…/project_…` on the Runner. Directories are
+created on first execution. Use `new LocalWorkspaces(path)` to choose another
+root. Workspace-free Runners remain supported.

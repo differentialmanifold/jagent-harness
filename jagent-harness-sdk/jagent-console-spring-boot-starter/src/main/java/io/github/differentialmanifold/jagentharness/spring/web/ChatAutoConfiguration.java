@@ -21,6 +21,12 @@ import org.springframework.context.annotation.Bean;
 public class ChatAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
+    public SessionEventStream sessionEventStream(SessionManager sessions, ObjectMapper json) {
+        return new SessionEventStream(sessions, json);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public ChatService chatService(
             ObjectMapper json,
             AgentHarness runner,
