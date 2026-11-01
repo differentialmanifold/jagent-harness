@@ -52,6 +52,38 @@ class McpRuntimeTest {
     }
 
     @Test
+    void agentAndProjectDefaultsUseIndependentConfigurationsAndCaches() {
+        MemoryStore store = new MemoryStore();
+        McpConfigurationManager manager =
+                new McpConfigurationManager(tempDir, "mcp.json", store, objectMapper);
+        McpRuntime runtime = new McpRuntime(manager, objectMapper);
+        io.github.differentialmanifold.jagentharness.core.agent.AgentContext agent =
+                new io.github.differentialmanifold.jagentharness.core.agent.AgentContext(
+                        "chat",
+                        "run",
+                        "turn",
+                        null,
+                        null,
+                        null,
+                        Collections.singletonMap("personalAgentId", "agent"));
+        try {
+            manager.saveDatabase(config(true, null));
+            assertEquals(1, runtime.listTools(null).size());
+            assertTrue(runtime.listTools(agent).isEmpty());
+            manager.saveDatabase(KnowledgeScope.agentGlobal(), config(false, null));
+            assertEquals("disabled", runtime.agentStatuses().get("demo").getStatus());
+            assertEquals("available", runtime.statuses(null).get("demo").getStatus());
+            manager.saveDatabase(KnowledgeScope.agentGlobal(), config(true, null));
+            assertEquals(1, runtime.listTools(agent).size());
+            manager.deleteDatabase();
+            assertTrue(runtime.listTools(null).isEmpty());
+            assertEquals(1, runtime.listTools(agent).size());
+        } finally {
+            runtime.close();
+        }
+    }
+
+    @Test
     void exposesToolDetailsAndCallsToolForConsoleDebugging() throws Exception {
         McpConfigurationManager manager =
                 new McpConfigurationManager(tempDir, "mcp.json", null, objectMapper);

@@ -74,8 +74,15 @@ public class SkillTool implements ToolDefinition {
         if (knowledgeFileStore == null) {
             return null;
         }
-        KnowledgeFile file = null;
-        if (context != null
+        String personal =
+                context == null ? null : context.getAttribute("personalAgentId", String.class);
+        KnowledgeFile file =
+                personal == null
+                        ? null
+                        : knowledgeFileStore.readFile(KnowledgeScope.agent(personal), input);
+        if (file == null
+                && personal == null
+                && context != null
                 && context.getProjectId() != null
                 && !context.getProjectId().trim().isEmpty()) {
             file =
@@ -83,7 +90,7 @@ public class SkillTool implements ToolDefinition {
                             KnowledgeScope.project(context.getProjectId()), input);
         }
         if (file == null) {
-            file = knowledgeFileStore.readFile(KnowledgeScope.global(), input);
+            file = knowledgeFileStore.readFile(KnowledgeScope.globalFor(context), input);
         }
         if (file == null) {
             return null;

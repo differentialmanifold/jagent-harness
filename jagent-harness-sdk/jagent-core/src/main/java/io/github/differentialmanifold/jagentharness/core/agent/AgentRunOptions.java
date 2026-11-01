@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 public class AgentRunOptions {
 
@@ -24,8 +25,12 @@ public class AgentRunOptions {
     private final ToolApprovalMode approvalMode;
     private final ToolApprovalHandler approvalHandler;
     private final RunInputSource runInputSource;
+    private final UnaryOperator<String> finalAnswerMapper;
+    private final String runtimeContext;
 
     private AgentRunOptions(Builder builder) {
+        this.runtimeContext = builder.runtimeContext;
+        this.finalAnswerMapper = builder.finalAnswerMapper;
         this.clientCapabilities = builder.clientCapabilities;
         this.runId = builder.runId;
         this.traceId = builder.traceId;
@@ -80,6 +85,14 @@ public class AgentRunOptions {
         return runInputSource;
     }
 
+    public UnaryOperator<String> getFinalAnswerMapper() {
+        return finalAnswerMapper;
+    }
+
+    public String getRuntimeContext() {
+        return runtimeContext;
+    }
+
     public AgentRunOptions withEventConsumer(Consumer<AgentEvent> eventConsumer) {
         return toBuilder().eventConsumer(eventConsumer).build();
     }
@@ -94,7 +107,9 @@ public class AgentRunOptions {
                 .stopSignal(stopSignal)
                 .approvalMode(approvalMode)
                 .approvalHandler(approvalHandler)
-                .runInputSource(runInputSource);
+                .runInputSource(runInputSource)
+                .runtimeContext(runtimeContext)
+                .finalAnswerMapper(finalAnswerMapper);
     }
 
     public static class Builder {
@@ -113,6 +128,23 @@ public class AgentRunOptions {
         private ToolApprovalMode approvalMode = ToolApprovalMode.FULL_ACCESS;
         private ToolApprovalHandler approvalHandler;
         private RunInputSource runInputSource = RunInputSource.none();
+        private UnaryOperator<String> finalAnswerMapper;
+        private String runtimeContext;
+
+        /** Application data appended once before this run's user input, preserved in history. */
+        public Builder runtimeContext(String context) {
+            this.runtimeContext = context;
+            return this;
+        }
+
+        /**
+         * Decode a final response before storing or publishing it. Content deltas are buffered when
+         * set so a structured output envelope is never exposed as chat text.
+         */
+        public Builder finalAnswerMapper(UnaryOperator<String> mapper) {
+            this.finalAnswerMapper = mapper;
+            return this;
+        }
 
         public Builder runId(String runId) {
             this.runId = runId;

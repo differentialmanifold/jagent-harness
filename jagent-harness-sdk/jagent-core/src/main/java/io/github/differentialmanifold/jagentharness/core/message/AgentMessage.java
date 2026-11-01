@@ -35,6 +35,16 @@ public class AgentMessage {
         return message;
     }
 
+    public static AgentMessage runtimeContext(String sessionId, String content) {
+        AgentMessage message = user(sessionId, content);
+        message.setMetadataJson("{\"kind\":\"runtime_context\"}");
+        return message;
+    }
+
+    public static boolean isRuntimeContext(AgentMessage message) {
+        return "{\"kind\":\"runtime_context\"}".equals(message.getMetadataJson());
+    }
+
     public static AgentMessage assistant(
             String sessionId, String content, List<ToolCall> toolCalls) {
         AgentMessage message = base(sessionId, ROLE_ASSISTANT, content);

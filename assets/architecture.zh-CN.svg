@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="920" viewBox="0 0 1120 920" role="img" aria-labelledby="title description" xml:lang="zh-CN">
+  <title id="title">JAgentHarness：Agent 规划追踪、Project 推进工作、终端执行工具</title>
+  <desc id="description">用户通过 Console 或可选飞书入口向持续存在的 Agent 提出目标，也可以直接操作 Project。Agent 维护任务、依赖和进度，推进项目会话并审查证据。项目结果与定时检查唤醒 Agent 调整计划。两层 Agent Loop 都运行在服务端 Harness；轻量 Runner 主动连接服务端，在实际终端执行原生工具。模型与上下文管理、服务端工具、会话与虚拟文件存储为两层提供共同支撑。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#526484"/></marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif; }
+      .brand { font-size: 23px; font-weight: 700; fill: #17243b; }
+      .label { font-size: 17px; font-weight: 700; fill: #526484; }
+      .heading { font-size: 30px; font-weight: 700; fill: #17243b; }
+      .entry { font-size: 25px; font-weight: 700; fill: #17243b; }
+      .section { font-size: 21px; font-weight: 700; fill: #263b59; }
+      .body { font-size: 18px; fill: #41536e; }
+      .small { font-size: 17px; fill: #526484; }
+      .flow { font-size: 17px; font-weight: 600; fill: #41536e; }
+      .arrow { fill: none; stroke: #526484; stroke-width: 2; marker-end: url(#arrow); }
+      .both { marker-start: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1120" height="920" rx="16" fill="#ffffff"/>
+  <text x="32" y="36" class="brand">JAgentHarness</text>
+  <text x="1088" y="36" class="body" text-anchor="end">规划 · 追踪 · 执行 · 验证</text>
+
+  <!-- Delegate a goal, or work directly in a Project. -->
+  <rect x="48" y="60" width="408" height="90" rx="14" fill="#f5f1ff" stroke="#d7cbf0"/>
+  <rect x="664" y="60" width="408" height="90" rx="14" fill="#edf5ff" stroke="#bfd5f0"/>
+  <text x="252" y="98" class="entry" text-anchor="middle">把目标交给 Agent</text>
+  <text x="252" y="128" class="small" text-anchor="middle">Web Console · 可选飞书入口</text>
+  <text x="868" y="98" class="entry" text-anchor="middle">直接在 Project 中工作</text>
+  <text x="868" y="128" class="small" text-anchor="middle">Web Console</text>
+
+  <!-- Two logical layers share the cloud Harness. -->
+  <rect x="24" y="208" width="1072" height="438" rx="18" fill="#f7f9fc" stroke="#ccd6e4"/>
+  <text x="560" y="240" class="label" text-anchor="middle">云端 / 两层 AGENT LOOP</text>
+  <path d="M 252 158 V 256" class="arrow both"/>
+  <path d="M 868 158 V 256" class="arrow both"/>
+  <text x="268" y="184" class="small">目标 / 进展</text>
+  <text x="884" y="184" class="small">消息 / 进度</text>
+
+  <rect x="48" y="264" width="408" height="256" rx="14" fill="#f5f1ff" stroke="#c4b2e8"/>
+  <text x="72" y="304" class="heading">Agent</text>
+  <text x="72" y="334" class="body">目标规划 · 项目推进</text>
+  <rect x="72" y="352" width="360" height="80" rx="10" fill="#ffffff" stroke="#dfd5f2"/>
+  <text x="88" y="382" class="section">Task 任务追踪</text>
+  <text x="88" y="410" class="small">任务拆解 · 依赖 · 进度</text>
+  <text x="72" y="466" class="body">审查结果 · 调整计划</text>
+  <text x="72" y="496" class="small">记忆 · 可复用 Skills</text>
+
+  <rect x="664" y="264" width="408" height="256" rx="14" fill="#edf5ff" stroke="#adc9ed"/>
+  <text x="688" y="304" class="heading">Project</text>
+  <text x="688" y="334" class="body">调查 · 实现 · 验证</text>
+  <rect x="688" y="352" width="360" height="80" rx="10" fill="#ffffff" stroke="#cdddf2"/>
+  <text x="704" y="382" class="section">项目会话</text>
+  <text x="704" y="410" class="small">实际代码 · 工具调用 · 验证结果</text>
+  <text x="688" y="466" class="body">归属于用户或某个 Agent</text>
+  <text x="688" y="496" class="small">独立会话可并行执行</text>
+
+  <path d="M 464 372 H 656" class="arrow"/>
+  <text x="560" y="355" class="flow" text-anchor="middle">目标 / 任务</text>
+  <path d="M 656 462 H 464" class="arrow"/>
+  <text x="560" y="491" class="flow" text-anchor="middle">结果 / 证据</text>
+
+  <rect x="48" y="536" width="1024" height="36" rx="9" fill="#eaeef7"/>
+  <text x="560" y="560" class="small" text-anchor="middle">项目结果 + 定时检查 → 审查证据 → 更新任务 → 继续推进</text>
+
+  <!-- Shared infrastructure stays secondary to the two layers above. -->
+  <path d="M 48 590 H 1072" stroke="#dbe2ec"/>
+  <text x="48" y="620" class="label">共享 Harness</text>
+  <text x="194" y="620" class="small">模型调用 · 上下文 · 服务端工具</text>
+  <text x="650" y="620" class="label">存储</text>
+  <text x="730" y="620" class="small">会话 · 虚拟文件</text>
+
+  <!-- Native tools run outside the cloud; all connections originate at the Runner. -->
+  <path d="M 252 744 V 654" class="arrow"/>
+  <text x="268" y="688" class="flow">主动连接服务端</text>
+  <text x="268" y="714" class="small">长轮询 · 对话 · 结果回传</text>
+  <path d="M 868 654 V 744" class="arrow"/>
+  <text x="884" y="688" class="flow">工具调用</text>
+  <text x="884" y="714" class="small">通过 HTTP 响应返回</text>
+
+  <rect x="24" y="752" width="1072" height="118" rx="18" fill="#edf9f4" stroke="#b4dbcc"/>
+  <text x="48" y="782" class="label">终端 / 原生工具执行</text>
+  <text x="48" y="821" class="entry">Runner · 轻量 SDK</text>
+  <text x="48" y="852" class="body">接收调用 · 本地执行 · 回传结果</text>
+  <path d="M 680 776 V 850" stroke="#c5e2d7"/>
+  <text x="710" y="805" class="section">文件 · Shell · 设备 API</text>
+  <text x="710" y="837" class="small">工具实现在终端运行</text>
+  <text x="560" y="902" class="small" text-anchor="middle">Runner 主动连接服务端，无需开放入站端口。</text>
+</svg>

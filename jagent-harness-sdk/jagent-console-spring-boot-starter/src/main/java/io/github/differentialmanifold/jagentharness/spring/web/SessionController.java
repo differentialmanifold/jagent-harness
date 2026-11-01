@@ -24,6 +24,13 @@ public class SessionController {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private RunnerService runners;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore personal;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private io.github.differentialmanifold.jagentharness.spring.personal.PersonalAgentService
+            agents;
+
     private SessionRecord decorate(SessionRecord session) {
         if (runners != null) session.setRunnerId(runners.binding(session.getSessionId()));
         return session;
@@ -48,14 +55,22 @@ public class SessionController {
                 modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
     }
 
-    @PostMapping
     public SessionRecord create(@RequestBody(required = false) CreateSessionRequest request) {
+        return createForOwner(request, null);
+    }
+
+    @PostMapping
+    public SessionRecord createForOwner(
+            @RequestBody(required = false) CreateSessionRequest request,
+            @org.springframework.web.bind.annotation.RequestParam(required = false)
+                    String ownerAgentId) {
+        if (ownerAgentId != null && ownerAgentId.isEmpty()) ownerAgentId = null;
         if (request != null && runners != null) {
             io.github.differentialmanifold.jagentharness.protocol.RunnerProject existing =
                     runners.project(request.getProjectId());
             if (existing != null
                     || (request.getRunnerId() != null && !request.getRunnerId().isEmpty())) {
-                return decorate(runners.createSession(request, existing));
+                return decorate(runners.createSession(request, existing, ownerAgentId));
             }
         }
         String title = request == null ? null : request.getTitle();
@@ -64,12 +79,23 @@ public class SessionController {
                 workspaceRootResolver.normalizeWorkspacePath(workspacePath);
         String projectName = request == null ? null : request.getProjectName();
         String projectId = request == null ? null : request.getProjectId();
-        return sessionManager.createSession(title, normalizedWorkspacePath, projectName, projectId);
+        return sessionManager.createSession(
+                title, normalizedWorkspacePath, projectName, projectId, ownerAgentId);
+    }
+
+    public List<SessionRecord> list() {
+        return listForOwner(null);
     }
 
     @GetMapping
-    public List<SessionRecord> list() {
-        List<SessionRecord> sessions = sessionManager.listSessions();
+    public List<SessionRecord> listForOwner(
+            @org.springframework.web.bind.annotation.RequestParam(required = false)
+                    String ownerAgentId) {
+        final String owner = ownerAgentId == null || ownerAgentId.isEmpty() ? null : ownerAgentId;
+        List<SessionRecord> sessions =
+                sessionManager.listSessions().stream()
+                        .filter(s -> Objects.equals(owner, s.getOwnerAgentId()))
+                        .collect(java.util.stream.Collectors.toList());
         for (SessionRecord session : sessions) decorate(session);
         return sessions;
     }
@@ -95,6 +121,14 @@ public class SessionController {
         if (request == null) {
             throw new IllegalArgumentException("sessionId and title are required");
         }
+        io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.Conversation
+                conversation =
+                        personal == null ? null : personal.conversation(request.getSessionId());
+        if (conversation != null && agents != null) {
+            agents.renameConversation(
+                    conversation.agentId, conversation.sessionId, request.getTitle());
+            return decorate(sessionManager.requireSession(conversation.sessionId));
+        }
         return decorate(
                 sessionManager.renameSession(
                         requireSessionId(request.getSessionId()), request.getTitle()));
@@ -102,8 +136,12 @@ public class SessionController {
 
     @PostMapping("/delete")
     public void delete(@RequestBody DeleteSessionRequest request) {
-        sessionManager.deleteSession(
-                requireSessionId(request == null ? null : request.getSessionId()));
+        String id = requireSessionId(request == null ? null : request.getSessionId());
+        io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.Conversation
+                conversation = personal == null ? null : personal.conversation(id);
+        if (conversation != null && agents != null)
+            agents.deleteConversation(conversation.agentId, id);
+        else sessionManager.deleteSession(id);
     }
 
     private String requireSessionId(String sessionId) {

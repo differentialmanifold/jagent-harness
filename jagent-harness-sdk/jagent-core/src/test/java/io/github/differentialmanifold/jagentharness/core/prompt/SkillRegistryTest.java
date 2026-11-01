@@ -12,6 +12,20 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SkillRegistryTest {
 
+    @Test
+    void providerOrderingDoesNotChangeTheSkillCatalog() {
+        java.util.List<SkillDescriptor> provided =
+                new java.util.ArrayList<>(
+                        Arrays.asList(
+                                new SkillDescriptor("write", "Write", "skills/write/SKILL.md"),
+                                new SkillDescriptor("read", "Read", "skills/read/SKILL.md")));
+        SkillRegistry registry = new SkillRegistry(Collections.singletonList(context -> provided));
+        java.util.List<SkillDescriptor> first = registry.listSkills(null);
+        Collections.reverse(provided);
+        assertEquals(first, registry.listSkills(null));
+        assertEquals("read", first.get(0).getName());
+    }
+
     @TempDir Path tempDir;
 
     @Test

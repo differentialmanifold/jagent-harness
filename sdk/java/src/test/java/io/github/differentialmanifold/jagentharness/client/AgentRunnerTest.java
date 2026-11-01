@@ -74,7 +74,7 @@ class AgentRunnerTest {
                 runner.close();
                 receive.get(5, TimeUnit.SECONDS);
                 // close() signals both threads; the result-delivery worker may finish last.
-                awaitStateDirectoryReleased();
+                awaitStateDirectoryReleased(AgentRunner.stateDirectory(server.url(), home));
             }
             try (AgentRunner restarted =
                     AgentRunner.builder(server.url(), home)
@@ -84,7 +84,9 @@ class AgentRunnerTest {
             }
             assertFalse(
                     new String(
-                                    Files.readAllBytes(home.resolve("config.json")),
+                                    Files.readAllBytes(
+                                            AgentRunner.stateDirectory(server.url(), home)
+                                                    .resolve("config.json")),
                                     StandardCharsets.UTF_8)
                             .contains("not-stored"));
         }
@@ -142,7 +144,9 @@ class AgentRunnerTest {
                                 .tools(Collections.singletonList(tool))
                                 .build()) {
             server.job = job(runner.runnerId(), tool);
-            ToolJournal journal = new ToolJournal(home.resolve("results"));
+            ToolJournal journal =
+                    new ToolJournal(
+                            AgentRunner.stateDirectory(server.url(), home).resolve("results"));
             journal.wrap(tool)
                     .execute(
                             new ToolContext("s", "r", "t").forToolCall("c", "device_status"),
@@ -156,31 +160,171 @@ class AgentRunnerTest {
     }
 
     @Test
-    void stateDirectoryIsExclusiveAndCannotBeReboundToAnotherServer() throws Exception {
+    void serversHaveSeparateIdentitiesAndLocksUnderOneRoot() throws Exception {
         ToolDefinition tool = tool((context, args) -> ToolExecutionResult.success("ok"));
+        String firstId;
+        String secondId;
         try (AgentRunner runner =
-                AgentRunner.builder("https://agent.example.com", home)
-                        .tools(Collections.singletonList(tool))
-                        .build()) {
+                        AgentRunner.builder("https://agent.example.com", home)
+                                .tools(Collections.singletonList(tool))
+                                .build();
+                AgentRunner another =
+                        AgentRunner.builder("https://another.example.com", home)
+                                .tools(Collections.singletonList(tool))
+                                .build()) {
+            firstId = runner.runnerId();
+            secondId = another.runnerId();
+            assertNotEquals(firstId, secondId);
             assertThrows(
                     IllegalStateException.class,
                     () ->
                             AgentRunner.builder("https://agent.example.com", home)
                                     .tools(Collections.singletonList(tool))
                                     .build());
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            AgentRunner.builder("https://another.example.com/", home)
+                                    .tools(Collections.singletonList(tool))
+                                    .build());
         }
-        assertThrows(
-                IllegalArgumentException.class,
-                () ->
+        try (AgentRunner restarted =
+                        AgentRunner.builder("https://agent.example.com/", home)
+                                .tools(Collections.singletonList(tool))
+                                .build();
+                AgentRunner another =
                         AgentRunner.builder("https://another.example.com", home)
                                 .tools(Collections.singletonList(tool))
-                                .build());
-        try (AgentRunner restarted =
-                AgentRunner.builder("https://agent.example.com", home)
-                        .tools(Collections.singletonList(tool))
-                        .build()) {
-            assertNotNull(restarted.runnerId());
+                                .build()) {
+            assertEquals(firstId, restarted.runnerId());
+            assertEquals(secondId, another.runnerId());
         }
+        assertFalse(Files.exists(home.resolve("config.json")));
+        assertNotEquals(
+                json.readTree(
+                                AgentRunner.stateDirectory("https://agent.example.com", home)
+                                        .resolve("config.json")
+                                        .toFile())
+                        .path("secret"),
+                json.readTree(
+                                AgentRunner.stateDirectory("https://another.example.com", home)
+                                        .resolve("config.json")
+                                        .toFile())
+                        .path("secret"));
+    }
+
+    @Test
+    void identicalJobAndToolCallIdsOnDifferentServersExecuteIndependently() throws Exception {
+        AtomicInteger effects = new AtomicInteger();
+        ToolDefinition tool =
+                tool((context, args) -> ToolExecutionResult.success(effects.incrementAndGet()));
+        try (Server first = new Server();
+                Server second = new Server();
+                AgentRunner firstRunner =
+                        AgentRunner.builder(first.url(), home)
+                                .tools(Collections.singletonList(tool))
+                                .build();
+                AgentRunner secondRunner =
+                        AgentRunner.builder(second.url(), home)
+                                .tools(Collections.singletonList(tool))
+                                .build()) {
+            first.job = job(firstRunner.runnerId(), tool);
+            second.job = job(secondRunner.runnerId(), tool);
+            first.jobs.add(first.job);
+            second.jobs.add(second.job);
+            Future<?> firstReceive =
+                    first.threads.submit(
+                            () -> {
+                                firstRunner.serve();
+                                return null;
+                            });
+            Future<?> secondReceive =
+                    second.threads.submit(
+                            () -> {
+                                secondRunner.serve();
+                                return null;
+                            });
+            assertNotNull(first.completed.poll(5, TimeUnit.SECONDS));
+            assertNotNull(second.completed.poll(5, TimeUnit.SECONDS));
+            assertEquals(2, effects.get());
+            assertEquals(2, first.chats.size());
+            assertEquals(2, second.chats.size());
+            assertNotEquals(
+                    first.chats.get(1).messages.get(0).content,
+                    second.chats.get(1).messages.get(0).content);
+            firstRunner.close();
+            secondRunner.close();
+            firstReceive.get(5, TimeUnit.SECONDS);
+            secondReceive.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void legacyIdentityAndResultsStayWithOriginalServerWithoutMovingBackgroundJobs()
+            throws Exception {
+        ToolDefinition tool = tool((context, args) -> ToolExecutionResult.success("saved"));
+        try (Server server = new Server()) {
+            Map<String, String> legacy = new LinkedHashMap<>();
+            legacy.put("server", server.url());
+            legacy.put("runnerId", "runner_legacy");
+            legacy.put("secret", "legacy-secret");
+            RunnerFiles.save(home.resolve("config.json"), legacy);
+            Path process = home.resolve("processes/job/output.log");
+            Files.createDirectories(process.getParent());
+            Files.write(process, "running".getBytes(StandardCharsets.UTF_8));
+            new ToolJournal(home.resolve("results"))
+                    .wrap(tool)
+                    .execute(
+                            new ToolContext("s", "r", "t").forToolCall("c", "device_status"),
+                            json.createObjectNode());
+            try (AgentRunner runner =
+                            AgentRunner.builder(server.url() + "/", home)
+                                    .tools(Collections.singletonList(tool))
+                                    .build();
+                    AgentRunner another =
+                            AgentRunner.builder("https://another.example.com", home)
+                                    .tools(Collections.singletonList(tool))
+                                    .build()) {
+                assertEquals("runner_legacy", runner.runnerId());
+                assertNotEquals(runner.runnerId(), another.runnerId());
+                assertEquals(home, AgentRunner.stateDirectory(server.url(), home));
+                assertNotEquals(
+                        home, AgentRunner.stateDirectory("https://another.example.com", home));
+                server.job = job(runner.runnerId(), tool);
+                assertEquals("COMPLETED", runner.recover("s").status);
+                assertEquals("saved", server.chats.get(0).messages.get(0).content);
+                assertEquals(
+                        legacy, json.readValue(home.resolve("config.json").toFile(), Map.class));
+                assertEquals(
+                        "running", new String(Files.readAllBytes(process), StandardCharsets.UTF_8));
+            }
+        }
+    }
+
+    @Test
+    void stateDirectoryMatchesLauncherForLocalIpv6AndHttpsOrigins() throws Exception {
+        String[][] cases = {
+            {
+                "https://agent.example.com",
+                "3a32a544a8e13ea862fb0e46544b11eb62505f4e93015deee2487e20882633a0"
+            },
+            {
+                "http://127.0.0.1:18181",
+                "166f57396bcc750da426bf322777f9361f3815cbbf3c091202d7f10ede7e2573"
+            },
+            {
+                "http://[fd7a:115c:a1e0::e937:334e]:18181",
+                "635585ec30d03eedaa8ece0bd86d8fb0df7f41b3b5477b29dc9cc1a7a1ae56e8"
+            }
+        };
+        for (String[] entry : cases) {
+            Path expected = home.resolve("servers").resolve(entry[1]);
+            assertEquals(expected, AgentRunner.stateDirectory(entry[0], home));
+            assertEquals(expected, AgentRunner.stateDirectory(entry[0] + "/", home));
+        }
+        assertNotEquals(
+                AgentRunner.stateDirectory("http://127.0.0.1:18181", home),
+                AgentRunner.stateDirectory("http://127.0.0.1:18182", home));
     }
 
     @Test
@@ -296,10 +440,10 @@ class AgentRunnerTest {
         }
     }
 
-    private void awaitStateDirectoryReleased() throws Exception {
+    private void awaitStateDirectoryReleased(Path directory) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (true) {
-            try (RunnerFiles.Lease ignored = RunnerFiles.lock(home)) {
+            try (RunnerFiles.Lease ignored = RunnerFiles.lock(directory)) {
                 return;
             } catch (IllegalStateException stillRunning) {
                 if (System.nanoTime() >= deadline) throw stillRunning;

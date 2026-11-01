@@ -41,7 +41,7 @@ Or use a separate terminal for each part, in this order:
 | Coding runner | `node scripts/start-client.mjs` | Outbound connection to the server; no listening port |
 | Web frontend | `node scripts/start-frontend.mjs` | `http://127.0.0.1:5175`, with `/api` forwarded to the server |
 
-The runner includes all seven coding tools. Select the workspace and enabled tools per project in the frontend. Selected tools run with Full access, without approval prompts.
+The runner includes all seven coding tools. Choose an existing workspace or leave it empty for a new project directory. Select enabled tools per project in the frontend. Selected tools run with Full access, without approval prompts.
 
 Each launcher starts only its own component. Java launchers build the required modules; `--skip-build` reuses existing JARs. The runner launcher registers with the server before starting its receive loop. The frontend launcher installs npm dependencies when missing and does not require Java or Maven. It can start before the server is ready.
 
@@ -79,7 +79,7 @@ Set your model name, API endpoint, and API key, then start the server:
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-java -jar examples/server-demo/target/server-demo-1.2.1.jar
+java -jar examples/server-demo/target/server-demo-2.0.0.jar
 ```
 
 Omit the API key if your model endpoint does not require one. Wait for the server to report that it has started. SQLite storage is created automatically as `agent-server.db` in the working directory.
@@ -87,7 +87,7 @@ Omit the API key if your model endpoint does not require one. Wait for the serve
 ### 3. Terminal 2: runner
 
 ```sh
-java -jar examples/coding-runner/target/jagent-coding-runner-1.2.1.jar
+java -jar examples/coding-runner/target/jagent-coding-runner-2.0.0.jar
 ```
 
 No arguments or environment variables are needed. Wait for `Runner <machine-name> online`. The runner registers all coding tools and keeps receiving work. Choose project directories in the frontend after startup.
@@ -108,9 +108,15 @@ Import the root `pom.xml` as a Maven project. Run `ServerDemoApplication.main()`
 
 ## Try a conversation
 
-Open **http://127.0.0.1:5175**, add a project, and select the online runner as the execution target (**coding-local** with launchers, or your machine name with manual startup). Browse or enter a directory on that terminal. New projects enable all registered client tools by default. Ask the agent to read the README. With write enabled, try creating a file in a scratch workspace and reading it back.
+Open **http://127.0.0.1:5175**, add a project, and select the online runner as the execution target (**coding-local** with launchers, or your machine name with manual startup). Give the project a name and leave the workspace empty to create a new directory automatically, or select an existing repository. New projects enable all registered client tools by default. Try: “Create a hello.txt file with a greeting, then read it back.”
 
-In **Configuration → Built-in tools**, server tools are configurable. **Client tools** lets you change the current project's enabled tools and inspect their schemas. Changes apply to the next run; selecting no client tools keeps local execution disabled. Skills and virtual files are stored and executed through server capabilities. A project using **Server tools only** does not need a runner.
+Open **Projects → Configuration → Tools** to configure a project’s Runner tools. **Client tools** lets you change the current project's enabled tools and inspect their schemas. Changes apply to the next run; selecting no client tools keeps local execution disabled. Skills and virtual files are stored and executed through server capabilities. A project using **Server tools only** does not need a runner.
+
+## Try personal Agents
+
+Open **Agents** and follow the [hands-on Agent guide](examples/personal-agents/README.md) ([简体中文](examples/personal-agents/README.zh-CN.md)). Create an Agent, choose an online Runner, and send the guide's short TODO request. No workspace setup is needed. Memory, Skills, and follow-up tasks are optional next steps. Use the same running services; no extra packages or browser tests are needed. Feishu is optional.
+
+**System Settings** separates **Project defaults** and **Agent defaults** for instructions, Skills and MCP servers. Existing global resources remain Project defaults. Each workspace inherits only its own type's defaults; an Agent's private resources do not automatically become project resources. View the effective model, tools, Skills and prompt under that workspace's **Configuration → Runtime Context**.
 
 ## Configuration reference
 
@@ -142,7 +148,7 @@ On the runner machine, set the remote address and token, then use the same start
 ```sh
 export JAGENT_SERVER_URL='https://agent.example.com'
 export JAGENT_CLIENT_TOKEN='your-shared-token'
-java -jar jagent-coding-runner-1.2.1.jar
+java -jar jagent-coding-runner-2.0.0.jar
 ```
 
 The standalone JAR includes the SDK and coding tools. See the [Runner guide](examples/coding-runner/README.md) for distribution and recovery.
@@ -159,3 +165,12 @@ With a source checkout, put these optional settings in `.env.local` and run `nod
 - **401 response:** check the shared API token in all three processes.
 - **Remote connection fails:** plain HTTP to a remote server is accepted with an unencrypted-traffic warning; prefer HTTPS so the shared token and job traffic stay encrypted.
 - **Interrupted task:** inspect local effects and follow [recovery instructions](examples/coding-runner/README.md#state-cancellation-and-recovery).
+
+### Default project directories
+
+Choose a Runner when creating a project or personal Agent. With the Coding
+Runner, an empty project workspace creates a separate directory under
+`~/.jagent/workspaces/user/` for your projects, or
+`~/.jagent/workspaces/agents/<agent-id>/` for an Agent's projects. The directory
+is created on the Runner on first execution. You can still choose an existing
+workspace when working on an existing repository.

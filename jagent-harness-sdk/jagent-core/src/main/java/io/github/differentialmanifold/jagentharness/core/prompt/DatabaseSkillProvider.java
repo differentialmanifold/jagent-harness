@@ -23,8 +23,10 @@ public class DatabaseSkillProvider implements SkillProvider {
         }
 
         Map<String, SkillDescriptor> skills = new LinkedHashMap<String, SkillDescriptor>();
-        addSkills(skills, manifestStore.listManifests(KnowledgeScope.global()), "global");
-        if (context != null
+        KnowledgeScope defaults = KnowledgeScope.globalFor(context);
+        addSkills(skills, manifestStore.listManifests(defaults), defaults.getType());
+        if (defaults.equals(KnowledgeScope.global())
+                && context != null
                 && context.getProjectId() != null
                 && !context.getProjectId().trim().isEmpty()) {
             addSkills(
@@ -32,6 +34,10 @@ public class DatabaseSkillProvider implements SkillProvider {
                     manifestStore.listManifests(KnowledgeScope.project(context.getProjectId())),
                     "project");
         }
+        String personal =
+                context == null ? null : context.getAttribute("personalAgentId", String.class);
+        if (personal != null)
+            addSkills(skills, manifestStore.listManifests(KnowledgeScope.agent(personal)), "agent");
         return new ArrayList<SkillDescriptor>(skills.values());
     }
 

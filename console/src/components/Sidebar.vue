@@ -2,9 +2,27 @@
   <aside class="sidebar">
     <div class="session-sidebar-header">
       <div>
-        <h2>Chats</h2>
+        <h2>Projects</h2>
         <p>{{ projectGroups.length }} projects</p>
       </div>
+    </div>
+
+    <div class="project-owner-switcher">
+      <el-dropdown trigger="click" @command="$emit('select-owner', $event)">
+        <button class="project-owner-trigger" type="button" aria-label="Project owner">
+          <span class="owner-avatar" :class="{ agent: ownerId }"><el-icon><Cpu v-if="ownerId" /><User v-else /></el-icon></span>
+          <span class="owner-copy"><strong>{{ ownerName }}</strong><small>{{ ownerId ? 'Agent projects' : 'My projects' }}</small></span>
+          <el-icon><CaretBottom /></el-icon>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu class="project-owner-menu">
+            <el-dropdown-item command="" :class="{ 'is-selected': !ownerId }"><el-icon><User /></el-icon>My projects<el-icon v-if="!ownerId"><Check /></el-icon></el-dropdown-item>
+            <el-dropdown-item v-for="agent in agents" :key="agent.id" :command="agent.id" :class="{ 'is-selected': agent.id === ownerId }" :divided="agent === agents[0]">
+              <el-icon><Cpu /></el-icon><span>{{ agent.name }}</span><el-icon v-if="agent.id === ownerId"><Check /></el-icon>
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
 
     <div class="project-actions">
@@ -55,15 +73,7 @@
               <button class="session-main" :title="session.title" @click="selectSession(session.sessionId)">
                 <span :title="session.title">{{ session.title }}</span>
               </button>
-              <el-dropdown trigger="click">
-                <el-button text :icon="MoreFilled" circle title="Chat actions" />
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item :disabled="running" @click="runChatAction('rename-chat', session)">Rename</el-dropdown-item>
-                    <el-dropdown-item :disabled="running" divided @click="runChatAction('remove-chat', session)">Remove</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <ChatActions :busy="running" @rename="runChatAction('rename-chat', session)" @remove="runChatAction('remove-chat', session)" />
             </div>
           </div>
         </section>
@@ -73,12 +83,15 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
-import { Folder, FolderOpened, MoreFilled, Plus } from '@element-plus/icons-vue'
+import { computed, ref, watch } from 'vue'
+import ChatActions from './ChatActions.vue'
+import { Folder, FolderOpened, MoreFilled, Plus, User, Cpu, CaretBottom, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { writeClipboard } from '../utils/clipboard'
 
 const props = defineProps({
+  ownerId: { type: String, default: '' },
+  agents: { type: Array, default: () => [] },
   projectGroups: { type: Array, required: true },
   currentProjectKey: { type: String, required: true },
   currentSession: { type: Object, default: null },
@@ -86,6 +99,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'select-owner',
   'open-project-dialog',
   'select-project',
   'create-session',
@@ -96,6 +110,7 @@ const emit = defineEmits([
   'remove-chat'
 ])
 
+const ownerName = computed(() => props.ownerId ? props.agents.find(a => a.id === props.ownerId)?.name || 'Agent' : 'Personal')
 const collapsedProjectKeys = ref([])
 
 watch(
@@ -150,3 +165,16 @@ function runChatAction(action, session) {
   emit(action, session)
 }
 </script>
+
+<style scoped>
+.project-owner-switcher { flex-shrink: 0; }
+.project-owner-switcher :deep(.el-dropdown) { display: block; }
+.project-owner-trigger { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--el-border-color-light); border-radius: 10px; background: var(--el-bg-color); color: var(--el-text-color-primary); text-align: left; cursor: pointer; }
+.project-owner-trigger:hover { border-color: var(--el-color-primary-light-5); background: var(--el-fill-color-light); }
+.project-owner-trigger:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+.owner-avatar { display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 8px; background: #eaf2ff; color: #3c66a9; }
+.owner-avatar.agent { background: #f0ecff; color: #7455a8; }
+.owner-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.owner-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.owner-copy small { color: var(--el-text-color-secondary); font-size: 11px; }
+</style>

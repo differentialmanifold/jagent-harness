@@ -315,7 +315,7 @@ const props = defineProps({
   scope: {
     type: String,
     default: 'global',
-    validator: (value) => ['global', 'project'].includes(value)
+    validator: (value) => ['global', 'agent-global', 'project'].includes(value)
   }
 })
 
@@ -345,7 +345,7 @@ const editDraftContent = ref('')
 const treeRef = ref(null)
 const editorTextarea = ref(null)
 
-const scopeLabel = computed(() => props.scope === 'project' ? 'project' : 'global')
+const scopeLabel = computed(() => props.scope === 'project' ? 'project' : props.scope === 'agent-global' ? 'Agent defaults' : 'Project defaults')
 
 const visibleFiles = computed(() => {
   return files.value

@@ -29,6 +29,60 @@ import org.junit.jupiter.api.Test;
 class AgentRunnerStopTest {
 
     @Test
+    void mapsFinalTextBeforeHistoryAndEventsWithoutExposingContentDeltas() {
+        for (String decoded : new String[] {"Visible reply", ""}) {
+            FakeSessionStore store = new FakeSessionStore();
+            ModelProviderRegistry providers = new ModelProviderRegistry();
+            providers.register(new ReasoningModelProvider());
+            ObjectMapper json = new ObjectMapper();
+            List<AgentEvent> events = new ArrayList<>();
+            AgentRunOptions options =
+                    AgentRunOptions.builder()
+                            .finalAnswerMapper(
+                                    raw -> {
+                                        assertEquals("final answer", raw);
+                                        return decoded;
+                                    })
+                            .build()
+                            .withEventConsumer(events::add);
+            AgentRunResult result =
+                    createRunner(store, providers, json).run("s1", "Question", options);
+            assertEquals(decoded, result.getAnswer());
+            assertEquals(decoded, store.messages.get(store.messages.size() - 1).getContent());
+            assertTrue(
+                    events.stream().noneMatch(e -> AgentEvent.MESSAGE_UPDATE.equals(e.getType())));
+            assertTrue(events.stream().noneMatch(e -> e.getPayloadJson().contains("final answer")));
+        }
+    }
+
+    @Test
+    void cancellationNeverPersistsOrStreamsAnUndecodedPartialReply() {
+        MutableStopSignal control = new MutableStopSignal();
+        FakeSessionStore store = new FakeSessionStore();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(new StoppingModelProvider(control));
+        List<AgentEvent> events = new ArrayList<>();
+        assertThrows(
+                StopRequestedException.class,
+                () ->
+                        createRunner(store, providers, new ObjectMapper())
+                                .run(
+                                        "s1",
+                                        "Question",
+                                        AgentRunOptions.builder()
+                                                .stopSignal(control)
+                                                .eventConsumer(events::add)
+                                                .finalAnswerMapper(
+                                                        raw -> {
+                                                            throw new AssertionError(
+                                                                    "Stopped before final output");
+                                                        })
+                                                .build()));
+        assertEquals("", store.messages.get(store.messages.size() - 1).getContent());
+        assertTrue(events.stream().noneMatch(e -> e.getPayloadJson().contains("partial answer")));
+    }
+
+    @Test
     void persistsPartialAssistantMessageAndPublishesStoppedEvent() {
         MutableStopSignal control = new MutableStopSignal();
         FakeSessionStore store = new FakeSessionStore();

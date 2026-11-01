@@ -92,6 +92,7 @@ create table if not exists messages (
     tool_name varchar(128),
     tool_calls_json text,
     stop_reason varchar(32),
+    metadata_json text,
     created_at varchar(64) not null
 );
 
@@ -253,3 +254,52 @@ create table if not exists runner_projects (
     config_json text not null,
     primary key (application_id, project_id)
 );
+
+-- Personal assistants are independent of ordinary projects.
+create table if not exists personal_agents (
+    application_id varchar(128) not null,
+    agent_id varchar(128) not null,
+    revision bigint not null,
+    body_json text not null,
+    channel_json text,
+    primary key (application_id, agent_id)
+);
+create table if not exists personal_conversations (
+    application_id varchar(128) not null,
+    session_id varchar(128) not null,
+    agent_id varchar(128) not null,
+    created_at bigint not null,
+    body_json text not null,
+    primary key (application_id, session_id)
+);
+create table if not exists personal_inbox (
+    application_id varchar(128) not null,
+    message_id varchar(128) not null,
+    session_id varchar(128) not null,
+    status varchar(32) not null,
+    created_at bigint not null,
+    body_json text not null,
+    primary key (application_id, message_id)
+);
+create index if not exists ix_personal_inbox_pending on personal_inbox(application_id, status, created_at);
+create index if not exists ix_personal_inbox_session on personal_inbox(application_id, session_id, created_at);
+create table if not exists personal_cards (
+    application_id varchar(128) not null,
+    card_id varchar(128) not null,
+    revision bigint not null,
+    body_json text not null,
+    primary key (application_id, card_id)
+);
+
+-- Reversible personal memory and skill edits, ordered by the Agent revision.
+create table if not exists personal_learning_changes (
+    application_id varchar(128) not null,
+    agent_id varchar(128) not null,
+    change_id varchar(128) not null,
+    revision bigint not null,
+    path varchar(1024) not null,
+    body_json text not null,
+    primary key (application_id, agent_id, change_id),
+    unique (application_id, agent_id, revision)
+);
+create index if not exists ix_personal_learning_path on personal_learning_changes(application_id, agent_id, path, revision);

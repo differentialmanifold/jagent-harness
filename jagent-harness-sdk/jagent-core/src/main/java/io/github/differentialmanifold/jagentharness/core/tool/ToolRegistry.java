@@ -139,6 +139,8 @@ public class ToolRegistry {
                 resolved.put(tool.getName(), tool);
             }
         }
-        return Collections.unmodifiableList(new ArrayList<ToolDefinition>(resolved.values()));
+        List<ToolDefinition> ordered = new ArrayList<ToolDefinition>(resolved.values());
+        ordered.sort(java.util.Comparator.comparing(ToolDefinition::getName));
+        return Collections.unmodifiableList(ordered);
     }
 }

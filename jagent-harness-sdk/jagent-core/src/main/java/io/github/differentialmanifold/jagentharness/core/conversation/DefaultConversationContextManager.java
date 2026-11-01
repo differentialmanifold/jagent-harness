@@ -437,6 +437,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 + " tokens. "
                 + "Preserve durable facts, user intent, decisions, constraints, file paths, code changes, "
                 + "tool results, unresolved tasks, and current next steps. "
+                + "For application runtime snapshots, retain the latest relevant state and subsequent tool updates, not superseded snapshots. "
                 + "Do not invent details. Do not include generic filler.";
     }
 

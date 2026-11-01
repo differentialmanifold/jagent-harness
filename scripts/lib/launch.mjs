@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
 import { createServer, createConnection } from 'node:net'
+import { runnerStateDirectory } from './runner-state.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const win = process.platform === 'win32'
@@ -85,7 +86,8 @@ export async function launch(component) {
       }
       await new Promise(resolveDone => setTimeout(resolveDone, 500))
     }
-    throw new Error(`Timed out waiting for ${url}`)
+    if (stopping) return
+    throw new Error(`Timed out waiting for ${url}${path}`)
   }
   function shutdown(code = 0) {
     if (stopping) return
@@ -135,15 +137,17 @@ export async function launch(component) {
     for (const key of Object.keys(clientEnv)) if (/^JAGENT_(OPENAI_|MODEL|DATASOURCE|TEMPERATURE|COMPACTION|CONTEXT|CONFIG_ROOT)/.test(key)) delete clientEnv[key]
     if (startClient) {
       await ready(serverUrl)
+      if (stopping) return
       console.log('Starting coding runner; select project directories and tools in the console')
       service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--server', serverUrl, '--name', env.JAGENT_RUNNER_NAME || 'coding-local'], clientEnv)
       await ready(serverUrl, '/api/v1/runners', runners => {
-        const config = resolve(runnerHome, 'config.json')
+        const config = resolve(runnerStateDirectory(serverUrl, runnerHome), 'config.json')
         if (!existsSync(config)) return false
         const identity = JSON.parse(readFileSync(config, 'utf8')).runnerId
         return runners.some(runner => runner.runnerId === identity && runner.online)
       })
     }
+    if (stopping) return
     if (startFrontend) {
       const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev', '--', '--port', String(frontendPort), '--host', env.JAGENT_CONSOLE_HOST || '127.0.0.1'], resolve(root, 'console'), { ...clientEnv, JAGENT_SERVER_URL: serverUrl })
       ui.once('error', error => { console.error(error.message); shutdown(1) })

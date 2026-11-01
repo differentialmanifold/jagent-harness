@@ -5,8 +5,8 @@
         <el-radio-button value="preview">Preview</el-radio-button>
         <el-radio-button value="code">Code</el-radio-button>
       </el-radio-group>
-      <span>{{ lineCount }} lines</span>
-      <span>{{ bytes }} bytes</span>
+      <span class="prompt-stat">{{ lineCount }} lines</span>
+      <span class="prompt-stat">{{ bytes }} bytes</span>
       <code v-if="workspaceRoot" class="prompt-preview-workspace" :title="workspaceRoot">
         {{ workspaceRoot }}
       </code>
@@ -99,3 +99,13 @@ defineExpose({
   discardChanges: () => {}
 })
 </script>
+
+<style scoped>
+.final-prompt-panel { min-width: 0; }
+.github-file-toolbar { flex-wrap: wrap; gap: 8px 12px; }
+.github-file-toolbar :deep(.el-radio-group) { display: inline-flex; flex: 0 0 auto; flex-wrap: nowrap; white-space: nowrap; }
+.prompt-stat { flex: 0 0 auto; white-space: nowrap; }
+.prompt-preview-workspace { flex: 1 1 160px; }
+.github-file-toolbar-actions { flex: 0 0 auto; }
+.github-file-toolbar-actions :deep(.el-button + .el-button) { margin-left: 0; }
+</style>

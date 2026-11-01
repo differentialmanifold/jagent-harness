@@ -10,6 +10,8 @@ public class RunnerInfo {
     public String runtime = "java";
     /** Whether this terminal supports browsing and selecting a workspace per project. */
     public boolean workspaces;
+    /** Absolute root on the Runner for automatic user/Agent project directories. */
+    public String workspaceRoot;
 
     public String instructions = "";
     public List<ToolDescriptor> tools = new ArrayList<>();

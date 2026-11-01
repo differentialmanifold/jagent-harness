@@ -89,7 +89,8 @@ public class RunnerService {
                 || info.tools.isEmpty()
                 || info.tools.size() > 128
                 || info.instructions == null
-                || info.instructions.length() > 32000)
+                || info.instructions.length() > 32000
+                || (info.workspaceRoot != null && info.workspaceRoot.length() > 2048))
             throw new ProtocolException(
                     400, "INVALID_RUNNER", "Runner identity and tools are required");
         Set<String> names = new HashSet<>();
@@ -107,7 +108,8 @@ public class RunnerService {
             if (!store.unfinished(info.runnerId).isEmpty()
                     && (!json.valueToTree(previous.tools).equals(json.valueToTree(info.tools))
                             || !Objects.equals(previous.instructions, info.instructions)
-                            || previous.workspaces != info.workspaces))
+                            || previous.workspaces != info.workspaces
+                            || !Objects.equals(previous.workspaceRoot, info.workspaceRoot)))
                 throw new ProtocolException(
                         409, "RUNNER_BUSY", "Finish pending jobs before changing tools");
         }
@@ -181,12 +183,37 @@ public class RunnerService {
             io.github.differentialmanifold.jagentharness.spring.web.dto.CreateSessionRequest
                     request,
             RunnerProject existing) {
+        return createSession(request, existing, null);
+    }
+
+    public synchronized SessionRecord createSession(
+            io.github.differentialmanifold.jagentharness.spring.web.dto.CreateSessionRequest
+                    request,
+            RunnerProject existing,
+            String ownerAgentId) {
         RunnerProject project = existing;
         if (project == null) {
             RunnerInfo info = require(request.getRunnerId());
             project = new RunnerProject();
             project.runnerId = info.runnerId;
             project.workspace = info.workspaces ? request.getWorkspacePath() : null;
+            if (info.workspaces
+                    && (project.workspace == null || project.workspace.trim().isEmpty())
+                    && info.workspaceRoot != null
+                    && !info.workspaceRoot.trim().isEmpty()) {
+                if (ownerAgentId != null && !ownerAgentId.matches("agent_[A-Za-z0-9_-]+"))
+                    throw new IllegalArgumentException("Invalid Agent ID");
+                String projectId =
+                        io.github.differentialmanifold.jagentharness.core.support.Ids.newId(
+                                "project");
+                request.setProjectId(projectId);
+                project.workspace =
+                        info.workspaceRoot.replace('\\', '/').replaceAll("/+$", "")
+                                + (ownerAgentId == null
+                                        ? "/user/"
+                                        : "/agents/" + ownerAgentId + "/")
+                                + projectId;
+            }
             if (info.workspaces
                     && (project.workspace == null
                             || project.workspace.trim().isEmpty()
@@ -204,7 +231,8 @@ public class RunnerService {
                         request.getTitle(),
                         project.workspace,
                         request.getProjectName(),
-                        request.getProjectId());
+                        request.getProjectId(),
+                        ownerAgentId);
         if (existing == null) {
             project.projectId = session.getProjectId();
             store.saveProject(project);
@@ -235,6 +263,18 @@ public class RunnerService {
     }
 
     public SseEmitter submit(ChatRequest request) {
+        String runner = queue(request);
+        SseEmitter emitter = watch(request.runId);
+        wake(runner);
+        return emitter;
+    }
+
+    /** Submit ordinary project work without attaching a browser stream. */
+    public void enqueue(ChatRequest request) {
+        wake(queue(request));
+    }
+
+    private String queue(ChatRequest request) {
         if (request == null
                 || request.sessionId == null
                 || request.runId == null
@@ -278,9 +318,7 @@ public class RunnerService {
         } catch (RuntimeException e) {
             throw new ProtocolException(409, "RUNNER_BUSY", e.getMessage());
         }
-        SseEmitter emitter = watch(request.runId);
-        wake(runner);
-        return emitter;
+        return runner;
     }
 
     public SseEmitter watch(String run) {
@@ -336,9 +374,16 @@ public class RunnerService {
     }
 
     public DeferredResult<RunnerPoll> poll(String runner, String activeRun) {
+        return poll(runner, activeRun, activeRun == null || activeRun.isEmpty() ? 1 : 0);
+    }
+
+    public DeferredResult<RunnerPoll> poll(String runner, String activeRuns, int availableSlots) {
+        if (availableSlots < 0)
+            throw new ProtocolException(
+                    400, "INVALID_CAPACITY", "availableSlots must not be negative");
         store.heartbeat(runner, System.currentTimeMillis());
         DeferredResult<RunnerPoll> result = new DeferredResult<>(25000L, new RunnerPoll());
-        Waiter waiter = new Waiter(runner, activeRun, result);
+        Waiter waiter = new Waiter(runner, activeRuns, availableSlots > 0, result);
         Waiter previous = waiters.putIfAbsent(runner, waiter);
         if (previous != null)
             throw new ProtocolException(
@@ -357,15 +402,17 @@ public class RunnerService {
             if (waiter.result.isSetOrExpired()) return;
             RunnerPoll result = new RunnerPoll();
             result.workspaceRequest = workspaces.poll(runner);
-            if (waiter.active != null && !waiter.active.isEmpty()) {
-                RunnerJob active = store.job(waiter.active);
+            for (String run : waiter.active) {
+                RunnerJob active = store.job(run);
                 if (active != null
                         && runner.equals(active.runnerId)
                         && (active.cancelled
                                 || !Arrays.asList("QUEUED", "CLAIMED").contains(active.status)))
-                    result.cancelledRuns.add(waiter.active);
-            } else {
+                    result.cancelledRuns.add(run);
+            }
+            if (waiter.acceptJobs) {
                 for (RunnerJob job : store.unfinished(runner)) {
+                    if (waiter.active.contains(job.request.runId)) continue;
                     if (job.cancelled && "QUEUED".equals(job.status)) continue;
                     if ("CLAIMED".equals(job.status) || store.claim(job.request.runId)) {
                         job.status = "CLAIMED";
@@ -489,12 +536,18 @@ public class RunnerService {
     }
 
     private static class Waiter {
-        final String runner, active;
+        final String runner;
+        final Set<String> active;
+        final boolean acceptJobs;
         final DeferredResult<RunnerPoll> result;
 
-        Waiter(String r, String a, DeferredResult<RunnerPoll> d) {
+        Waiter(String r, String a, boolean acceptJobs, DeferredResult<RunnerPoll> d) {
             runner = r;
-            active = a;
+            active =
+                    a == null || a.isEmpty()
+                            ? Collections.emptySet()
+                            : new HashSet<>(Arrays.asList(a.split(",")));
+            this.acceptJobs = acceptJobs;
             result = d;
         }
     }

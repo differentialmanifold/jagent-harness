@@ -23,5 +23,6 @@
   "workspaces": true,
   "toolDiagnostics": {
     "read": "Native filesystem"
-  }
+  },
+  "workspaceRoot": "/home/demo/.jagent/workspaces"
 }

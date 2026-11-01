@@ -18,17 +18,17 @@
 mvn -pl examples/coding-runner -am package
 ```
 
-将 `examples/coding-runner/target/jagent-coding-runner-1.2.1.jar` 复制到目标机器。在环境变量中将 `JAGENT_CLIENT_TOKEN` 设置为服务端 API 令牌，然后执行：
+将 `examples/coding-runner/target/jagent-coding-runner-2.0.0.jar` 复制到目标机器。在环境变量中将 `JAGENT_CLIENT_TOKEN` 设置为服务端 API 令牌，然后执行：
 
 ```sh
-java -jar jagent-coding-runner-1.2.1.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.0.0.jar --server https://agent.example.com --name linux-dev
 ```
 
-打开 Web 前端，添加项目并选择 **linux-dev**，浏览或输入该终端上的工作目录。一个 Runner 代表一台执行终端，可以服务多个工作目录不同的项目。
+打开 Web 前端，添加项目并选择 **linux-dev**，工作目录留空时会在 `~/.jagent/workspaces/user/` 下自动创建项目目录，也可以浏览选择已有目录。一个 Runner 代表一台执行终端，可以服务多个工作目录不同的项目。
 
-新项目默认启用全部七个工具。在 **Configuration → Built-in tools → Client tools** 中修改项目工具选择，下一次任务生效。已选工具使用 **Full access** 模式，不弹出审批；项目也可以关闭全部客户端工具。
+新项目默认启用全部七个工具。在 **Projects → Configuration → Tools → Client tools** 中修改项目工具选择，下一次任务生效。已选工具使用 **Full access** 模式，不弹出审批；项目也可以关闭全部客户端工具。
 
-工具使用所属操作系统账户的文件和进程权限运行；工作区是工作目录，不是操作系统沙箱。需要隔离时，请使用权限适当的账户或容器。Bash 工具需要本地 Shell，Windows 上需要 Git Bash。搜索优先使用 ripgrep，不可用时使用 Java 实现，也可通过 `JAGENT_RG_PATH` 指定 ripgrep 路径。Runner 启动时会打印检测到的搜索引擎，**Configuration → Built-in tools → Client tools** 中的 `find` 和 `grep` 旁会显示这份启动快照。每次搜索结果记录实际使用的引擎，包括运行中的回退。
+工具使用所属操作系统账户的文件和进程权限运行；工作区是工作目录，不是操作系统沙箱。需要隔离时，请使用权限适当的账户或容器。Bash 工具需要本地 Shell，Windows 上需要 Git Bash。搜索优先使用 ripgrep，不可用时使用 Java 实现，也可通过 `JAGENT_RG_PATH` 指定 ripgrep 路径。Runner 启动时会打印检测到的搜索引擎，**Projects → Configuration → Tools → Client tools** 中的 `find` 和 `grep` 旁会显示这份启动快照。每次搜索结果记录实际使用的引擎，包括运行中的回退。
 
 Runner 所在机器不需要模型密钥，也不监听端口。除本机回环地址的开发环境外，请使用 HTTPS。可以通过进程管理工具让 `serve` 持续运行；按 Ctrl+C 停止进程。
 
@@ -42,7 +42,7 @@ Runner 所在机器不需要模型密钥，也不监听端口。除本机回环�
 
 ## 状态、取消与恢复
 
-默认本地状态目录为 `~/.jagent-runner`。使用 `--home <directory>` 或 `JAGENT_RUNNER_HOME` 可指定另一套身份。一个状态目录代表一台终端，只允许一个进程运行；不要复制到另一台机器共用身份。API 令牌从环境变量读取，不保存到本地。Runner 专用密钥与执行日志保存在本地状态目录中。
+默认本地状态根目录为 `~/.jagent-runner`，可通过 `--home <directory>` 或 `JAGENT_RUNNER_HOME` 修改。每个服务器 URL 自动使用独立的 `servers/<服务器 URL 的 SHA-256>/` 子目录，分别保存身份、专用密钥、执行日志和进程锁；URL 末尾的斜杠会被忽略。切换服务器无需修改 home，重新连接同一服务器会复用原身份，每个服务器目录只允许一个 Runner 进程运行。旧版直接保存在根目录的状态仍由原服务器使用，保留已有结果。不要复制身份到另一台机器共用。API 令牌从环境变量读取，不保存到本地。
 
 服务端将注册信息、会话绑定关系和任务保存到数据库。每次长轮询最多等待 25 秒。工具执行期间，接收线程仍保持工作，因此前端发起的取消操作可以停止本地进程。关闭浏览器不会取消执行。用户消息和工具结果继续使用普通对话接口。
 
@@ -51,9 +51,9 @@ Runner 所在机器不需要模型密钥，也不监听端口。除本机回环�
 需要恢复中断任务中的待回传结果时，先停止 `serve`，检查会话和本地实际执行效果，再显式提交已保存的结果：
 
 ```sh
-java -jar jagent-coding-runner-1.2.1.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.0.0.jar recover --server https://agent.example.com --session ses_example
 ```
 
 恢复时使用原来的状态目录和可执行文件版本；工作目录和工具清单取自已保存的任务。缺失或未完成的结果以 `UNKNOWN` 回传；模型收到结果后可能发起新的工具调用。恢复完成后重新启动 `serve`。
 
-当前实现支持每个 Runner 同时运行一个会话，前端实时流使用单个服务端实例。任务和历史记录在服务端重启后保留，流连接需要重新建立。目前未实现多实例实时事件分发和多租户身份验证；共享 API 令牌属于操作人员凭据。
+每个 Runner 可以并行执行不同会话，不设置固定的会话并发数量上限，同一项目下的不同会话也可以并行。同一会话内保持顺序执行，停止一个会话不会停止其他会话。前端实时流使用单个服务端实例。任务和历史记录在服务端重启后保留，流连接需要重新建立。目前未实现多实例实时事件分发和多租户身份验证；共享 API 令牌属于操作人员凭据。

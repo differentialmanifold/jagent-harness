@@ -31,9 +31,12 @@ public class RunnerController {
     public DeferredResult<RunnerPoll> poll(
             @PathVariable String id,
             @RequestHeader(value = "X-Runner-Secret", required = false) String secret,
-            @RequestParam(required = false) String activeRun) {
+            @RequestParam(required = false) String activeRun,
+            @RequestParam(required = false) Integer availableSlots) {
         service.authenticate(id, secret);
-        return service.poll(id, activeRun);
+        return availableSlots == null
+                ? service.poll(id, activeRun)
+                : service.poll(id, activeRun, availableSlots);
     }
 
     @PostMapping(value = "/chat", produces = "text/event-stream")

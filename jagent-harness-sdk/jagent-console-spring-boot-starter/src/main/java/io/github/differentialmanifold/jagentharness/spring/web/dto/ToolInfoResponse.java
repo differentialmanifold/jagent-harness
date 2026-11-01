@@ -8,6 +8,15 @@ public class ToolInfoResponse {
     private String description;
     private JsonNode parametersSchema;
     private boolean enabled;
+    private String executionTarget = "server";
+
+    public String getExecutionTarget() {
+        return executionTarget;
+    }
+
+    public void setExecutionTarget(String value) {
+        executionTarget = value;
+    }
 
     public ToolInfoResponse() {}
 

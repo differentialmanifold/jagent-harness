@@ -1,56 +1,89 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="640" viewBox="0 0 1120 640" role="img" aria-labelledby="title description">
-  <title id="title">Frontend, Agent Harness, and native tool runner</title>
-  <desc id="description">The frontend can be hosted on the server or client machine and calls Harness APIs. The client SDK hosts scenario-specific tools and connects to the Harness through outbound HTTP long polling. Only file-based scenarios need a workspace. The server manages the model, agent loop, database, skills, and virtual files. Tool code stays on the device; every connection to a device is initiated by that device.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="920" viewBox="0 0 1120 920" role="img" aria-labelledby="title description" xml:lang="en">
+  <title id="title">JAgentHarness: Agent planning, Project work, terminal execution</title>
+  <desc id="description">Users give a persistent Agent a goal through the Console or optional Feishu channel, or work directly in a Project. The Agent maintains tasks, dependencies and progress, guides Project sessions and reviews their evidence. Project results and scheduled checks wake it to update the plan. Both layers run their agent loops in the server Harness. A lightweight Runner executes native tools on the target terminal through outbound HTTP connections. Shared model and context services, server tools, conversation storage and virtual files support both layers.</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#4763cb"/></marker>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#526484"/></marker>
     <style>
-      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
-      .label { font-size: 15px; font-weight: 700; letter-spacing: 1.3px; }
-      .heading { font-size: 25px; font-weight: 700; fill: #17243b; }
-      .body { font-size: 18px; fill: #475569; }
-      .flow { font-size: 17px; font-weight: 600; fill: #344ca2; }
-      .arrow { fill: none; stroke: #4763cb; stroke-width: 2; marker-end: url(#arrow); }
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif; }
+      .brand { font-size: 23px; font-weight: 700; fill: #17243b; }
+      .label { font-size: 17px; font-weight: 700; fill: #526484; }
+      .heading { font-size: 30px; font-weight: 700; fill: #17243b; }
+      .entry { font-size: 25px; font-weight: 700; fill: #17243b; }
+      .section { font-size: 21px; font-weight: 700; fill: #263b59; }
+      .body { font-size: 18px; fill: #41536e; }
+      .small { font-size: 17px; fill: #526484; }
+      .flow { font-size: 17px; font-weight: 600; fill: #41536e; }
+      .arrow { fill: none; stroke: #526484; stroke-width: 2; marker-end: url(#arrow); }
+      .both { marker-start: url(#arrow); }
     </style>
   </defs>
-  <rect width="1120" height="640" rx="16" fill="#ffffff"/>
-  <rect x="24" y="24" width="380" height="236" rx="16" fill="#fff8ed" stroke="#edd2a5"/>
-  <text x="48" y="62" class="label" fill="#936219">FRONTEND / HOST ANYWHERE</text>
-  <text x="48" y="104" class="heading">Interact with the agent</text>
-  <text x="48" y="142" class="body">Chat · Progress · Configuration</text>
-  <text x="48" y="196" class="body">On the server or client machine</text>
-  <text x="48" y="228" class="body">Web now · Desktop or other UI later</text>
+  <rect width="1120" height="920" rx="16" fill="#ffffff"/>
+  <text x="32" y="36" class="brand">JAgentHarness</text>
+  <text x="1088" y="36" class="body" text-anchor="end">Plan · Track · Execute · Verify</text>
 
-  <rect x="24" y="336" width="380" height="244" rx="16" fill="#f0faf7" stroke="#bbddd2"/>
-  <text x="48" y="374" class="label" fill="#18735e">RUNNER / TARGET MACHINE</text>
-  <text x="48" y="416" class="heading">Client SDK + your tools</text>
-  <text x="48" y="454" class="body">Receive · Execute · Return results</text>
-  <text x="48" y="484" class="body">Coding tools or native device APIs</text>
-  <text x="48" y="532" class="body">Workspace only when needed</text>
-  <text x="48" y="560" class="body">Tool code stays on the device</text>
+  <!-- Delegate a goal, or work directly in a Project. -->
+  <rect x="48" y="60" width="408" height="90" rx="14" fill="#f5f1ff" stroke="#d7cbf0"/>
+  <rect x="664" y="60" width="408" height="90" rx="14" fill="#edf5ff" stroke="#bfd5f0"/>
+  <text x="252" y="98" class="entry" text-anchor="middle">Give an Agent a goal</text>
+  <text x="252" y="128" class="small" text-anchor="middle">Web Console · Optional Feishu</text>
+  <text x="868" y="98" class="entry" text-anchor="middle">Work directly in a Project</text>
+  <text x="868" y="128" class="small" text-anchor="middle">Web Console</text>
 
-  <rect x="616" y="24" width="480" height="556" rx="16" fill="#f3f5ff" stroke="#cbd3f3"/>
-  <text x="644" y="62" class="label" fill="#4763cb">AGENT HARNESS / YOUR SERVER</text>
-  <rect x="644" y="88" width="424" height="136" rx="12" fill="#ffffff" stroke="#a7b5eb"/>
-  <text x="668" y="130" class="heading">Model and agent loop</text>
-  <text x="668" y="168" class="body">Reasoning · Context · Orchestration</text>
-  <text x="668" y="198" class="body">One API for every frontend and runner</text>
-  <rect x="644" y="252" width="424" height="136" rx="12" fill="#ffffff" stroke="#a7b5eb"/>
-  <text x="668" y="294" class="heading">Server tools</text>
-  <text x="668" y="332" class="body">Skills · Virtual files · Extensions</text>
-  <text x="668" y="362" class="body">Execute in the server environment</text>
-  <rect x="644" y="416" width="424" height="136" rx="12" fill="#e5eaff"/>
-  <text x="668" y="458" class="heading">Database-backed state</text>
-  <text x="668" y="496" class="body">Conversations · Events · Usage</text>
-  <text x="668" y="526" class="body">Runner registration and dispatch</text>
+  <!-- Two logical layers share the cloud Harness. -->
+  <rect x="24" y="208" width="1072" height="438" rx="18" fill="#f7f9fc" stroke="#ccd6e4"/>
+  <text x="560" y="240" class="label" text-anchor="middle">CLOUD / BOTH AGENT LOOPS</text>
+  <path d="M 252 158 V 256" class="arrow both"/>
+  <path d="M 868 158 V 256" class="arrow both"/>
+  <text x="268" y="184" class="small">Goals / updates</text>
+  <text x="884" y="184" class="small">Messages / progress</text>
 
-  <text x="510" y="110" text-anchor="middle" class="flow">Chat / control</text>
-  <path d="M 414 128 H 606" class="arrow"/>
-  <path d="M 606 178 H 414" class="arrow"/>
-  <text x="510" y="205" text-anchor="middle" class="flow">Events / state</text>
-  <text x="510" y="410" text-anchor="middle" class="flow">Poll / results</text>
-  <path d="M 414 428 H 606" class="arrow"/>
-  <path d="M 606 486 H 414" class="arrow"/>
-  <text x="510" y="514" text-anchor="middle" class="flow">Calls in response</text>
+  <rect x="48" y="264" width="408" height="256" rx="14" fill="#f5f1ff" stroke="#c4b2e8"/>
+  <text x="72" y="304" class="heading">Agent</text>
+  <text x="72" y="334" class="body">Plan the goal · Coordinate projects</text>
+  <rect x="72" y="352" width="360" height="80" rx="10" fill="#ffffff" stroke="#dfd5f2"/>
+  <text x="88" y="382" class="section">Task tracking</text>
+  <text x="88" y="410" class="small">Steps · Dependencies · Progress</text>
+  <text x="72" y="466" class="body">Review results · Adjust the plan</text>
+  <text x="72" y="496" class="small">Memory · Reusable Skills</text>
 
-  <text x="560" y="619" text-anchor="middle" class="body">Frontend and runner connect to Harness APIs. No inbound endpoint is needed on the runner.</text>
+  <rect x="664" y="264" width="408" height="256" rx="14" fill="#edf5ff" stroke="#adc9ed"/>
+  <text x="688" y="304" class="heading">Project</text>
+  <text x="688" y="334" class="body">Investigate · Implement · Verify</text>
+  <rect x="688" y="352" width="360" height="80" rx="10" fill="#ffffff" stroke="#cdddf2"/>
+  <text x="704" y="382" class="section">Project sessions</text>
+  <text x="704" y="410" class="small">Real code · Tools · Test results</text>
+  <text x="688" y="466" class="body">Owned by you or an Agent</text>
+  <text x="688" y="496" class="small">Independent sessions can run in parallel</text>
+
+  <path d="M 464 372 H 656" class="arrow"/>
+  <text x="560" y="355" class="flow" text-anchor="middle">Goals / tasks</text>
+  <path d="M 656 462 H 464" class="arrow"/>
+  <text x="560" y="491" class="flow" text-anchor="middle">Results / evidence</text>
+
+  <rect x="48" y="536" width="1024" height="36" rx="9" fill="#eaeef7"/>
+  <text x="560" y="560" class="small" text-anchor="middle">Project results + scheduled checks → review evidence → update tasks → continue</text>
+
+  <!-- Shared infrastructure stays secondary to the two layers above. -->
+  <path d="M 48 590 H 1072" stroke="#dbe2ec"/>
+  <text x="48" y="620" class="label">Shared Harness</text>
+  <text x="194" y="620" class="small">Model calls · Context · Server tools</text>
+  <text x="650" y="620" class="label">Storage</text>
+  <text x="730" y="620" class="small">Conversations · Virtual files</text>
+
+  <!-- Native tools run outside the cloud; all connections originate at the Runner. -->
+  <path d="M 252 744 V 654" class="arrow"/>
+  <text x="268" y="688" class="flow">Outbound HTTP</text>
+  <text x="268" y="714" class="small">Poll · Chat · Results</text>
+  <path d="M 868 654 V 744" class="arrow"/>
+  <text x="884" y="688" class="flow">Tool calls</text>
+  <text x="884" y="714" class="small">in HTTP responses</text>
+
+  <rect x="24" y="752" width="1072" height="118" rx="18" fill="#edf9f4" stroke="#b4dbcc"/>
+  <text x="48" y="782" class="label">TERMINAL / NATIVE TOOL EXECUTION</text>
+  <text x="48" y="821" class="entry">Runner · Lightweight SDK</text>
+  <text x="48" y="852" class="body">Receive calls · Run local tools · Return results</text>
+  <path d="M 680 776 V 850" stroke="#c5e2d7"/>
+  <text x="710" y="805" class="section">Files · Shell · Device APIs</text>
+  <text x="710" y="837" class="small">Tool code stays on the terminal</text>
+  <text x="560" y="902" class="small" text-anchor="middle">The Runner connects outbound to the server; no inbound port is needed.</text>
 </svg>

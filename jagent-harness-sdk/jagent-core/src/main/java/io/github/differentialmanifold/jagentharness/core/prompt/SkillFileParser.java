@@ -3,7 +3,9 @@ package io.github.differentialmanifold.jagentharness.core.prompt;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public final class SkillFileParser {
 
@@ -58,7 +60,7 @@ public final class SkillFileParser {
     }
 
     private static Map<String, Object> parseMetadata(String content) {
-        Object parsed = new Yaml().load(content);
+        Object parsed = new Yaml(new SafeConstructor(new LoaderOptions())).load(content);
         if (!(parsed instanceof Map)) {
             return Collections.emptyMap();
         }

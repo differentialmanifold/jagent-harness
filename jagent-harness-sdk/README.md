@@ -12,12 +12,12 @@ Add these dependencies to a Spring Boot application:
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>1.2.1</version>
+  <version>2.0.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-store-jdbc</artifactId>
-  <version>1.2.1</version>
+  <version>2.0.0</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>
@@ -87,5 +87,7 @@ The demo uses SQLite. The JDBC library does not supply a database driver: your a
 | `harness.store.jdbc.schema-locations` | List of custom initialization scripts |
 
 To use another database, replace the SQLite driver in your application, configure the connection, and select or provide its schema. SQLite and H2 are covered by integration tests. PostgreSQL DDL is included but has not been verified against a live instance. Other databases may need DDL and SQL adaptations or custom storage implementations.
+
+Custom `MessageRepository` implementations should preserve `AgentMessage.metadataJson` when saving and loading history.
 
 The current HTTP host serializes conversation writes within one process and uses an application-level API token. Multi-instance coordination and tenant-level authorization must be provided by the host application.

@@ -177,6 +177,138 @@ class RunnerProtocolTest {
     }
 
     @Test
+    void sessionsOnOneRunnerExecuteConcurrentlyAndCancelIndependently() throws Exception {
+        Map<String, CountDownLatch> entered = new ConcurrentHashMap<>();
+        Map<String, CountDownLatch> release = new ConcurrentHashMap<>();
+        Set<String> stopped = ConcurrentHashMap.newKeySet();
+        List<ToolDefinition> tools = new ArrayList<>();
+        for (String name : Arrays.asList("client_a", "client_b")) {
+            tools.add(
+                    new ToolDefinition() {
+                        public String getName() {
+                            return name;
+                        }
+
+                        public String getDescription() {
+                            return "Concurrent test tool";
+                        }
+
+                        public JsonNode getParametersSchema() {
+                            return json.createObjectNode().put("type", "object");
+                        }
+
+                        public ToolExecutionResult execute(ToolContext context, JsonNode args)
+                                throws Exception {
+                            if ("client_a".equals(name)) {
+                                String session = context.getSessionId();
+                                try (io.github.differentialmanifold.jagentharness.core.agent
+                                                .StopRegistration
+                                        ignored =
+                                                context.getStopSignal()
+                                                        .onStop(
+                                                                () -> {
+                                                                    stopped.add(session);
+                                                                    release.get(session)
+                                                                            .countDown();
+                                                                })) {
+                                    entered.get(session).countDown();
+                                    assertTrue(release.get(session).await(15, TimeUnit.SECONDS));
+                                }
+                            }
+                            return ToolExecutionResult.success(context.getSessionId());
+                        }
+                    });
+        }
+        ExecutorService receiver = Executors.newSingleThreadExecutor();
+        try (AgentRunner runner =
+                AgentRunner.builder("http://127.0.0.1:" + port, runnerHome)
+                        .token("test-token")
+                        .tools(tools)
+                        .build()) {
+            Future<?> receiving =
+                    receiver.submit(
+                            () -> {
+                                runner.serve();
+                                return null;
+                            });
+            awaitCondition(() -> store.runner(runner.runnerId()) != null);
+            HttpAgentTransport frontend =
+                    new HttpAgentTransport("http://127.0.0.1:" + port, "test-token");
+            List<ChatRequest> requests = new ArrayList<>();
+            String projectId = null;
+            for (int i = 0; i < 6; i++) {
+                Map<String, Object> create = new LinkedHashMap<>();
+                create.put("runnerId", runner.runnerId());
+                if (projectId != null) create.put("projectId", projectId);
+                JsonNode session = frontend.management("POST", "/api/v1/sessions", create);
+                projectId = session.path("projectId").asText();
+                ChatRequest request = new ChatRequest();
+                request.sessionId = session.path("sessionId").asText();
+                request.runId = "run_" + UUID.randomUUID();
+                request.messages.add(ChatMessage.user("mixed"));
+                entered.put(request.sessionId, new CountDownLatch(1));
+                release.put(request.sessionId, new CountDownLatch(1));
+                requests.add(request);
+            }
+            for (ChatRequest request : requests) runners.enqueue(request);
+            for (ChatRequest request : requests)
+                assertTrue(
+                        entered.get(request.sessionId).await(10, TimeUnit.SECONDS),
+                        "All six sessions must execute the same tool before any finishes");
+            ChatRequest first = requests.get(0);
+            ChatRequest overlapping = new ChatRequest();
+            overlapping.sessionId = first.sessionId;
+            overlapping.runId = "run_" + UUID.randomUUID();
+            overlapping.messages.add(ChatMessage.user("another turn"));
+            assertThrows(ProtocolException.class, () -> runners.enqueue(overlapping));
+            frontend.stop(first.runId);
+            awaitCondition(() -> "CANCELLED".equals(store.job(first.runId).status));
+            assertEquals(Collections.singleton(first.sessionId), stopped);
+            List<ChatRequest> remaining = requests.subList(1, requests.size());
+            for (ChatRequest request : remaining) {
+                assertEquals("CLAIMED", store.job(request.runId).status);
+                release.get(request.sessionId).countDown();
+            }
+            awaitCondition(
+                    () ->
+                            remaining.stream()
+                                    .allMatch(
+                                            request ->
+                                                    "COMPLETED"
+                                                            .equals(
+                                                                    store.job(request.runId)
+                                                                            .status)));
+            for (ChatRequest request : requests) {
+                assertEquals(
+                        1,
+                        history.findMessages(request.sessionId).stream()
+                                .filter(message -> "user".equals(message.getRole()))
+                                .count());
+                assertTrue(
+                        history.findMessages(request.sessionId).stream()
+                                .filter(
+                                        message ->
+                                                "tool".equals(message.getRole())
+                                                        && "client_a".equals(message.getToolName()))
+                                .allMatch(
+                                        message ->
+                                                message.getContent().contains(request.sessionId)));
+            }
+            runner.close();
+            receiving.get(5, TimeUnit.SECONDS);
+        } finally {
+            release.values().forEach(CountDownLatch::countDown);
+            receiver.shutdownNow();
+        }
+    }
+
+    private void awaitCondition(java.util.function.BooleanSupplier condition) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(20);
+        assertTrue(condition.getAsBoolean());
+    }
+
+    @Test
     void projectsPersistIndependentWorkspacesAndToolSelections() throws Exception {
         RunnerInfo info = register();
         ChatRequest first = request(info);

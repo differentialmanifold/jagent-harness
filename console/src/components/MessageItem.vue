@@ -7,7 +7,7 @@
 
     <template v-else>
       <div class="message-meta">
-        <el-tag size="small" :type="message.role === 'assistant' ? 'primary' : 'info'">{{ message.role }}</el-tag>
+        <el-tag size="small" :type="message.role === 'assistant' ? 'primary' : 'info'">{{ message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Agent' : 'Update' }}</el-tag>
         <el-tag
           v-if="message.stopReason === 'aborted'"
           size="small"
@@ -56,16 +56,9 @@
           aria-hidden="true"
         ></span></pre>
       </div>
-      <pre v-else-if="message.content"><span>{{ message.content }}</span><span
-        v-if="message.streaming"
-        class="stream-cursor"
-        aria-hidden="true"
-      ></span></pre>
-      <pre v-if="message.reasoningContent && message.content"><span>{{ message.content }}</span><span
-        v-if="message.streaming"
-        class="stream-cursor"
-        aria-hidden="true"
-      ></span></pre>
+      <MarkdownContent v-if="message.role === 'assistant' && message.content" :content="message.content" />
+      <p v-else-if="message.content" class="message-text">{{ message.content }}</p>
+      <span v-if="message.streaming && message.content" class="stream-cursor" aria-hidden="true"></span>
     </template>
   </article>
 </template>
@@ -75,6 +68,7 @@ import { computed } from 'vue'
 import { ElImage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import ToolMessage from './ToolMessage.vue'
+import MarkdownContent from './MarkdownContent.vue'
 import { formatDuration } from '../utils/format'
 import { messageClass } from '../utils/toolDisplay'
 import { isDisplayableImageUrl } from '../utils/images'

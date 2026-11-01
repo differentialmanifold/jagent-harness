@@ -3,6 +3,17 @@ package io.github.differentialmanifold.jagentharness.core.session;
 import java.util.List;
 
 public interface SessionManager {
+    default SessionRecord createSession(
+            String title,
+            String workspacePath,
+            String projectName,
+            String projectId,
+            String ownerAgentId) {
+        if (ownerAgentId != null)
+            throw new UnsupportedOperationException(
+                    "Project ownership is not supported by this manager");
+        return createSession(title, workspacePath, projectName, projectId);
+    }
 
     SessionRecord createSession(String title, String workspacePath);
 
