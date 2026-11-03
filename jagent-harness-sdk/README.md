@@ -12,12 +12,12 @@ Add these dependencies to a Spring Boot application:
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>2.0.0</version>
+  <version>2.1.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-store-jdbc</artifactId>
-  <version>2.0.0</version>
+  <version>2.1.0</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>
@@ -58,6 +58,8 @@ The server owns the agent loop, model calls, and conversation history. Client ap
 The host may also register server-side tools as `ToolDefinition` beans or use `ToolProvider`. Client tools implement the same Java contract but stay in their own application. Tool names must be unique across the combined catalog.
 
 Optional skills are Markdown instructions stored through the console or knowledge-file API. Import a ZIP containing `skills/{name}/SKILL.md`, a skill directory, or `SKILL.md` directly at the archive root. Supporting files keep their paths relative to `SKILL.md`. For a root-level skill, its descriptor name (or ZIP filename when unnamed) determines the destination directory. Skills guide tool use; they do not contain tool implementations.
+
+A skill can declare exact MCP dependencies in `tool_dependencies`; servers with `exposure: "on_skill"` expose those tools only after the main Skill is loaded, retaining activation for the session. Existing servers default to `eager`. JDBC persists activations across restarts; the memory fallback does not. See the [MCP tool loading guide](../docs/skill-mcp-loading.md).
 
 ## Select modules and extension points
 

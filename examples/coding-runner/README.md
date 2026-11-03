@@ -18,10 +18,10 @@ Build from the repository root, or use a release containing the coding runner:
 mvn -pl examples/coding-runner -am package
 ```
 
-Copy `examples/coding-runner/target/jagent-coding-runner-2.0.0.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
+Copy `examples/coding-runner/target/jagent-coding-runner-2.1.0.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
 
 ```sh
-java -jar jagent-coding-runner-2.0.0.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.1.0.jar --server https://agent.example.com --name linux-dev
 ```
 
 Open the web frontend wherever it is hosted, add a project, and choose **linux-dev**. Leave the workspace empty for a new directory under `~/.jagent/workspaces/user/`, or browse an existing directory on that terminal. One runner can execute work for multiple projects with different directories.
@@ -51,7 +51,7 @@ Jobs can be delivered again after a disconnect. The runner journals acceptance b
 To recover pending results after interruption, stop `serve`, inspect the conversation and local effects, and explicitly submit the saved results:
 
 ```sh
-java -jar jagent-coding-runner-2.0.0.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.1.0.jar recover --server https://agent.example.com --session ses_example
 ```
 
 Use the same home and executable version. The saved job supplies its project workspace and tool selection. Missing or unfinished results are reported as `UNKNOWN`; the model may issue new calls after receiving them. Restart `serve` afterwards.

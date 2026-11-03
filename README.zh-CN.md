@@ -15,6 +15,8 @@
 
 共享 Harness 提供模型调用、上下文管理和服务端工具，以统一的会话与虚拟文件存储作为支撑。
 
+业务 Skill 可声明 MCP 工具依赖，在读取 Skill 后才向模型提供对应接口，并在同一会话内持续可用。配置与示例见 [随 Skill 按需加载 MCP 工具](docs/skill-mcp-loading.zh-CN.md)。
+
 跟随 [Agent 上手示例](examples/personal-agents/README.zh-CN.md)，体验从提出目标到规划、执行和验证的过程。
 
 ## 三个部分，一套协议
@@ -103,7 +105,7 @@ node scripts/dev.mjs
 - [Java 客户端 SDK](sdk/java/README.md)：通过 `AgentRunner` 托管原生工具，或通过 `AgentClient` 发起对话。
 - [HTTP/JSON 协议](protocol/README.md)：实现其他语言的 Runner 或其他形式的前端。
 
-除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `2.0.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
+除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `2.1.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
 
 源码目录按职责划分：`jagent-harness-sdk/` 是服务端库，`sdk/java/` 是包含 Runner 运行能力的通用客户端 SDK，`examples/` 是服务端与 coding 工具宿主示例，`console/` 是前端，`protocol/` 是跨语言协议及其测试。
 

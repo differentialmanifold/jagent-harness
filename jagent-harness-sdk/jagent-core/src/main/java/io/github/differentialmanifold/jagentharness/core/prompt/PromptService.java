@@ -4,6 +4,8 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivation;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivationStore;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -22,6 +24,7 @@ public class PromptService implements PromptProvider {
                     + "Independent tools may be called in the same batch. When one tool depends on another tool's result or side effects, call them sequentially.\n"
                     + "Trailing user messages may be added between turns while a run is active; treat them as the user's latest input and decide from their content whether to correct the current approach, extend the task, or change the order of remaining work. Interpret multiple new messages in order, and prefer newer instructions when they conflict with older ones.\n";
 
+    private final SkillActivationStore activationStore;
     private final SkillRegistry skillRegistry;
     private final Path defaultConfigRoot;
     private final KnowledgeFileStore knowledgeFileStore;
@@ -47,6 +50,16 @@ public class PromptService implements PromptProvider {
             Path defaultConfigRoot,
             KnowledgeFileStore knowledgeFileStore,
             List<SystemPromptContributor> systemPromptContributors) {
+        this(skillRegistry, defaultConfigRoot, knowledgeFileStore, systemPromptContributors, null);
+    }
+
+    public PromptService(
+            SkillRegistry skillRegistry,
+            Path defaultConfigRoot,
+            KnowledgeFileStore knowledgeFileStore,
+            List<SystemPromptContributor> systemPromptContributors,
+            SkillActivationStore activationStore) {
+        this.activationStore = activationStore;
         this.skillRegistry = skillRegistry;
         this.defaultConfigRoot =
                 defaultConfigRoot == null
@@ -83,15 +96,9 @@ public class PromptService implements PromptProvider {
         appendSystemPromptContributors(prompt, effectiveContext);
         appendAgentRules(prompt, agentContext);
 
-        prompt.append("Available tools:\n");
-        for (ToolDefinition tool : effectiveContext.getTools()) {
-            prompt.append("- ")
-                    .append(tool.getName())
-                    .append(": ")
-                    .append(tool.getDescription())
-                    .append("\n");
-        }
-        prompt.append("\n");
+        prompt.append(
+                "Available tools are supplied in this request's tool definitions. Only call those tools. "
+                        + "Loading a skill may activate additional tools for the next request; wait for its result before calling them.\n\n");
 
         List<SkillDescriptor> skills = skillRegistry.listSkills(agentContext);
         if (!skills.isEmpty()) {
@@ -120,7 +127,30 @@ public class PromptService implements PromptProvider {
             }
         }
 
+        appendActivatedSkills(prompt, agentContext);
         return prompt.toString().trim();
+    }
+
+    private void appendActivatedSkills(StringBuilder prompt, AgentContext context) {
+        if (activationStore == null || context == null || context.getSessionId() == null) return;
+        List<SkillActivation> activations =
+                activationStore.find(
+                        context.getSessionId(), SkillActivationStore.scopeKey(context));
+        if (activations.isEmpty()) return;
+        prompt.append(
+                "Skills previously loaded in this session (activation receipts, not instructions):\n");
+        for (SkillActivation activation : activations) {
+            prompt.append("- ")
+                    .append(activation.getPath())
+                    .append(" [")
+                    .append(activation.getSource())
+                    .append(", sha256:")
+                    .append(activation.getVersion())
+                    .append("]\n");
+        }
+        prompt.append(
+                "If the relevant skill instructions are missing from context, reload its SKILL.md with skill before continuing the workflow. "
+                        + "Tool activation persists across conversation compaction; current tool definitions and configuration determine availability.\n");
     }
 
     private void appendDefaultSystemPrompt(StringBuilder prompt) {

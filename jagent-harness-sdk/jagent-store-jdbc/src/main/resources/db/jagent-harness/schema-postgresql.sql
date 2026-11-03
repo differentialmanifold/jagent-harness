@@ -303,3 +303,13 @@ create table if not exists personal_learning_changes (
     unique (application_id, agent_id, revision)
 );
 create index if not exists ix_personal_learning_path on personal_learning_changes(application_id, agent_id, path, revision);
+
+-- Session-level skill activations are independent of messages and compaction state.
+create table if not exists skill_activations (
+    application_id varchar(128) not null,
+    session_id varchar(64) not null,
+    scope_key varchar(256) not null,
+    activation_id varchar(64) not null,
+    activation_json text not null,
+    primary key (application_id, session_id, scope_key, activation_id)
+);

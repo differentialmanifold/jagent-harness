@@ -12,6 +12,10 @@ public class McpServerConfig {
 
     public static final String STREAMABLE_HTTP = "streamable-http";
 
+    public static final String EAGER = "eager";
+    public static final String ON_SKILL = "on_skill";
+
+    private String exposure = EAGER;
     private String name;
     private String transport = STREAMABLE_HTTP;
     private String url;
@@ -26,6 +30,7 @@ public class McpServerConfig {
     public McpServerConfig copy() {
         McpServerConfig copy = new McpServerConfig();
         copy.name = name;
+        copy.exposure = exposure;
         copy.transport = transport;
         copy.url = url;
         copy.enabled = enabled;
@@ -107,6 +112,14 @@ public class McpServerConfig {
 
     public void setRequestTimeoutSeconds(int requestTimeoutSeconds) {
         this.requestTimeoutSeconds = requestTimeoutSeconds;
+    }
+
+    public String getExposure() {
+        return exposure;
+    }
+
+    public void setExposure(String exposure) {
+        this.exposure = exposure;
     }
 
     public List<String> getEnabledTools() {

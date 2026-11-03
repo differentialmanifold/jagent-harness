@@ -123,7 +123,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Close, Picture, Top } from '@element-plus/icons-vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import MessageItem from './MessageItem.vue'
@@ -133,6 +133,7 @@ import ComposerInput from './ComposerInput.vue'
 import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
+  active: { type: Boolean, default: true },
   composerRows: { type: Number, default: 3 },
   showModelStatus: { type: Boolean, default: true },
   allowImages: { type: Boolean, default: true },
@@ -219,6 +220,25 @@ watch(
   }
 )
 
+// Keep the reading position while the mounted panel is hidden by its parent.
+watch(() => props.active, async (active) => {
+  if (!active) {
+    if (messagesEl.value) lastScrollTop = messagesEl.value.scrollTop
+    if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame)
+    scrollFrame = null
+    return
+  }
+  await nextTick()
+  const el = messagesEl.value
+  if (!props.active || !el) return
+  el.scrollTop = autoFollowMessages.value ? el.scrollHeight : lastScrollTop
+  lastScrollTop = el.scrollTop
+})
+
+onBeforeUnmount(() => {
+  if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame)
+})
+
 function submit() {
   if (!canSubmit.value) return
   autoFollowMessages.value = true
@@ -269,7 +289,7 @@ function pendingInputTitle(input) {
 
 function handleMessagesScroll() {
   const el = messagesEl.value
-  if (!el) return
+  if (!props.active || !el) return
   const scrollingUp = el.scrollTop < lastScrollTop - 2
   lastScrollTop = el.scrollTop
 
@@ -283,13 +303,14 @@ function handleMessagesScroll() {
 }
 
 function scrollMessagesToBottom(options = {}) {
+  if (!props.active) return
   if (!options.force && !autoFollowMessages.value) return
   if (scrollFrame) return
   scrollFrame = window.requestAnimationFrame(async () => {
     scrollFrame = null
     await nextTick()
     const el = messagesEl.value
-    if (!el) return
+    if (!props.active || !el) return
     if (!options.force && !autoFollowMessages.value) return
     el.scrollTop = el.scrollHeight
     lastScrollTop = el.scrollTop

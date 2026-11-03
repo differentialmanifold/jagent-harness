@@ -27,6 +27,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolContextFactory
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolSnapshot;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
@@ -239,7 +240,9 @@ public class AgentRunner implements AgentHarness {
                         AgentEvent.MESSAGE_START,
                         singleton("turnIndex", turnCount));
 
-                Collection<ToolDefinition> tools = toolRegistry.all(toolContext);
+                Map<String, ToolDefinition> requestTools =
+                        ToolSnapshot.capture(toolRegistry.all(toolContext));
+                Collection<ToolDefinition> tools = requestTools.values();
                 ModelProvider provider = requireProvider();
                 String systemPrompt =
                         promptProvider.buildSystemPrompt(new PromptContext(tools, toolContext));
@@ -314,7 +317,8 @@ public class AgentRunner implements AgentHarness {
                     for (ToolCall call : response.getToolCalls()) {
                         call.setToolCallId(Ids.newId("call"));
                         call.setClientExecution(
-                                toolRegistry.isClientTool(call.getName(), toolContext));
+                                requestTools.containsKey(call.getName())
+                                        && toolRegistry.isClientTool(call.getName(), toolContext));
                     }
                 }
                 if (effectiveOptions.getFinalAnswerMapper() != null
@@ -359,9 +363,10 @@ public class AgentRunner implements AgentHarness {
                                     turnId,
                                     toolContext,
                                     response.getToolCalls(),
-                                    parentMessageId);
+                                    parentMessageId,
+                                    requestTools);
                     for (ToolCall call : response.getToolCalls()) {
-                        if (toolRegistry.isClientTool(call.getName(), toolContext)) {
+                        if (call.isClientExecution()) {
                             pendingClientCalls.add(call);
                         }
                     }
@@ -500,12 +505,13 @@ public class AgentRunner implements AgentHarness {
             String turnId,
             ToolContext toolContext,
             List<ToolCall> toolCalls,
-            String parentMessageId) {
+            String parentMessageId,
+            Map<String, ToolDefinition> requestTools) {
         StopSignal stopSignal = toolContext.getStopSignal();
         for (int index = 0; index < toolCalls.size(); index++) {
             ToolCall call = toolCalls.get(index);
             // Execute all server tools before yielding the client batch.
-            if (toolRegistry.isClientTool(call.getName(), toolContext)) continue;
+            if (call.isClientExecution()) continue;
             try {
                 stopSignal.throwIfAborted();
             } catch (StopRequestedException e) {
@@ -525,7 +531,7 @@ public class AgentRunner implements AgentHarness {
 
             ToolExecutionResult result;
             try {
-                result = executeToolCall(toolContext, call);
+                result = executeToolCall(toolContext, call, requestTools);
                 stopSignal.throwIfAborted();
             } catch (StopRequestedException e) {
                 appendStoppedToolMessages(
@@ -560,15 +566,19 @@ public class AgentRunner implements AgentHarness {
         return parentMessageId;
     }
 
-    private ToolExecutionResult executeToolCall(ToolContext toolContext, ToolCall call) {
+    private ToolExecutionResult executeToolCall(
+            ToolContext toolContext, ToolCall call, Map<String, ToolDefinition> requestTools) {
         ToolContext callContext = toolContext.forToolCall(call.getToolCallId(), call.getName());
         StopSignal stopSignal = callContext.getStopSignal();
         stopSignal.throwIfAborted();
-        ToolDefinition tool = toolRegistry.get(call.getName(), toolContext);
+        ToolDefinition tool = requestTools.get(call.getName());
         if (tool == null) {
             return ToolExecutionResult.error("Tool not found: " + call.getName());
         }
         try (StopRegistration ignored = stopSignal.onStop(Thread.currentThread()::interrupt)) {
+            if (toolRegistry.get(call.getName(), toolContext) == null) {
+                return ToolExecutionResult.error("Tool is no longer available: " + call.getName());
+            }
             JsonNode arguments = parseArguments(call.getArgumentsJson());
             ToolExecutionResult result = tool.execute(callContext, arguments);
             stopSignal.throwIfAborted();

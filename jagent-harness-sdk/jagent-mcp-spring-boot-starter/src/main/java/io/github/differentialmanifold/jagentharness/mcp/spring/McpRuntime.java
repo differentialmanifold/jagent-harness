@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
+import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.skill.*;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolProvider;
 import io.github.differentialmanifold.jagentharness.mcp.McpClient;
 import io.github.differentialmanifold.jagentharness.mcp.McpRemoteTool;
@@ -13,24 +17,36 @@ import io.github.differentialmanifold.jagentharness.mcp.McpToolDescriptor;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
-public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializingSingleton {
+public class McpRuntime
+        implements ToolProvider, SkillToolResolver, AutoCloseable, SmartInitializingSingleton {
 
     private static final String DEFAULT_SCOPE = "@default";
 
     private final McpConfigurationManager configurationManager;
     private final ObjectMapper objectMapper;
+    private final SkillActivationStore activationStore;
     private final Map<String, Scope> scopes = new LinkedHashMap<String, Scope>();
     private final List<Scope> retiredScopes = new ArrayList<Scope>();
     private volatile boolean initialized;
 
     public McpRuntime(McpConfigurationManager configurationManager, ObjectMapper objectMapper) {
+        this(configurationManager, objectMapper, new InMemorySkillActivationStore());
+    }
+
+    public McpRuntime(
+            McpConfigurationManager configurationManager,
+            ObjectMapper objectMapper,
+            SkillActivationStore activationStore) {
         this.configurationManager = configurationManager;
         this.objectMapper = objectMapper;
+        this.activationStore = activationStore;
     }
 
     @Override
@@ -49,15 +65,63 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
 
     @Override
     public Collection<ToolDefinition> listTools(AgentContext context) {
+        Scope current = scopeFor(context);
+        Set<String> activated = activatedKeys(context);
+        List<ToolDefinition> visible = new ArrayList<>();
+        for (ManagedTool tool : current.tools) {
+            if (!tool.deferred || activated.contains(tool.key())) visible.add(tool);
+        }
+        return Collections.unmodifiableList(visible);
+    }
+
+    @Override
+    public List<SkillToolBinding> resolve(
+            AgentContext context, List<SkillToolDependency> dependencies) {
+        Scope current = scopeFor(context);
+        Map<String, SkillToolBinding> bindings = new LinkedHashMap<>();
+        for (SkillToolDependency dependency : dependencies) {
+            for (String name : dependency.getTools()) {
+                String key = dependency.getServer() + "/" + name;
+                ManagedTool tool = current.byKey.get(key);
+                if (tool == null) {
+                    McpServerRuntimeStatus status = current.statuses.get(dependency.getServer());
+                    throw new IllegalArgumentException(
+                            "Required MCP tool is unavailable or disabled: "
+                                    + key
+                                    + (status == null
+                                            ? " (server not configured in this scope)"
+                                            : " (check MCP status and enabledTools)"));
+                }
+                if (!tool.schema.isObject()
+                        || (tool.schema.has("type")
+                                && !"object".equals(tool.schema.path("type").asText()))) {
+                    throw new IllegalArgumentException(
+                            "Required MCP tool has an invalid object input schema: " + key);
+                }
+                bindings.put(
+                        key, new SkillToolBinding(dependency.getServer(), name, tool.getName()));
+            }
+        }
+        return new ArrayList<>(bindings.values());
+    }
+
+    private Scope scopeFor(AgentContext context) {
         ensureInitialized();
-        String projectId = context == null ? null : context.getProjectId();
-        boolean personal =
-                io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope.globalFor(
-                                context)
-                        .equals(
-                                io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope
-                                        .agentGlobal());
-        return scope(projectId, personal).tools;
+        boolean personal = KnowledgeScope.agentGlobal().equals(KnowledgeScope.globalFor(context));
+        return scope(context == null ? null : context.getProjectId(), personal);
+    }
+
+    private Set<String> activatedKeys(AgentContext context) {
+        Set<String> keys = new HashSet<>();
+        if (context != null && context.getSessionId() != null) {
+            for (SkillActivation activation :
+                    activationStore.find(
+                            context.getSessionId(), SkillActivationStore.scopeKey(context))) {
+                for (SkillToolBinding binding : activation.getTools())
+                    keys.add(binding.getServer() + "/" + binding.getTool());
+            }
+        }
+        return keys;
     }
 
     public synchronized Map<String, McpServerRuntimeStatus> statuses(String projectId) {
@@ -142,7 +206,7 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
     }
 
     private Scope loadScope(McpConfigSnapshot snapshot) {
-        List<ToolDefinition> tools = new ArrayList<ToolDefinition>();
+        List<ManagedTool> tools = new ArrayList<>();
         Map<String, McpServerRuntimeStatus> statuses =
                 new LinkedHashMap<String, McpServerRuntimeStatus>();
         List<McpClient> clients = new ArrayList<McpClient>();
@@ -165,7 +229,7 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                 List<McpToolDescriptor> descriptors = client.listTools();
                 List<String> remoteNames = new ArrayList<String>();
                 List<String> availableNames = new ArrayList<String>();
-                List<ToolDefinition> serverTools = new ArrayList<ToolDefinition>();
+                List<ManagedTool> serverTools = new ArrayList<>();
                 Map<String, String> serverModelNames = new LinkedHashMap<String, String>();
                 for (McpToolDescriptor descriptor : descriptors) {
                     availableNames.add(descriptor.getName());
@@ -186,7 +250,11 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
                                         + " and "
                                         + qualifiedName);
                     }
-                    serverTools.add(tool);
+                    serverTools.add(
+                            new ManagedTool(
+                                    serverName,
+                                    tool,
+                                    McpServerConfig.ON_SKILL.equals(config.getExposure())));
                     remoteNames.add(descriptor.getName());
                 }
                 modelNames.putAll(serverModelNames);
@@ -264,19 +332,70 @@ public class McpRuntime implements ToolProvider, AutoCloseable, SmartInitializin
         }
     }
 
+    private final class ManagedTool implements ToolDefinition {
+        private final String server;
+        private final McpRemoteTool delegate;
+        private final boolean deferred;
+        private final JsonNode schema;
+
+        private ManagedTool(String server, McpRemoteTool delegate, boolean deferred) {
+            this.server = server;
+            this.delegate = delegate;
+            this.deferred = deferred;
+            this.schema = delegate.getParametersSchema().deepCopy();
+        }
+
+        private String key() {
+            return server + "/" + delegate.getRemoteName();
+        }
+
+        @Override
+        public String getName() {
+            return delegate.getName();
+        }
+
+        @Override
+        public String getDescription() {
+            return delegate.getDescription();
+        }
+
+        @Override
+        public JsonNode getParametersSchema() {
+            return schema.deepCopy();
+        }
+
+        @Override
+        public ToolExecutionResult execute(ToolContext context, JsonNode arguments)
+                throws Exception {
+            // A request snapshot cannot keep a revoked or reconfigured connection usable.
+            if (scopeFor(context).byKey.get(key()) != this
+                    || (deferred && !activatedKeys(context).contains(key()))) {
+                return ToolExecutionResult.error(
+                        "MCP tool configuration changed or tool is no longer available: "
+                                + getName()
+                                + ". Retry using the next model request's tool definitions.");
+            }
+            return delegate.execute(context, arguments);
+        }
+    }
+
     private static class Scope {
         private final String fingerprint;
-        private final Collection<ToolDefinition> tools;
+        private final Collection<ManagedTool> tools;
+        private final Map<String, ManagedTool> byKey;
         private final Map<String, McpServerRuntimeStatus> statuses;
         private final List<McpClient> clients;
 
         private Scope(
                 String fingerprint,
-                List<ToolDefinition> tools,
+                List<ManagedTool> tools,
                 Map<String, McpServerRuntimeStatus> statuses,
                 List<McpClient> clients) {
             this.fingerprint = fingerprint;
-            this.tools = Collections.unmodifiableList(new ArrayList<ToolDefinition>(tools));
+            this.tools = Collections.unmodifiableList(new ArrayList<>(tools));
+            Map<String, ManagedTool> index = new LinkedHashMap<>();
+            for (ManagedTool tool : tools) index.put(tool.key(), tool);
+            this.byKey = Collections.unmodifiableMap(index);
             this.statuses =
                     Collections.unmodifiableMap(
                             new LinkedHashMap<String, McpServerRuntimeStatus>(statuses));

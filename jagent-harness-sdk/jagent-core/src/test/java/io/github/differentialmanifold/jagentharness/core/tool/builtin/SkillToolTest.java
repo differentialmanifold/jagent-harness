@@ -9,11 +9,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.fs.TestKnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.skill.*;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -164,6 +166,58 @@ class SkillToolTest {
         JsonNode result = execute(objectMapper, tool, "skills/review/SKILL.md");
 
         assertEquals("# Project Review\n", result.path("content").asText());
+    }
+
+    @Test
+    void recordsTheSelectedProjectAndPersonalSkillSource() throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        TestKnowledgeFileStore files = new TestKnowledgeFileStore();
+        InMemorySkillActivationStore states = new InMemorySkillActivationStore();
+        SkillActivationService activations = new SkillActivationService(states, () -> null);
+        SkillTool tool = new SkillTool(json, files, activations);
+        String path = "skills/review/SKILL.md";
+        files.writeFile(KnowledgeScope.global(), path, "Global", "text/markdown");
+        files.writeFile(KnowledgeScope.project("project-1"), path, "Project", "text/markdown");
+        files.writeFile(KnowledgeScope.agentGlobal(), path, "Agent default", "text/markdown");
+        files.writeFile(KnowledgeScope.agent("a1"), path, "Agent override", "text/markdown");
+        execute(json, tool, path);
+        assertEquals(
+                "project:project-1",
+                states.find("session", "project:project-1").get(0).getSource());
+        ToolContext personal =
+                new ToolContext(
+                        "session",
+                        "run",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", "a1"));
+        tool.execute(personal, json.createObjectNode().put("path", path));
+        assertEquals("agent:a1", states.find("session", "agent:a1").get(0).getSource());
+        files.deleteFile(KnowledgeScope.agent("a1"), path);
+        JsonNode fallback =
+                json.readTree(
+                        tool.execute(personal, json.createObjectNode().put("path", path))
+                                .getContent());
+        assertEquals("Agent default", fallback.path("content").asText());
+        assertEquals(2, states.find("session", "agent:a1").size());
+    }
+
+    @Test
+    void reportsMissingActivationSupportInsteadOfSilentlyIgnoringDependencies() {
+        ObjectMapper json = new ObjectMapper();
+        TestKnowledgeFileStore files = new TestKnowledgeFileStore();
+        files.writeFile(
+                "skills/business/SKILL.md",
+                "---\ntool_dependencies:\n  - server: merchant\n    tools: [get_order]\n---\n",
+                "text/markdown");
+        assertThrows(
+                IllegalStateException.class,
+                () -> execute(json, new SkillTool(json, files), "skills/business/SKILL.md"));
+        InMemorySkillActivationStore states = new InMemorySkillActivationStore();
+        SkillTool tool = new SkillTool(json, files, new SkillActivationService(states, () -> null));
+        assertThrows(
+                IllegalStateException.class, () -> execute(json, tool, "skills/business/SKILL.md"));
+        assertTrue(states.find("session", "project:project-1").isEmpty());
     }
 
     private JsonNode execute(ObjectMapper objectMapper, SkillTool tool, String path)
