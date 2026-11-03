@@ -3,14 +3,19 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.*;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivationStore;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
-import io.github.differentialmanifold.jagentharness.spring.ModelAccessTokenProvider;
-import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
-import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
+import io.github.differentialmanifold.jagentharness.core.tool.builtin.SkillTool;
 import io.github.differentialmanifold.jagentharness.mcp.spring.McpRuntime;
+import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
+import io.github.differentialmanifold.jagentharness.spring.ModelAccessTokenProvider;
+import io.github.differentialmanifold.jagentharness.store.jdbc.JdbcSkillActivationStore;
 import io.github.differentialmanifold.jagentharness.store.jdbc.JdbcStoreProperties;
 import java.util.Collections;
 import org.junit.jupiter.api.Test;
@@ -74,6 +79,43 @@ class ServerExtensionTest {
     }
 
     @Test
+    void skillActivationAndPromptShareTheJdbcStore() {
+        runner.run(
+                context -> {
+                    assertThat(context).hasNotFailed().hasSingleBean(SkillActivationStore.class);
+                    SkillActivationStore activations = context.getBean(SkillActivationStore.class);
+                    assertThat(activations).isInstanceOf(JdbcSkillActivationStore.class);
+                    String path = "skills/session-recall/SKILL.md";
+                    context.getBean(KnowledgeFileStore.class)
+                            .writeFile(
+                                    path,
+                                    "# Session recall\nBusiness instructions.",
+                                    "text/markdown");
+                    ToolContext toolContext = new ToolContext("activation-session", "run", "turn");
+                    try {
+                        context.getBean(SkillTool.class)
+                                .execute(
+                                        toolContext,
+                                        context.getBean(ObjectMapper.class)
+                                                .createObjectNode()
+                                                .put("path", path));
+                    } catch (Exception error) {
+                        throw new AssertionError(error);
+                    }
+                    assertThat(activations.find("activation-session", "global")).hasSize(1);
+                    String prompt =
+                            context.getBean(PromptProvider.class)
+                                    .buildSystemPrompt(
+                                            new PromptContext(
+                                                    Collections.emptyList(), toolContext));
+                    assertThat(prompt)
+                            .contains("activation receipts, not instructions")
+                            .contains(path)
+                            .contains("reload its SKILL.md");
+                });
+    }
+
+    @Test
     void starterCanBeDisabledByHost() {
         runner.withPropertyValues("harness.enabled=false")
                 .run(
@@ -96,32 +138,45 @@ class ServerExtensionTest {
                         "harness.mcp.enabled=false",
                         "harness.protocol.token=configured-token",
                         "server.address=0.0.0.0")
-                .run(context -> {
-                    assertThat(context).hasNotFailed().hasSingleBean(ApiAuthenticationFilter.class);
-                    HarnessProperties properties = context.getBean(HarnessProperties.class);
-                    assertThat(properties.getModel().getProvider()).isEqualTo("scripted");
-                    assertThat(properties.getModel().getModel()).isEqualTo("configured-model");
-                    assertThat(properties.getModel().getBaseUrl()).isEqualTo("https://model.example/v1");
-                    assertThat(properties.getModel().getTimeoutSeconds()).isEqualTo(45);
-                    assertThat(properties.getCompaction().getThresholdRatio()).isEqualTo(0.65);
-                    ConsoleProperties console = context.getBean(ConsoleProperties.class);
-                    assertThat(console.getAllowedOrigins()).containsExactly("https://console.example");
-                    assertThat(console.getMaxChatRequestBodySize().toMegabytes()).isEqualTo(2);
-                    assertThat(context.getBean(JdbcStoreProperties.class).getApplicationId())
-                            .isEqualTo("config-binding-test");
-                    assertThat(context).doesNotHaveBean(McpRuntime.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context)
+                                    .hasNotFailed()
+                                    .hasSingleBean(ApiAuthenticationFilter.class);
+                            HarnessProperties properties = context.getBean(HarnessProperties.class);
+                            assertThat(properties.getModel().getProvider()).isEqualTo("scripted");
+                            assertThat(properties.getModel().getModel())
+                                    .isEqualTo("configured-model");
+                            assertThat(properties.getModel().getBaseUrl())
+                                    .isEqualTo("https://model.example/v1");
+                            assertThat(properties.getModel().getTimeoutSeconds()).isEqualTo(45);
+                            assertThat(properties.getCompaction().getThresholdRatio())
+                                    .isEqualTo(0.65);
+                            ConsoleProperties console = context.getBean(ConsoleProperties.class);
+                            assertThat(console.getAllowedOrigins())
+                                    .containsExactly("https://console.example");
+                            assertThat(console.getMaxChatRequestBodySize().toMegabytes())
+                                    .isEqualTo(2);
+                            assertThat(
+                                            context.getBean(JdbcStoreProperties.class)
+                                                    .getApplicationId())
+                                    .isEqualTo("config-binding-test");
+                            assertThat(context).doesNotHaveBean(McpRuntime.class);
+                        });
     }
 
     @Test
     void consoleCanBeDisabledWithoutDisablingTheHarness() {
         runner.withPropertyValues("harness.console.enabled=false")
-                .run(context -> {
-                    assertThat(context).hasNotFailed().hasSingleBean(AgentHarness.class)
-                            .doesNotHaveBean(ChatService.class)
-                            .doesNotHaveBean(VirtualFileController.class)
-                            .doesNotHaveBean(ProviderController.class);
-                });
+                .run(
+                        context -> {
+                            assertThat(context)
+                                    .hasNotFailed()
+                                    .hasSingleBean(AgentHarness.class)
+                                    .doesNotHaveBean(ChatService.class)
+                                    .doesNotHaveBean(VirtualFileController.class)
+                                    .doesNotHaveBean(ProviderController.class);
+                        });
     }
 
     @Test

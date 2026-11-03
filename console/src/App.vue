@@ -43,7 +43,8 @@
           </el-radio-group>
           <span>{{ projectGroups.find(p => p.key === currentProjectKey)?.name || 'Choose a project' }}</span>
         </nav>
-        <ChatPanel v-if="projectView === 'chat'"
+        <ChatPanel v-show="projectView === 'chat'"
+          :active="projectView === 'chat'"
           v-model:draft="draft"
           :current-session="currentSession"
           :messages="messages"
@@ -66,7 +67,7 @@
           @stop="stopMessage"
         />
 
-        <ConfigurationPanel v-else ref="projectConfigurationRef" mode="project"
+        <ConfigurationPanel v-if="projectConfigurationVisited" v-show="projectView === 'configuration'" ref="projectConfigurationRef" mode="project"
           :project-groups="projectGroups" :current-project-key="currentProjectKey" :session-id="currentSession?.sessionId"
           :mcp-available="mcpAvailable" @changed="refreshAgentContext" @rename-project="openProjectRenameDialog" />
       </main>
@@ -124,9 +125,11 @@ import { useAgentHarness } from './composables/useAgentHarness'
 import { request } from './api/http'
 
 const activeView = ref('chat')
+const projectConfigurationVisited = ref(false)
 const projectView = ref('chat'), projectConfigurationRef = ref(null), personalPanelRef = ref(null)
 async function changeProjectView(view) {
   if (projectView.value === 'configuration' && await projectConfigurationRef.value?.beforeLeave?.() === false) return
+  if (view === 'configuration') projectConfigurationVisited.value = true
   projectView.value = view
 }
 const mcpAvailable = ref(false)

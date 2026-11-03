@@ -44,6 +44,10 @@ public class McpConfigValidator {
         }
         McpServerConfig config = input.copy();
         config.setName(name);
+        if (!McpServerConfig.EAGER.equals(config.getExposure())
+                && !McpServerConfig.ON_SKILL.equals(config.getExposure())) {
+            throw new IllegalArgumentException("MCP exposure must be eager or on_skill: " + name);
+        }
         if (!McpServerConfig.STREAMABLE_HTTP.equals(config.getTransport())) {
             throw new IllegalArgumentException(
                     "Unsupported MCP transport for " + name + ": " + config.getTransport());

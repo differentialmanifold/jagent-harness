@@ -7,6 +7,7 @@ import io.github.differentialmanifold.jagentharness.core.fs.*;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
 import io.github.differentialmanifold.jagentharness.core.prompt.*;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivationStore;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import javax.sql.DataSource;
@@ -31,6 +32,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @ConditionalOnClass(JdbcTemplate.class)
 @EnableConfigurationProperties({JdbcStoreProperties.class, JdbcRunStopProperties.class})
 public class JdbcStoreAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(SkillActivationStore.class)
+    public JdbcSkillActivationStore jdbcSkillActivationStore(
+            JdbcTemplate db,
+            JdbcSchemaInitializer schema,
+            ObjectMapper json,
+            JdbcStoreProperties properties) {
+        return new JdbcSkillActivationStore(db, json, properties);
+    }
 
     @Bean
     @ConditionalOnMissingBean(

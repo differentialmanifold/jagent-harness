@@ -1,7 +1,11 @@
 package io.github.differentialmanifold.jagentharness.core.prompt;
 
+import io.github.differentialmanifold.jagentharness.core.skill.SkillToolDependency;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -25,6 +29,50 @@ public final class SkillFileParser {
                         metadataString(skillFile.getMetadata(), "description"),
                         markdownDescriptor.getDescription());
         return new SkillDescriptor(name, description, filePath);
+    }
+
+    public static List<SkillToolDependency> readToolDependencies(String content) {
+        Map<String, Object> metadata = parseSkillFile(content).getMetadata();
+        if (!metadata.containsKey("tool_dependencies")) return Collections.emptyList();
+        Object raw = metadata.get("tool_dependencies");
+        if (!(raw instanceof List))
+            throw new IllegalArgumentException("tool_dependencies must be a list");
+        Map<String, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
+        for (Object item : (List<?>) raw) {
+            if (!(item instanceof Map))
+                throw new IllegalArgumentException(
+                        "Each tool dependency must contain server and tools");
+            Map<?, ?> entry = (Map<?, ?>) item;
+            for (Object key : entry.keySet()) {
+                if (!"server".equals(key) && !"tools".equals(key))
+                    throw new IllegalArgumentException("Unknown tool dependency field: " + key);
+            }
+            String server = dependencyName(entry.get("server"), "server");
+            if (!server.matches("[A-Za-z0-9_-]{1,64}"))
+                throw new IllegalArgumentException("Invalid MCP dependency server: " + server);
+            Object names = entry.get("tools");
+            if (!(names instanceof List) || ((List<?>) names).isEmpty())
+                throw new IllegalArgumentException(
+                        "Dependency tools must be a non-empty list: " + server);
+            LinkedHashSet<String> tools =
+                    grouped.computeIfAbsent(server, ignored -> new LinkedHashSet<>());
+            for (Object name : (List<?>) names) tools.add(dependencyName(name, "tool"));
+        }
+        List<SkillToolDependency> result = new ArrayList<>();
+        grouped.forEach(
+                (server, tools) ->
+                        result.add(new SkillToolDependency(server, new ArrayList<>(tools))));
+        return Collections.unmodifiableList(result);
+    }
+
+    private static String dependencyName(Object value, String field) {
+        if (!(value instanceof String)
+                || ((String) value).trim().isEmpty()
+                || "*".equals(((String) value).trim())) {
+            throw new IllegalArgumentException(
+                    "Dependency " + field + " must be an exact non-empty name (no wildcard)");
+        }
+        return ((String) value).trim();
     }
 
     private static SkillFile parseSkillFile(String content) {

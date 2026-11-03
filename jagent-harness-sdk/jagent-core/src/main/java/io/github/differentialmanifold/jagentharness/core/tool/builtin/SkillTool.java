@@ -7,24 +7,38 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivationService;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillToolBinding;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolArguments;
 import io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas;
+import java.util.Collections;
+import java.util.List;
 
 public class SkillTool implements ToolDefinition {
 
     private final ObjectMapper objectMapper;
     private final KnowledgeFileStore knowledgeFileStore;
+    private final SkillActivationService activationService;
 
     public SkillTool(ObjectMapper objectMapper) {
         this(objectMapper, null);
     }
 
     public SkillTool(ObjectMapper objectMapper, KnowledgeFileStore knowledgeFileStore) {
+        this(objectMapper, knowledgeFileStore, null);
+    }
+
+    public SkillTool(
+            ObjectMapper objectMapper,
+            KnowledgeFileStore knowledgeFileStore,
+            SkillActivationService activationService) {
         this.objectMapper = objectMapper;
         this.knowledgeFileStore = knowledgeFileStore;
+        this.activationService = activationService;
     }
 
     @Override
@@ -76,6 +90,11 @@ public class SkillTool implements ToolDefinition {
         }
         String personal =
                 context == null ? null : context.getAttribute("personalAgentId", String.class);
+        if (personal != null && personal.trim().isEmpty()) personal = null;
+        KnowledgeScope source =
+                personal == null
+                        ? KnowledgeScope.globalFor(context)
+                        : KnowledgeScope.agent(personal);
         KnowledgeFile file =
                 personal == null
                         ? null
@@ -85,20 +104,35 @@ public class SkillTool implements ToolDefinition {
                 && context != null
                 && context.getProjectId() != null
                 && !context.getProjectId().trim().isEmpty()) {
-            file =
-                    knowledgeFileStore.readFile(
-                            KnowledgeScope.project(context.getProjectId()), input);
+            source = KnowledgeScope.project(context.getProjectId());
+            file = knowledgeFileStore.readFile(source, input);
         }
         if (file == null) {
-            file = knowledgeFileStore.readFile(KnowledgeScope.globalFor(context), input);
+            source = KnowledgeScope.globalFor(context);
+            file = knowledgeFileStore.readFile(source, input);
         }
         if (file == null) {
             return null;
         }
-        return skillResult(file.getPath(), file.getContent());
+        List<SkillToolBinding> bindings = Collections.emptyList();
+        if (file.getPath().matches("skills/[^/]+/SKILL\\.md")) {
+            if (activationService != null) {
+                bindings =
+                        activationService.activate(
+                                context,
+                                file.getPath(),
+                                source.getType() + ":" + source.getId(),
+                                file.getContent());
+            } else if (!SkillFileParser.readToolDependencies(file.getContent()).isEmpty()) {
+                throw new IllegalStateException(
+                        "Skill tool dependencies require a SkillActivationService");
+            }
+        }
+        return skillResult(file.getPath(), file.getContent(), bindings);
     }
 
-    private ToolExecutionResult skillResult(String path, String content) {
+    private ToolExecutionResult skillResult(
+            String path, String content, List<SkillToolBinding> bindings) {
         ObjectNode result = objectMapper.createObjectNode();
         result.put("path", path);
         result.put("type", "text");
@@ -108,6 +142,12 @@ public class SkillTool implements ToolDefinition {
                 "resourceInstruction",
                 "Resolve relative resource paths against skillDirectory and load them with the skill tool, not the read tool.");
         result.put("content", content);
+        if (!bindings.isEmpty()) {
+            result.set("activatedTools", objectMapper.valueToTree(bindings));
+            result.put(
+                    "toolInstruction",
+                    "These tools are available starting with the next model request. Use their modelName values. They remain activated for this session, subject to current MCP configuration.");
+        }
         return ToolExecutionResult.of(result.toString());
     }
 }

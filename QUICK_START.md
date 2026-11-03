@@ -79,7 +79,7 @@ Set your model name, API endpoint, and API key, then start the server:
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-java -jar examples/server-demo/target/server-demo-2.0.0.jar
+java -jar examples/server-demo/target/server-demo-2.1.0.jar
 ```
 
 Omit the API key if your model endpoint does not require one. Wait for the server to report that it has started. SQLite storage is created automatically as `agent-server.db` in the working directory.
@@ -87,7 +87,7 @@ Omit the API key if your model endpoint does not require one. Wait for the serve
 ### 3. Terminal 2: runner
 
 ```sh
-java -jar examples/coding-runner/target/jagent-coding-runner-2.0.0.jar
+java -jar examples/coding-runner/target/jagent-coding-runner-2.1.0.jar
 ```
 
 No arguments or environment variables are needed. Wait for `Runner <machine-name> online`. The runner registers all coding tools and keeps receiving work. Choose project directories in the frontend after startup.
@@ -148,7 +148,7 @@ On the runner machine, set the remote address and token, then use the same start
 ```sh
 export JAGENT_SERVER_URL='https://agent.example.com'
 export JAGENT_CLIENT_TOKEN='your-shared-token'
-java -jar jagent-coding-runner-2.0.0.jar
+java -jar jagent-coding-runner-2.1.0.jar
 ```
 
 The standalone JAR includes the SDK and coding tools. See the [Runner guide](examples/coding-runner/README.md) for distribution and recovery.

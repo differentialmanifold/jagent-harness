@@ -428,6 +428,108 @@ class AgentRunnerDynamicToolTest {
         assertEquals(1, provider.calls);
     }
 
+    @Test
+    void newlyActivatedToolCannotExecuteInTheSameResponseBatchButPersistsForFollowups() {
+        FakeSessionStore store = new FakeSessionStore();
+        AtomicBoolean active = new AtomicBoolean();
+        AtomicInteger executions = new AtomicInteger();
+        ObjectMapper json = new ObjectMapper();
+        ToolDefinition load = testTool("skill", () -> active.set(true));
+        ToolDefinition business = testTool("merchant__refund", executions::incrementAndGet);
+        ToolRegistry tools =
+                new ToolRegistry(
+                        Collections.singletonList(load),
+                        Collections.singletonList(
+                                context ->
+                                        active.get()
+                                                ? Collections.singletonList(business)
+                                                : Collections.emptyList()));
+        AtomicInteger turns = new AtomicInteger();
+        ModelProvider provider =
+                new ModelProvider() {
+                    @Override
+                    public String getName() {
+                        return "dynamic-tool-test";
+                    }
+
+                    @Override
+                    public ModelResponse chat(ModelRequest request) {
+                        int turn = turns.incrementAndGet();
+                        boolean present =
+                                request.getTools().stream()
+                                        .anyMatch(
+                                                tool -> "merchant__refund".equals(tool.getName()));
+                        ModelResponse response = new ModelResponse();
+                        if (turn == 1) {
+                            assertFalse(present);
+                            response.setToolCalls(
+                                    Arrays.asList(
+                                            new ToolCall("1", "skill", "{}"),
+                                            new ToolCall("2", "merchant__refund", "{}")));
+                        } else if (turn == 2 || turn == 4) {
+                            assertTrue(present);
+                            assertEquals(turn == 2 ? 0 : 1, executions.get());
+                            response.setToolCalls(
+                                    Collections.singletonList(
+                                            new ToolCall("3", "merchant__refund", "{}")));
+                        } else response.setContent("done");
+                        return response;
+                    }
+                };
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        AgentRunner runner =
+                new AgentRunner(
+                        settings(),
+                        store,
+                        new DefaultAgentEventPublisher(json),
+                        context -> "system",
+                        tools,
+                        providers,
+                        new DefaultToolContextFactory(),
+                        request ->
+                                new ConversationContext(
+                                        request.getSystemPrompt(), request.getMessages()),
+                        json);
+        runner.run("s1", "refund", AgentRunOptions.empty());
+        assertEquals(1, executions.get());
+        assertTrue(
+                store.messages.stream()
+                        .anyMatch(
+                                message ->
+                                        message.getContent() != null
+                                                && message.getContent()
+                                                        .contains(
+                                                                "Tool not found: merchant__refund")));
+        runner.run("s1", "continue", AgentRunOptions.empty());
+        assertEquals(2, executions.get());
+    }
+
+    private ToolDefinition testTool(String name, Runnable effect) {
+        return new ToolDefinition() {
+            @Override
+            public String getName() {
+                return name;
+            }
+
+            @Override
+            public String getDescription() {
+                return name;
+            }
+
+            @Override
+            public JsonNode getParametersSchema() {
+                return new ObjectMapper().createObjectNode().put("type", "object");
+            }
+
+            @Override
+            public ToolExecutionResult execute(ToolContext context, JsonNode arguments) {
+                effect.run();
+                return ToolExecutionResult.of("ok");
+            }
+        };
+    }
+
     private AgentSettings settings() {
         AgentSettings settings = new AgentSettings();
         settings.setProvider("dynamic-tool-test");

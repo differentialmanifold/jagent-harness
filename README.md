@@ -6,6 +6,8 @@
 
 Work directly in a Project, or give a persistent Agent a goal to plan, track and follow through. JAgentHarness runs both layers on the server, while a lightweight Runner executes native tools where your files and applications live.
 
+Business skills can activate their declared MCP tools on demand and retain them for the session. See the [MCP tool loading guide](docs/skill-mcp-loading.md).
+
 ## Architecture
 
 ![Agent plans and tracks tasks; Project sessions carry out the work. Both run their agent loops on the server and share conversation and virtual file storage. A lightweight Runner executes native tools on the target machine.](assets/architecture.svg)
@@ -103,7 +105,7 @@ See [Quick start](QUICK_START.md) for independent startup, manual commands, remo
 - [Java client SDK](sdk/java/README.md): register native tools with `AgentRunner`, or start conversations with `AgentClient`.
 - [HTTP/JSON protocol](protocol/README.md): implement another runner or frontend.
 
-This source tree targets `2.0.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
+This source tree targets `2.1.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
 
 The source layout follows these roles: `jagent-harness-sdk/` contains the server libraries, `sdk/java/` contains the reusable client and runner runtime, `examples/` contains the server host and coding tool host, `console/` contains the frontend, and `protocol/` contains the language-independent contract and its tests.
 

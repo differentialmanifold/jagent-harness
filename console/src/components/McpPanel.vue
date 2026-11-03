@@ -88,6 +88,12 @@
             <div><dt>Protocol</dt><dd>{{ selectedServer.protocolVersion || '-' }}</dd></div>
             <div><dt>Connect timeout</dt><dd>{{ selectedServer.config.connectTimeoutSeconds }}s</dd></div>
             <div><dt>Request timeout</dt><dd>{{ selectedServer.config.requestTimeoutSeconds }}s</dd></div>
+            <div><dt>Tool loading</dt><dd>
+              <el-select v-model="serverExposureDraft" aria-label="MCP tool loading mode">
+                <el-option label="Always available" value="eager" />
+                <el-option label="Load with skill" value="on_skill" />
+              </el-select>
+            </dd></div>
             <div><dt>Enabled</dt><dd>{{ serverEnabledDraft ? 'Yes' : 'No' }}</dd></div>
           </dl>
 
@@ -106,6 +112,7 @@
               <div>
                 <h4>Tools</h4>
                 <p>{{ toolSelectionDraft.length }} of {{ availableToolNames.length }} enabled</p>
+                <p v-if="serverExposureDraft === 'on_skill'">Skills activate only their declared tools. Activated tools remain available for that session.</p>
               </div>
               <div class="mcp-detail-actions">
                 <el-button text :disabled="!availableToolNames.length" @click="selectAllTools">Select all</el-button>
@@ -247,6 +254,8 @@ const jsonDialogOpen = ref(false)
 const jsonDraft = ref('')
 const serverEnabledDraft = ref(true)
 const originalServerEnabled = ref(true)
+const serverExposureDraft = ref('eager')
+const originalServerExposure = ref('eager')
 const toolSelectionDraft = ref([])
 const originalToolSelection = ref([])
 const debugDialogOpen = ref(false)
@@ -290,6 +299,7 @@ const availableToolDetails = computed(() => {
 const availableToolNames = computed(() => availableToolDetails.value.map((tool) => tool.name))
 const serverConfigDirty = computed(() => (
   serverEnabledDraft.value !== originalServerEnabled.value
+  || serverExposureDraft.value !== originalServerExposure.value
   || !sameToolSelection(toolSelectionDraft.value, originalToolSelection.value)
 ))
 
@@ -363,7 +373,7 @@ async function saveJsonConfig() {
       selectedName.value = Object.keys(importedServers)[0] || servers.value[0]?.name || ''
     }
     jsonDialogOpen.value = false
-    ElMessage.success('mcp.json saved. Changes apply on the next agent run.')
+    ElMessage.success('mcp.json saved. Changes apply to subsequent tool requests.')
   } catch (reason) {
     jsonError.value = reason.message
   } finally {
@@ -379,7 +389,7 @@ async function deleteDatabaseConfig() {
       method: 'DELETE'
     })
     applySaved(data)
-    ElMessage.success(`${scopeLabel.value} mcp.json deleted. Changes apply on the next agent run.`)
+    ElMessage.success(`${scopeLabel.value} mcp.json deleted. Changes apply to subsequent tool requests.`)
   } catch (reason) {
     error.value = reason.message
   } finally {
@@ -446,12 +456,16 @@ function syncServerDraft() {
   if (!server) {
     serverEnabledDraft.value = true
     originalServerEnabled.value = true
+    serverExposureDraft.value = 'eager'
+    originalServerExposure.value = 'eager'
     toolSelectionDraft.value = []
     originalToolSelection.value = []
     return
   }
   serverEnabledDraft.value = server.config?.enabled !== false
   originalServerEnabled.value = serverEnabledDraft.value
+  serverExposureDraft.value = server.config?.exposure || 'eager'
+  originalServerExposure.value = serverExposureDraft.value
   const selection = server.config?.enabledTools == null
     ? [...availableToolNames.value]
     : [...server.config.enabledTools]
@@ -482,6 +496,7 @@ async function saveServerSettings() {
   if (!isPlainObject(document.mcpServers)) document.mcpServers = {}
   const config = JSON.parse(JSON.stringify(server.config || {}))
   config.enabled = serverEnabledDraft.value
+  config.exposure = serverExposureDraft.value
   const toolSelectionChanged = !sameToolSelection(toolSelectionDraft.value, originalToolSelection.value)
   if (server.config?.enabledTools == null && !toolSelectionChanged) {
     delete config.enabledTools
@@ -497,7 +512,7 @@ async function saveServerSettings() {
       body: JSON.stringify({ content: `${JSON.stringify(document, null, 2)}\n` })
     })
     applySaved(data)
-    ElMessage.success('MCP server settings saved. Changes apply on the next agent run.')
+    ElMessage.success('MCP server settings saved. Changes apply to subsequent tool requests.')
   } catch (reason) {
     error.value = reason.message
   } finally {

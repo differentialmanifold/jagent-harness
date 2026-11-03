@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.mcp.spring;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivationStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -38,7 +39,9 @@ public class McpAutoConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
     public McpRuntime mcpRuntime(
-            McpConfigurationManager configurationManager, ObjectMapper objectMapper) {
-        return new McpRuntime(configurationManager, objectMapper);
+            McpConfigurationManager configurationManager,
+            ObjectMapper objectMapper,
+            SkillActivationStore activationStore) {
+        return new McpRuntime(configurationManager, objectMapper, activationStore);
     }
 }

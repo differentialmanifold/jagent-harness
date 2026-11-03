@@ -28,6 +28,7 @@ import io.github.differentialmanifold.jagentharness.core.session.DefaultSessionS
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
 import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
+import io.github.differentialmanifold.jagentharness.core.skill.*;
 import io.github.differentialmanifold.jagentharness.core.support.PathsSupport;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRecorder;
 import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
@@ -83,10 +84,25 @@ public class AgentHarnessAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(SkillActivationStore.class)
+    public SkillActivationStore skillActivationStore() {
+        return new InMemorySkillActivationStore();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SkillActivationService skillActivationService(
+            SkillActivationStore store, ObjectProvider<SkillToolResolver> resolver) {
+        return new SkillActivationService(store, resolver::getIfAvailable);
+    }
+
+    @Bean
     @ConditionalOnMissingBean
     public SkillTool skillTool(
-            ObjectMapper objectMapper, ObjectProvider<KnowledgeFileStore> knowledgeFileStore) {
-        return new SkillTool(objectMapper, knowledgeFileStore.getIfAvailable());
+            ObjectMapper objectMapper,
+            ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
+            SkillActivationService activationService) {
+        return new SkillTool(objectMapper, knowledgeFileStore.getIfAvailable(), activationService);
     }
 
     @Bean
@@ -161,14 +177,16 @@ public class AgentHarnessAutoConfiguration {
             HarnessProperties properties,
             SkillRegistry skillRegistry,
             ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
-            ObjectProvider<SystemPromptContributor> systemPromptContributors) {
+            ObjectProvider<SystemPromptContributor> systemPromptContributors,
+            SkillActivationStore activationStore) {
         List<SystemPromptContributor> contributors = new ArrayList<SystemPromptContributor>();
         systemPromptContributors.forEach(contributors::add);
         return new PromptService(
                 skillRegistry,
                 PathsSupport.expandUserHome(properties.getPrompt().getConfigRoot()),
                 knowledgeFileStore.getIfAvailable(),
-                contributors);
+                contributors,
+                activationStore);
     }
 
     @Bean
