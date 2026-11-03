@@ -4,6 +4,8 @@
 
 交给 Agent 一个小开发任务，看看它如何自己创建项目、调用工具并验证结果。
 
+要给这些步骤打分（含一次人为制造的测试失败），使用 [Agent 长任务验证手册](../../docs/agent-long-task-verification.md)（英文）。
+
 ## 1. 启动并创建 Agent
 
 按 [Quick start](../../QUICK_START.md) 启动服务端、Coding Runner 和 Console，打开 **http://127.0.0.1:5175**。

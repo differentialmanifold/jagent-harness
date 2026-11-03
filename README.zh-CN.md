@@ -17,7 +17,7 @@
 
 业务 Skill 可声明 MCP 工具依赖，在读取 Skill 后才向模型提供对应接口，并在同一会话内持续可用。配置与示例见 [随 Skill 按需加载 MCP 工具](docs/skill-mcp-loading.zh-CN.md)。
 
-跟随 [Agent 上手示例](examples/personal-agents/README.zh-CN.md)，体验从提出目标到规划、执行和验证的过程。
+跟随 [Agent 上手示例](examples/personal-agents/README.zh-CN.md)，体验从提出目标到规划、执行和验证的过程。同一目标的通过/失败记录见 [Agent 长任务验证手册](docs/agent-long-task-verification.md)（英文）。
 
 ## 三个部分，一套协议
 
@@ -88,7 +88,7 @@ node scripts/dev.mjs
 
 打开 **http://127.0.0.1:5175**，选择一种方式开始：
 
-- **让 Agent 自主推进：** 打开 **Agents → New Agent**，填写名称并选择 **coding-local**。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](examples/personal-agents/README.zh-CN.md) 提供可直接发送的要求和观察指引。
+- **让 Agent 自主推进：** 打开 **Agents → New Agent**，填写名称并选择 **coding-local**。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](examples/personal-agents/README.zh-CN.md) 提供可直接发送的要求和观察指引，[长任务验证手册](docs/agent-long-task-verification.md)（英文）用来给同一次目标打分。
 - **操作自己的项目：** 添加项目，选择 **coding-local**，浏览或输入该终端上的工作目录，然后发送：
 
 > 阅读工作区中的 README，总结这个项目。

@@ -4,6 +4,8 @@
 
 Give your Agent a small development task and watch it create a project, run tools, and check the result.
 
+To score these steps, including a forced test failure, use the [Agent long-task verification playbook](../../docs/agent-long-task-verification.md).
+
 ## 1. Start and create an Agent
 
 Follow [Quick start](../../QUICK_START.md) to start the server, Coding Runner, and Console. Open **http://127.0.0.1:5175**.

@@ -17,7 +17,7 @@ Business skills can activate their declared MCP tools on demand and retain them 
 
 The shared Harness provides model calls, context management and server tools, backed by unified conversation and virtual file storage.
 
-Try the [hands-on Agent guide](examples/personal-agents/README.md) to follow a goal through planning, execution and verification.
+Try the [hands-on Agent guide](examples/personal-agents/README.md) to follow a goal through planning, execution and verification. Score that goal with the [Agent long-task verification playbook](docs/agent-long-task-verification.md).
 
 ## Three parts, one protocol
 
@@ -88,7 +88,7 @@ node scripts/dev.mjs
 
 Open **http://127.0.0.1:5175** and choose an entry point:
 
-- **Let an Agent work:** open **Agents → New Agent**, enter a name and select **coding-local**. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](examples/personal-agents/README.md) for a ready-to-use request and what to look for.
+- **Let an Agent work:** open **Agents → New Agent**, enter a name and select **coding-local**. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](examples/personal-agents/README.md) for a ready-to-use request and what to look for, and the [long-task playbook](docs/agent-long-task-verification.md) to score it.
 - **Work in your own project:** add a project, select **coding-local**, then browse or enter a workspace on that terminal. Ask:
 
 > Read the README in this workspace and summarize the project.
