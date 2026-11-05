@@ -7,6 +7,7 @@
 
     <template v-else>
       <div class="message-meta">
+        <el-tag v-if="message.contextExcluded" size="small" type="warning" effect="plain">Not included in future context</el-tag>
         <el-tag size="small" :type="message.role === 'assistant' ? 'primary' : 'info'">{{ message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Agent' : 'Update' }}</el-tag>
         <el-tag
           v-if="message.stopReason === 'aborted'"

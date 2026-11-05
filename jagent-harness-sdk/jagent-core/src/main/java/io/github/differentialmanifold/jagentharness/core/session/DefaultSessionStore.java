@@ -30,6 +30,11 @@ public class DefaultSessionStore implements SessionStore {
     }
 
     @Override
+    public List<AgentMessage> findContextMessages(String sessionId) {
+        return messageRepository.findContextBySessionId(sessionId);
+    }
+
+    @Override
     public void appendMessage(AgentMessage message) {
         messageRepository.append(message);
     }

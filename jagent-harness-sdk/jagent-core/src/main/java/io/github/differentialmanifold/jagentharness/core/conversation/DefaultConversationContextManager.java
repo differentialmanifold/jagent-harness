@@ -7,6 +7,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.FailedTurn;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
@@ -80,7 +81,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
         List<AgentMessage> messages =
                 request.getMessages() == null
                         ? new ArrayList<AgentMessage>()
-                        : new ArrayList<AgentMessage>(request.getMessages());
+                        : FailedTurn.context(request.getMessages());
         CompactionState state = compactionStore.findBySessionId(request.getSessionId());
         String summary = state == null ? null : state.getSummary();
         String cursorMessageId = state == null ? null : state.getCursorMessageId();

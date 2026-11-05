@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.agent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import io.github.differentialmanifold.jagentharness.core.conversation.Conversati
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
@@ -147,6 +149,60 @@ class AgentRunnerModelRetryTest {
                         .readTree(reasoningUpdates.get(1).getPayloadJson())
                         .path("index")
                         .asInt());
+    }
+
+    @Test
+    void failedImageAndPartialOutputDoNotPoisonLaterTextRequests() {
+        FakeSessionStore store = new FakeSessionStore();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(
+                new ModelProvider() {
+                    public String getName() {
+                        return "retrying";
+                    }
+
+                    public ModelResponse chat(ModelRequest request) {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    public ModelResponse chat(
+                            ModelRequest request, ModelDeltaConsumer delta, StopSignal signal) {
+                        if (request.getMessages().stream()
+                                .anyMatch(m -> !m.getImages().isEmpty())) {
+                            delta.onContentDelta("incomplete answer");
+                            throw new ModelProviderException("Opaque provider error", null, false);
+                        }
+                        assertEquals(1, request.getMessages().size());
+                        assertEquals("hello again", request.getMessages().get(0).getContent());
+                        ModelResponse response = new ModelResponse();
+                        response.setContent("recovered");
+                        return response;
+                    }
+                });
+        ObjectMapper json = new ObjectMapper();
+        assertThrows(
+                ModelProviderException.class,
+                () ->
+                        createRunner(store, providers, json)
+                                .run(
+                                        "s1",
+                                        "inspect image",
+                                        Collections.singletonList(
+                                                new MessageImage(
+                                                        "image.png",
+                                                        "image/png",
+                                                        "data:image/png;base64,aGk=")),
+                                        AgentRunOptions.empty()));
+        assertEquals(2, store.messages.size());
+        assertEquals(1, store.messages.get(0).getImages().size());
+        assertEquals("failed", store.messages.get(1).getStopReason());
+        assertEquals(
+                "recovered",
+                createRunner(store, providers, json)
+                        .run("s1", "hello again", AgentRunOptions.empty())
+                        .getAnswer());
+        assertEquals(4, store.messages.size());
+        assertEquals(2, store.findContextMessages("s1").size());
     }
 
     private AgentRunner createRunner(

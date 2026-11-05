@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.FailedTurn;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
@@ -72,6 +73,36 @@ public class JdbcMessageRepository implements MessageRepository {
                 mapper(),
                 applicationId,
                 sessionId);
+    }
+
+    @Override
+    public List<AgentMessage> findContextBySessionId(String sessionId) {
+        List<AgentMessage> history = findBySessionId(sessionId);
+        List<AgentMessage> receipts = new ArrayList<>();
+        // Older versions stored failures only in the timeline. Recover those boundaries too.
+        jdbcTemplate.query(
+                "select run_id, turn_id, payload_json from timeline_events where application_id = ? and session_id = ? and type = 'turn_end'",
+                (org.springframework.jdbc.core.RowCallbackHandler)
+                        rs -> {
+                            try {
+                                if (!"failed"
+                                        .equals(
+                                                objectMapper
+                                                        .readTree(rs.getString("payload_json"))
+                                                        .path("status")
+                                                        .asText())) return;
+                            } catch (IOException e) {
+                                throw new IllegalStateException("Invalid turn event", e);
+                            }
+                            String runId = rs.getString("run_id"), turnId = rs.getString("turn_id");
+                            if (runId != null && turnId != null)
+                                receipts.add(
+                                        FailedTurn.receipt(history, sessionId, runId, turnId, ""));
+                        },
+                applicationId,
+                sessionId);
+        history.addAll(receipts);
+        return FailedTurn.context(history);
     }
 
     private RowMapper<AgentMessage> mapper() {

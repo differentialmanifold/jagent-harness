@@ -1,3 +1,4 @@
+import { excludedInputIds, retryInput } from '../utils/failedTurn.js'
 import { isRuntimeContextMessage } from '../utils/runtimeContext.js'
 import { computed, markRaw, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { request } from '../api/http.js'
@@ -496,21 +497,30 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
     state.imageError = ''
   }
 
-  async function sendMessage() {
+  async function retryMessage(failure) {
+    if (!currentSession.value || running.value || failure.sessionId !== currentSession.value.sessionId) return
+    const state = runtimeState(currentSession.value.sessionId)
+    if (!state.messages.some(m => m.messageId === failure.messageId && m.stopReason === 'failed')) return
+    await sendMessage(retryInput(state.messages, failure))
+  }
+
+  async function sendMessage(override = null) {
     if (!currentSession.value) return
     const sessionId = currentSession.value.sessionId
     const chatEndpoint = currentSession.value.runnerId ? '/api/v1/runners/chat' : '/api/v1/chat'
     const state = runtimeState(sessionId)
-    const content = state.draft
-    const images = state.draftImages.slice()
+    const content = override ? override.content : state.draft
+    const images = override ? override.images : state.draftImages.slice()
     if (!content.trim() && images.length === 0) return
     if (state.running) {
       await submitRuntimeInput(content, images, state)
       return
     }
     const autoName = shouldAutoNameChat(currentSession.value, state.messages)
-    state.draft = ''
-    state.draftImages.splice(0)
+    if (!override) {
+      state.draft = ''
+      state.draftImages.splice(0)
+    }
     state.imageError = ''
     state.running = true
     state.stopping = false
@@ -547,7 +557,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
         if (!requestAccepted) {
           const index = state.messages.findIndex(message => message.messageId === state.pendingUserMessageId)
           if (index >= 0) state.messages.splice(index, 1)
-          restoreDraft(state, content, images)
+          if (!override) restoreDraft(state, content, images)
         }
         appendLocalErrorMessage(state, error.message, error.runDurationMillis)
       }
@@ -836,6 +846,20 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
       failActiveStreamingMessage(state)
       completePendingTools('failed', state)
       const runDurationMillis = completeRunTiming(event, payload, state, { attach: false })
+      const failedTurnId = event.turnId || payload.failedTurnId
+        || [...state.turns.values()].reverse().find(t => t.runId === event.runId && t.status === 'failed')?.turnId
+      let failure = state.messages.find(m => m.stopReason === 'failed' && m.runId === event.runId && m.turnId === failedTurnId)
+      if (!failure) {
+        failure = { messageId: `failed:${event.eventId || event.runId}`, sessionId: state.sessionId,
+          runId: event.runId, turnId: failedTurnId, role: 'assistant', stopReason: 'failed',
+          failed: true, content: payload.message || payload.error || 'Agent request failed' }
+        state.messages.push(failure)
+      }
+      failure.failed = true
+      failure.runDurationMillis = runDurationMillis
+      const excluded = new Set(excludedInputIds(state.messages, failure))
+      for (const message of state.messages) if (excluded.has(message.messageId)) message.contextExcluded = true
+      markMessagesChanged(state)
       resetTransientRunState(state)
       state.pendingInputs.splice(0)
       state.activeRunId = null
@@ -844,7 +868,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
       if (options.replay || options.observed) {
         state.running = false
         state.stopReady = false
-        appendCustomEventMessage(event, type, payload, state, runDurationMillis)
+        // The failure receipt is already displayed and remains retryable after reload.
       } else {
         const error = new Error(payload.message || payload.error || 'Agent stream failed')
         error.runDurationMillis = runDurationMillis
@@ -1125,6 +1149,8 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
   }
 
   function appendLocalErrorMessage(state, message, runDurationMillis) {
+    const last = state.messages[state.messages.length - 1]
+    if (last?.stopReason === 'failed' && last.content === message) return
     const errorMessage = {
       messageId: `local-error:${Date.now()}`,
       sessionId: state.sessionId,
@@ -1237,6 +1263,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
 
   function mergeMessage(message, state) {
     if (!message || !message.messageId) return
+    if (message.stopReason === 'failed') message = { ...message, failed: true }
     if (message.role === 'user' && !isRuntimeContextMessage(message) && state.pendingUserMessageId) {
       const index = state.messages.findIndex(item => item.messageId === state.pendingUserMessageId)
       state.pendingUserMessageId = null
@@ -1700,6 +1727,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
     addDraftImages,
     removeDraftImage,
     sendMessage,
+    retryMessage,
     stopMessage
   }
 }

@@ -4,6 +4,10 @@ import java.util.List;
 
 public interface MessageRepository {
 
+    default List<AgentMessage> findContextBySessionId(String sessionId) {
+        return FailedTurn.context(findBySessionId(sessionId));
+    }
+
     void append(AgentMessage message);
 
     default void appendAll(List<AgentMessage> messages) {

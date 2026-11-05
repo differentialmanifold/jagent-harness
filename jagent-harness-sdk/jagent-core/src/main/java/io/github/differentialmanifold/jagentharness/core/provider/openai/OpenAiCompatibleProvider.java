@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.FailedTurn;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
@@ -207,7 +208,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         if (request.getMessages() == null) {
             return messages;
         }
-        for (AgentMessage message : request.getMessages()) {
+        for (AgentMessage message : FailedTurn.context(request.getMessages())) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("role", message.getRole());
             if (AgentMessage.ROLE_TOOL.equals(message.getRole())) {
