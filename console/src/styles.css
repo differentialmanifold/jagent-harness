@@ -1113,6 +1113,7 @@ textarea {
 
 .project-group {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   min-width: 0;
   padding: 0 0 4px;
@@ -1198,6 +1199,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  min-width: 0;
   padding-left: 28px;
 }
 

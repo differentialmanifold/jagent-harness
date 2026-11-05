@@ -17,7 +17,13 @@
     <div class="messages" ref="messagesEl" @scroll.passive="handleMessagesScroll">
       <template v-for="entry in chatEntries" :key="entry.key">
         <CompletedReply v-if="entry.process" :entry="entry" />
-        <MessageItem v-else :message="entry.message" />
+        <template v-else>
+          <MessageItem :message="entry.message" />
+          <div v-if="entry.message.stopReason === 'failed'" class="failed-turn-actions">
+            <span>The failed response is excluded from future context. You can retry or send another message.</span>
+            <el-button v-if="retryEnabled" size="small" :disabled="running || disabled" @click="$emit('retry', entry.message)">Retry</el-button>
+          </div>
+        </template>
       </template>
     </div>
 
@@ -133,6 +139,7 @@ import ComposerInput from './ComposerInput.vue'
 import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
+  retryEnabled: { type: Boolean, default: false },
   active: { type: Boolean, default: true },
   composerRows: { type: Number, default: 3 },
   showModelStatus: { type: Boolean, default: true },
@@ -164,6 +171,7 @@ const emit = defineEmits([
   'addImages',
   'removeImage',
   'send',
+  'retry',
   'stop'
 ])
 const AUTO_SCROLL_THRESHOLD_PX = 16
@@ -326,3 +334,7 @@ function distanceToBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight
 }
 </script>
+
+<style scoped>
+.failed-turn-actions { display: flex; align-items: center; gap: 12px; padding: 0 12px 16px; color: var(--el-text-color-secondary); font-size: 12px; }
+</style>

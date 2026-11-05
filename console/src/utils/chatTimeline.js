@@ -2,7 +2,7 @@
 export function groupCompletedReplies(messages) {
   const entries = []
   for (const message of messages) {
-    const key = message.role === 'assistant' && message.turnId
+    const key = message.role === 'assistant' && message.turnId && message.stopReason !== 'failed'
       ? `assistant:${message.turnId}` : message.messageId
     if (!message.runCompleted || !message.runId) {
       entries.push({ key, message })

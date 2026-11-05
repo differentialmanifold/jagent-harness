@@ -100,6 +100,56 @@ class JdbcMessageRepositoryTest {
                 null);
     }
 
+    @Test
+    void legacyFailedTurnsAreExcludedWithoutChangingStoredMessages() {
+        JdbcTemplate db = createDatabase();
+        JdbcStoreProperties properties = new JdbcStoreProperties();
+        properties.setApplicationId("app");
+        JdbcMessageRepository repository =
+                new JdbcMessageRepository(db, new ObjectMapper(), properties);
+        AgentMessage rejected = AgentMessage.user("session", "inspect this image");
+        rejected.setRunId("run-1");
+        rejected.setTurnId("turn-1");
+        rejected.setImages(
+                Collections.singletonList(
+                        new MessageImage("test.png", "image/png", "data:image/png;base64,aGk=")));
+        repository.append(rejected);
+        db.update(
+                "insert into timeline_events (application_id, event_id, session_id, run_id, turn_id, type, payload_json, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+                "app",
+                "event1",
+                "session",
+                "run-1",
+                "turn-1",
+                "turn_end",
+                "{\"status\":\"failed\"}",
+                "2026-11-04T00:00:00Z");
+        AgentMessage next = AgentMessage.user("session", "hello");
+        next.setRunId("run-2");
+        next.setTurnId("turn-2");
+        repository.append(next);
+        assertEquals(2, repository.findBySessionId("session").size());
+        assertEquals(1, repository.findContextBySessionId("session").size());
+        assertEquals("hello", repository.findContextBySessionId("session").get(0).getContent());
+        assertEquals(1, repository.findBySessionId("session").get(0).getImages().size());
+        // Another application's failure event cannot exclude this application's input.
+        db.update("update timeline_events set application_id = 'other'");
+        assertEquals(2, repository.findContextBySessionId("session").size());
+        // New failure receipts survive repository recreation without relying on timeline writes.
+        repository.append(
+                io.github.differentialmanifold.jagentharness.core.message.FailedTurn.receipt(
+                        repository.findBySessionId("session"),
+                        "session",
+                        "run-1",
+                        "turn-1",
+                        "error"));
+        assertEquals(
+                1,
+                new JdbcMessageRepository(db, new ObjectMapper(), properties)
+                        .findContextBySessionId("session")
+                        .size());
+    }
+
     private MessageImage image(String name, String mediaType, String url, String detail) {
         MessageImage image = new MessageImage();
         image.setName(name);

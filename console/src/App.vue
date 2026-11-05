@@ -63,6 +63,8 @@
           :image-error="imageError"
           @add-images="addDraftImages"
           @remove-image="removeDraftImage"
+          :retry-enabled="true"
+          @retry="retryMessage"
           @send="sendMessage"
           @stop="stopMessage"
         />
@@ -204,6 +206,7 @@ const {
   addDraftImages,
   removeDraftImage,
   sendMessage,
+  retryMessage,
   stopMessage
 } = useAgentHarness()
 

@@ -10,6 +10,7 @@ import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.ConversationHistory;
+import io.github.differentialmanifold.jagentharness.core.message.FailedTurn;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
@@ -246,7 +247,7 @@ public class AgentRunner implements AgentHarness {
                 ModelProvider provider = requireProvider();
                 String systemPrompt =
                         promptProvider.buildSystemPrompt(new PromptContext(tools, toolContext));
-                List<AgentMessage> storedMessages = sessionStore.findMessages(sessionId);
+                List<AgentMessage> storedMessages = sessionStore.findContextMessages(sessionId);
                 ConversationContext conversationContext =
                         conversationContextManager.prepare(
                                 new ConversationContextRequest(
@@ -438,6 +439,23 @@ public class AgentRunner implements AgentHarness {
                         currentTurnEnded);
                 sessionStore.touch(sessionId);
                 throw new StopRequestedException(e);
+            }
+            if (!currentTurnEnded) {
+                AgentMessage failure =
+                        FailedTurn.receipt(
+                                sessionStore.findMessages(sessionId),
+                                sessionId,
+                                runId,
+                                currentTurnId,
+                                e.getMessage());
+                failure.setParentMessageId(lastMessageId(sessionStore.findMessages(sessionId)));
+                sessionStore.appendMessage(failure);
+                publish(
+                        sessionId,
+                        runId,
+                        currentTurnId,
+                        AgentEvent.MESSAGE_END,
+                        eventPayload("message", failure));
             }
             publishFailed(sessionId, runId, currentTurnId, turnCount, e, currentTurnEnded);
             sessionStore.touch(sessionId);
@@ -895,6 +913,7 @@ public class AgentRunner implements AgentHarness {
             boolean turnEnded) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("status", "failed");
+        payload.put("failedTurnId", turnId);
         payload.put("turnCount", turnCount);
         payload.put("error", error == null ? "" : error.getMessage());
         if (!turnEnded && turnId != null) {
