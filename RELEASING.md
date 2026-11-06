@@ -30,3 +30,5 @@ For local publication, configure the `central` server in Maven settings and prov
 Keep the API version, JSON Schema, OpenAPI, and protocol fixtures consistent when changing the public contract.
 
 Tagged releases also attach the self-contained coding runner JAR, the web frontend archive, and SHA256SUMS. The runner already includes its coding tools. The executable and frontend are release assets, not Central libraries.
+
+Release assets also include `jagent-skill-<version>.zip`, containing the complete standalone `jagent/` skill and its dependency-free Node.js client.

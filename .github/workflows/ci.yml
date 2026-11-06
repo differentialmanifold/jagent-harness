@@ -23,6 +23,7 @@ jobs:
             console/package-lock.json
             protocol/package-lock.json
       - run: node --check scripts/lib/launch.mjs && node --test scripts/lib/*.test.mjs && node scripts/dev.mjs --help
+      - run: node --test skills/tests/*.test.mjs
       - run: mvn -B install
       - run: npm ci --prefix protocol && npm test --prefix protocol
       - run: npm ci --prefix console && npm test --prefix console && npm run build --prefix console

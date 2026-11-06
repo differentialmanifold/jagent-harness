@@ -523,7 +523,7 @@ class AgentRunnerTest {
                                                 exchange.getRequestBody(), ChatResponse.class));
                             else if (path.endsWith("/state")) result = pending();
                             else if (path.equals("/api/v1/runners/runs/r")) result = job;
-                            else if (path.equals("/api/v1/chat")) {
+                            else if (path.equals("/api/v1/runners/chat")) {
                                 ChatRequest request =
                                         json.readValue(
                                                 exchange.getRequestBody(), ChatRequest.class);

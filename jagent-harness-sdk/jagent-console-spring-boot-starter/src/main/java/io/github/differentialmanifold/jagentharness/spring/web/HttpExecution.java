@@ -1,0 +1,104 @@
+package io.github.differentialmanifold.jagentharness.spring.web;
+
+import io.github.differentialmanifold.jagentharness.core.execution.*;
+import io.github.differentialmanifold.jagentharness.protocol.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import org.springframework.web.context.request.async.DeferredResult;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+/** HTTP observation only; task ownership and lifetime belong to the execution services. */
+final class HttpExecution implements AutoCloseable {
+    private final ScheduledExecutorService timer =
+            Executors.newSingleThreadScheduledExecutor(
+                    r -> {
+                        Thread thread = new Thread(r, "http-stream-heartbeat");
+                        thread.setDaemon(true);
+                        return thread;
+                    });
+
+    SseEmitter stream(Function<Consumer<StreamEvent>, RunHandle> submit) {
+        SseEmitter emitter = new SseEmitter(0L);
+        RunHandle handle = submit.apply(event -> send(emitter, event.type, event));
+        ScheduledFuture<?> heartbeat =
+                timer.scheduleAtFixedRate(
+                        () -> {
+                            try {
+                                emitter.send(SseEmitter.event().comment("keepalive"));
+                            } catch (Exception disconnected) {
+                                emitter.complete();
+                                handle.close();
+                            }
+                        },
+                        15,
+                        15,
+                        TimeUnit.SECONDS);
+        Runnable cleanup =
+                () -> {
+                    heartbeat.cancel(false);
+                    handle.close();
+                };
+        emitter.onCompletion(cleanup);
+        emitter.onTimeout(cleanup);
+        emitter.onError(error -> cleanup.run());
+        handle.result()
+                .whenComplete(
+                        (response, error) -> {
+                            heartbeat.cancel(false);
+                            try {
+                                send(
+                                        emitter,
+                                        error == null ? "response" : "error",
+                                        error == null ? response : errorBody(error));
+                                emitter.complete();
+                            } catch (RuntimeException disconnected) {
+                                emitter.complete();
+                            }
+                        });
+        return emitter;
+    }
+
+    static <T> DeferredResult<T> result(CompletableFuture<T> future) {
+        DeferredResult<T> result = new DeferredResult<>(0L);
+        future.whenComplete(
+                (value, error) -> {
+                    if (error == null) result.setResult(value);
+                    else result.setErrorResult(unwrap(error));
+                });
+        return result;
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        while ((error instanceof CompletionException || error instanceof ExecutionException)
+                && error.getCause() != null) error = error.getCause();
+        return error;
+    }
+
+    private static Map<String, Object> errorBody(Throwable failure) {
+        Throwable error = unwrap(failure);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", error.getMessage() == null ? error.toString() : error.getMessage());
+        body.put(
+                "code",
+                error instanceof ProtocolException
+                        ? ((ProtocolException) error).code
+                        : "INTERNAL_ERROR");
+        body.put(
+                "status",
+                error instanceof ProtocolException ? ((ProtocolException) error).status : 500);
+        return body;
+    }
+
+    private static void send(SseEmitter emitter, String type, Object body) {
+        try {
+            emitter.send(SseEmitter.event().name(type).data(body));
+        } catch (Exception error) {
+            throw new IllegalStateException("Observer disconnected", error);
+        }
+    }
+
+    public void close() {
+        timer.shutdownNow();
+    }
+}

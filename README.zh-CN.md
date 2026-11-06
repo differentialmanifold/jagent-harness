@@ -105,9 +105,15 @@ node scripts/dev.mjs
 - [Java 客户端 SDK](sdk/java/README.md)：通过 `AgentRunner` 托管原生工具，或通过 `AgentClient` 发起对话。
 - [HTTP/JSON 协议](protocol/README.md)：实现其他语言的 Runner 或其他形式的前端。
 
-除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `2.1.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
+除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `2.2.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
 
 源码目录按职责划分：`jagent-harness-sdk/` 是服务端库，`sdk/java/` 是包含 Runner 运行能力的通用客户端 SDK，`examples/` 是服务端与 coding 工具宿主示例，`console/` 是前端，`protocol/` 是跨语言协议及其测试。
+
+## 从外部 Agent 使用
+
+将 [JAgent Skill](skills/jagent/SKILL.md) 整个目录放入外部 Agent 的技能目录，保留其中的 `scripts/` 和 `references/`。配置 `JAGENT_SERVER_URL`，需要认证时再设置 `JAGENT_CLIENT_TOKEN`。内置 Node.js 客户端无需安装 npm 依赖，也无需配置 MCP。
+
+外部 Agent 可以查找合适的 Personal Agent，也可以选择已连接的 Runner 自行创建，无需先在界面中手动配置 Agent。随后发送目标，在同一会话中查看进度和结果。规划、任务跟踪和项目执行由 JAgent 完成，会话也会显示在 Console 中。详见 [API 与 SDK 说明](skills/jagent/references/api.md)。
 
 ## 开发
 
@@ -115,6 +121,7 @@ node scripts/dev.mjs
 mvn clean install
 npm ci --prefix protocol
 npm test --prefix protocol
+node --test skills/tests/*.test.mjs
 npm ci --prefix console
 npm test --prefix console
 npm run build --prefix console

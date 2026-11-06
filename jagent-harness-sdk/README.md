@@ -12,12 +12,12 @@ Add these dependencies to a Spring Boot application:
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>2.1.0</version>
+  <version>2.2.0</version>
 </dependency>
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-store-jdbc</artifactId>
-  <version>2.1.0</version>
+  <version>2.2.0</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>
@@ -65,10 +65,10 @@ A skill can declare exact MCP dependencies in `tool_dependencies`; servers with 
 
 | Module | Purpose |
 | --- | --- |
-| `jagent-core` | Agent loop, model providers, prompt and storage interfaces |
+| `jagent-core` | Agent loop, personal Agent runtime, tasks, knowledge, tools, and storage interfaces |
 | `jagent-api` | Shared tool contracts and conversation protocol types for both sides |
-| `jagent-spring-boot-starter` | Agent runtime auto-configuration |
-| `jagent-console-spring-boot-starter` | Chat and console management APIs |
+| `jagent-spring-boot-starter` | Harness and personal Agent lifecycle and auto-configuration |
+| `jagent-console-spring-boot-starter` | HTTP APIs, SSE/long-poll transport, and optional Feishu channel |
 | `jagent-store-jdbc` | JDBC implementations of storage interfaces |
 | `jagent-mcp-client` | MCP client support |
 | `jagent-mcp-spring-boot-starter` | Optional MCP auto-configuration |
@@ -76,6 +76,21 @@ A skill can declare exact MCP dependencies in `tool_dependencies`; servers with 
 Use `SystemPromptContributor` for business instructions, `ModelProvider` for model integrations, `ToolContextFactory` for execution context, and `AgentEventListener` for events. Storage interfaces can be replaced with your own implementations. Default beans yield to supported user-provided components; `harness.enabled=false` disables the default agent auto-configuration.
 
 Server settings use `harness.*`. Set `harness.console.enabled=false` to disable the chat and console HTTP endpoints while keeping the harness available to your host application. CORS and request limits use `harness.console.*`; the client API token uses `harness.protocol.token`.
+
+## Personal Agent integration
+
+Personal Agent logic lives in `jagent-core` under `core.personal`: `PersonalAgentService` manages Agents, chats and tasks; `PersonalAgentRuntime` processes background events and recovery; `PersonalAgentProjects` coordinates owned project work. Task rules, knowledge, learning and tool definitions use the same core session and storage interfaces.
+
+Project and execution services are shared by the Console and Personal Agents:
+
+- `core.project.ProjectService`: session creation, project ownership selection, Runner binding and history inspection.
+- `core.execution.RunService`: submit, inspect, steer and stop project work, selecting the configured execution target.
+- `core.execution.ConversationService`: advance the Harness with user messages or tool results in the same stored conversation.
+- `core.runner.RunnerService`: registrations, claimed jobs, local tool results and execution observations. It uses Java futures and callbacks; HTTP SSE and long-poll responses are handled by the Console.
+
+`PersonalAgentProjects` calls these services directly and adds Agent-specific task and ownership checks. `ExecutionAutoConfiguration` assembles the same services without requiring Spring MVC. The Spring starter enables Personal Agents when storage and execution services are available, unless `harness.personal.enabled=false`. A plain Java host can construct these services and manage their lifecycle. No extra Maven module is required.
+
+Frontend messages use `/api/v1/chat` regardless of execution target. Registered Runners advance claimed jobs through `/api/v1/runners/chat`, which verifies Runner credentials and assignment. External Agents delegate through the existing Personal Agent APIs using the [JAgent skill and bundled client](../skills/jagent/SKILL.md). Feishu remains an optional channel under `spring.channel.feishu`.
 
 ## Storage
 

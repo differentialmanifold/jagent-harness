@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
+import io.github.differentialmanifold.jagentharness.core.execution.ConversationService;
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.message.*;
 import io.github.differentialmanifold.jagentharness.core.provider.*;
 import io.github.differentialmanifold.jagentharness.core.session.*;
@@ -36,7 +38,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
         })
 @Import(ConversationProtocolTest.Fixtures.class)
 class ConversationProtocolTest {
-    @Autowired ChatService service;
+    @Autowired ConversationService service;
     @Autowired SessionManager manager;
     @Autowired SessionStore sessions;
     @Autowired Scripted model;

@@ -1,5 +1,7 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
+import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.util.*;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +12,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/v1/runners")
 public class RunnerController {
     private final RunnerService service;
+    private final HttpExecution http = new HttpExecution();
 
     public RunnerController(RunnerService service) {
         this.service = service;
@@ -34,14 +37,27 @@ public class RunnerController {
             @RequestParam(required = false) String activeRun,
             @RequestParam(required = false) Integer availableSlots) {
         service.authenticate(id, secret);
-        return availableSlots == null
-                ? service.poll(id, activeRun)
-                : service.poll(id, activeRun, availableSlots);
+        return HttpExecution.result(
+                availableSlots == null
+                        ? service.poll(id, activeRun)
+                        : service.poll(id, activeRun, availableSlots));
+    }
+
+    /** Runner-only protocol: the caller must own a claimed job. */
+    @PostMapping(value = "/chat", produces = "application/json")
+    public DeferredResult<ChatResponse> chat(
+            @RequestBody ChatRequest request,
+            @RequestHeader(value = "X-Runner-Id", required = false) String runner,
+            @RequestHeader(value = "X-Runner-Secret", required = false) String secret) {
+        return HttpExecution.result(service.chat(request, runner, secret, null).result());
     }
 
     @PostMapping(value = "/chat", produces = "text/event-stream")
-    public SseEmitter submit(@RequestBody ChatRequest request) {
-        return service.submit(request);
+    public SseEmitter stream(
+            @RequestBody ChatRequest request,
+            @RequestHeader(value = "X-Runner-Id", required = false) String runner,
+            @RequestHeader(value = "X-Runner-Secret", required = false) String secret) {
+        return http.stream(events -> service.chat(request, runner, secret, events));
     }
 
     @GetMapping("/projects/{projectId}")
@@ -61,7 +77,7 @@ public class RunnerController {
     @GetMapping("/{id}/workspaces")
     public DeferredResult<WorkspaceListing> browse(
             @PathVariable String id, @RequestParam(required = false) String path) {
-        return service.browse(id, path);
+        return HttpExecution.result(service.browse(id, path));
     }
 
     @PostMapping("/{id}/workspaces/result")
@@ -82,7 +98,7 @@ public class RunnerController {
     @GetMapping(value = "/runs/{run}/events", produces = "text/event-stream")
     public SseEmitter watch(@PathVariable String run) {
         service.job(run);
-        return service.watch(run);
+        return http.stream(events -> service.watch(run, events));
     }
 
     @PostMapping("/{id}/runs/{run}/recover")
@@ -112,5 +128,10 @@ public class RunnerController {
         service.authenticate(id, secret);
         service.localEvent(id, event);
         return Collections.singletonMap("accepted", true);
+    }
+
+    @javax.annotation.PreDestroy
+    public void close() {
+        http.close();
     }
 }

@@ -1,11 +1,11 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import java.util.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@RestControllerAdvice(
-        assignableTypes = {ChatController.class, RunnerController.class, SessionController.class})
+@RestControllerAdvice
 @org.springframework.core.annotation.Order(-100)
 public class ProtocolErrors {
     @ExceptionHandler(ProtocolException.class)

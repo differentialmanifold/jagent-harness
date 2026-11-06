@@ -8,6 +8,19 @@ Reference materials: [OpenAPI](openapi.json), [JSON Schema](schema.json), and [f
 
 The JSON files in `fixtures/` are protocol test samples: user messages, tool results, responses, stream events, runner registration, and polling. `schema.test.mjs` checks them against the JSON Schema during CI and release validation. They are not runtime configuration or installed tool implementations. Run `npm ci --prefix protocol` and `npm test --prefix protocol` from the repository root to validate them.
 
+## Public chat and internal Runner chat
+
+Frontends send messages to **`POST /api/v1/chat`** for every project. The session's project configuration selects execution; callers do not choose an endpoint based on Runner presence.
+
+| Endpoint | Caller | Behavior |
+| --- | --- | --- |
+| `/api/v1/chat` | Frontend or application | Dispatch to the project's Runner when bound; otherwise execute directly. JSON waits for the result; SSE streams progress. |
+| `/api/v1/runners/chat` | Registered Runner holding a claimed job | Advance the model conversation and return tool calls or an answer. Requires Runner credentials and job ownership; never enqueues another job. |
+
+Both use the same `sessionId` and stored conversation. A Runner-bound public call accepts a user message; only the authenticated Runner can return its tool results, through the internal endpoint. The server freezes the project's tool catalog for that job. A stream disconnect does not cancel the job, and multiple observers can watch the same run. Inspect saved state/history after a disconnect rather than replaying the message.
+
+This document and its OpenAPI cover the application/Runner protocol. To delegate goals to a Personal Agent instead, use the [JAgent skill and client](../skills/jagent/SKILL.md); those Agent APIs have a [separate reference](../skills/jagent/references/api.md).
+
 ## Start a conversation
 
 Create a session with `POST /api/v1/sessions`:
@@ -16,7 +29,9 @@ Create a session with `POST /api/v1/sessions`:
 {"title":"My assistant"}
 ```
 
-Use the returned `sessionId` in `POST /api/v1/chat`. A request contains either one user message or a list of tool results:
+Use the returned `sessionId` in `POST /api/v1/chat`. For a Runner-bound project, send one user message; the server handles dispatch. `runId` is optional and generated when omitted.
+
+The following examples describe the standalone `AgentClient` mode, where the calling application itself owns local tools and the session has no registered Runner. It sends either one user message or a list of tool results:
 
 ```json
 {
@@ -123,9 +138,9 @@ These tests check the request, response, and event fixtures against the JSON Sch
 Runner dispatch is an optional layer around the conversation API. Runners ship with native tool implementations; only JSON descriptors, messages and results cross the network. Frontends always use the server APIs, whether hosted on the server or client machine.
 
 1. Register with `POST /api/v1/runners`, providing a stable runner ID, display name, and all locally implemented tools. Send a locally generated random secret of at least 32 characters in `X-Runner-Secret`, in addition to the server bearer token. Re-registration requires the same secret. Set `workspaces: true` for a terminal that supports project directories; other scenarios leave it false.
-2. Create a session with `runnerId`, optional `workspacePath`, and `enabledTools`. Omit `enabledTools` to select all registered tools; send `[]` to disable local tools. A new project stores these settings. Further sessions with the same `projectId` inherit them. `GET /api/v1/runners/projects/{projectId}` reads settings; `PUT /api/v1/runners/projects/{projectId}/tools` changes `enabledTools` for future runs. Submit one user message and a `runId` to `POST /api/v1/runners/chat` to queue a conversation and stream progress.
+2. Create a session with `runnerId`, optional `workspacePath`, and `enabledTools`. Omit `enabledTools` to select all registered tools; send `[]` to disable local tools. A new project stores these settings. Further sessions with the same `projectId` inherit them. `GET /api/v1/runners/projects/{projectId}` reads settings; `PUT /api/v1/runners/projects/{projectId}/tools` changes `enabledTools` for future runs. Submit one user message to the public `POST /api/v1/chat` endpoint. The server assigns a `runId` if omitted, queues the conversation for its Runner, and returns the terminal result as JSON or streams progress over SSE.
 3. The runner calls `GET /api/v1/runners/{id}/poll`. The response waits up to 25 seconds for work. Immediately poll again after a response. Include `?activeRun=<comma-separated-runIds>&availableSlots=<freeSlots>` to report all locally active runs and remaining capacity. Each response contains at most one job, excluding the reported active runs, and may also contain cancellations and directory lookups. With `availableSlots=0`, polling still delivers cancellations and directory lookups but assigns no new work. Keep polling while jobs execute on separate workers. The Java Runner has no fixed conversation limit and always sends `availableSlots=1` to accept the next job; this value does not limit the total number of active runs. If `availableSlots` is omitted, legacy single-job behavior applies: an active run prevents another assignment. Each job carries its project's workspace and frozen tool catalog; validate the directory on the runner and execute only the selected tools, with Full access and no approval exchange.
-4. Execute the job's initial request and subsequent tool-result requests using the existing `POST /api/v1/chat` API. Include `X-Runner-Id` and `X-Runner-Secret`. The server checks session ownership and uses the job's frozen tool catalog. Tool results remain ordinary `role=tool` messages; no tool continuation ID or alternate resume endpoint is introduced.
+4. Execute the job's initial request and subsequent tool-result requests using the internal `POST /api/v1/runners/chat` API. This endpoint is for registered Runners only and is not exposed as a user or external Agent operation. Include `X-Runner-Id` and `X-Runner-Secret`. The server requires valid Runner credentials, checks that this Runner owns the claimed job and session, and uses the job's frozen tool catalog. Tool results remain ordinary `role=tool` messages; no tool continuation ID or alternate resume endpoint is introduced.
 5. Report local tool start/end events to `POST /api/v1/runners/{id}/events`; model events already originate on the server. Report the terminal ChatResponse to `POST /api/v1/runners/{id}/complete`.
 
 A workspace-capable Runner may advertise `workspaceRoot`, an absolute path on its own machine. When a project omits `workspacePath`, the server allocates `workspaceRoot/user/<projectId>` or `workspaceRoot/agents/<agentId>/<projectId>`. The Java SDK's `LocalWorkspaces` creates these managed directories on first execution; an explicit workspace must already exist. Other language Runners can implement the same convention. Runners without a default root continue to require explicit directories.

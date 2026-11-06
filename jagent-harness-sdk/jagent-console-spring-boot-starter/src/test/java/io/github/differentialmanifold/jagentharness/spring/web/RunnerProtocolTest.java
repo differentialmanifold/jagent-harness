@@ -4,8 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
 import io.github.differentialmanifold.jagentharness.client.*;
+import io.github.differentialmanifold.jagentharness.core.execution.ConversationService;
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
+import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
 import io.github.differentialmanifold.jagentharness.core.session.*;
 import io.github.differentialmanifold.jagentharness.core.tool.*;
@@ -37,14 +40,104 @@ class RunnerProtocolTest {
     @Autowired RunnerStore store;
     @Autowired SessionManager sessions;
     @Autowired SessionStore history;
-    @Autowired ChatService chat;
+    @Autowired ConversationService chat;
     @Autowired ConversationProtocolTest.Scripted model;
     @LocalServerPort int port;
     final ObjectMapper json = new ObjectMapper();
     final String secret = "secret-for-tests-with-at-least-32-characters";
 
+    @Test
+    void publicChatRoutesProjectsAndPrivateChatOnlyAdvancesClaimedRunnerWork() throws Exception {
+        HttpAgentTransport frontend =
+                new HttpAgentTransport("http://127.0.0.1:" + port, "test-token");
+        ChatRequest serverOnly = new ChatRequest();
+        serverOnly.sessionId = frontend.createSession("Server tools", null);
+        serverOnly.messages.add(ChatMessage.user("server-only"));
+        assertEquals("COMPLETED", frontend.chat(serverOnly, null).status);
+        assertEquals(
+                403,
+                assertThrows(
+                                AgentHttpException.class,
+                                () ->
+                                        frontend.management(
+                                                "POST", "/api/v1/runners/chat", serverOnly))
+                        .status);
+
+        for (boolean stream : Arrays.asList(false, true)) {
+            RunnerInfo runner = register();
+            HttpAgentTransport executor = http(runner.runnerId);
+            ChatRequest request = request(runner);
+            request.runId = null; // Public callers need only a session and message.
+            request.stream = stream;
+            ExecutorService worker = Executors.newSingleThreadExecutor();
+            List<StreamEvent> events = new CopyOnWriteArrayList<>();
+            try {
+                Future<ChatResponse> reply =
+                        worker.submit(() -> frontend.chat(request, events::add));
+                RunnerPoll poll =
+                        json.treeToValue(
+                                executor.management(
+                                        "GET",
+                                        "/api/v1/runners/" + runner.runnerId + "/poll",
+                                        null),
+                                RunnerPoll.class);
+                assertNotNull(poll.job);
+                assertEquals(request.sessionId, poll.job.request.sessionId);
+                assertEquals("RUNNING", frontend.state(request.sessionId).status);
+                assertTrue(history.findMessages(request.sessionId).isEmpty());
+
+                ChatResponse tools = executor.chat(poll.job.request, null);
+                assertEquals("REQUIRES_ACTION", tools.status);
+                assertEquals("REQUIRES_ACTION", executor.state(request.sessionId).status);
+                ChatRequest results = new ChatRequest();
+                results.sessionId = request.sessionId;
+                results.runId = tools.runId;
+                for (ToolInvocation call : tools.toolCalls)
+                    results.messages.add(
+                            ChatMessage.tool(call.toolCallId, "SUCCEEDED", "local result"));
+                assertEquals(
+                        400,
+                        assertThrows(AgentHttpException.class, () -> frontend.chat(results, null))
+                                .status);
+                ChatResponse answer = executor.chat(results, null);
+                assertEquals("COMPLETED", answer.status);
+                executor.management(
+                        "POST", "/api/v1/runners/" + runner.runnerId + "/complete", answer);
+                ChatResponse received = reply.get(5, TimeUnit.SECONDS);
+                assertEquals(answer.answer, received.answer);
+                assertEquals(answer.runId, received.runId);
+                assertEquals(
+                        1,
+                        history.findMessages(request.sessionId).stream()
+                                .filter(m -> "user".equals(m.getRole()))
+                                .count());
+                if (stream) assertTrue(events.stream().anyMatch(e -> "agent_start".equals(e.type)));
+            } finally {
+                worker.shutdownNow();
+            }
+        }
+    }
+
+    @Test
+    void observingOrDisconnectingDoesNotReplaceOtherObserversOrCancelWork() throws Exception {
+        RunnerInfo runner = register();
+        ChatRequest request = request(runner);
+        io.github.differentialmanifold.jagentharness.core.execution.RunHandle first =
+                runners.submit(request);
+        io.github.differentialmanifold.jagentharness.core.execution.RunHandle second =
+                runners.watch(request.runId, null);
+        first.close();
+        assertFalse(store.job(request.runId).cancelled);
+        runners.cancel(request.runId);
+        assertEquals("CANCELLED", second.result().get(5, TimeUnit.SECONDS).status);
+        assertEquals(
+                "CANCELLED",
+                runners.watch(request.runId, null).result().get(5, TimeUnit.SECONDS).status);
+    }
+
     HttpAgentTransport http(String id) throws Exception {
         return new HttpAgentTransport("http://127.0.0.1:" + port, "test-token")
+                .runnerProtocol()
                 .header("X-Runner-Id", id)
                 .header("X-Runner-Secret", secret);
     }
@@ -250,7 +343,7 @@ class RunnerProtocolTest {
                 release.put(request.sessionId, new CountDownLatch(1));
                 requests.add(request);
             }
-            for (ChatRequest request : requests) runners.enqueue(request);
+            for (ChatRequest request : requests) runners.submit(request);
             for (ChatRequest request : requests)
                 assertTrue(
                         entered.get(request.sessionId).await(10, TimeUnit.SECONDS),
@@ -260,7 +353,7 @@ class RunnerProtocolTest {
             overlapping.sessionId = first.sessionId;
             overlapping.runId = "run_" + UUID.randomUUID();
             overlapping.messages.add(ChatMessage.user("another turn"));
-            assertThrows(ProtocolException.class, () -> runners.enqueue(overlapping));
+            assertThrows(ProtocolException.class, () -> runners.submit(overlapping));
             frontend.stop(first.runId);
             awaitCondition(() -> "CANCELLED".equals(store.job(first.runId).status));
             assertEquals(Collections.singleton(first.sessionId), stopped);
@@ -467,11 +560,10 @@ class RunnerProtocolTest {
     @Test
     void reRegistrationReleasesThePreviousProcessesLongPoll() throws Exception {
         RunnerInfo info = register();
-        org.springframework.web.context.request.async.DeferredResult<RunnerPoll> previous =
-                runners.poll(info.runnerId, null);
-        assertFalse(previous.hasResult());
+        CompletableFuture<RunnerPoll> previous = runners.poll(info.runnerId, null);
+        assertFalse(previous.isDone());
         runners.register(info, secret);
-        assertTrue(previous.hasResult());
+        assertTrue(previous.isDone());
         ChatRequest request = request(info);
         runners.submit(request);
         RunnerPoll next =

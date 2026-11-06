@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentHarness;
+import io.github.differentialmanifold.jagentharness.core.execution.ConversationService;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.prompt.*;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRepository;
@@ -120,7 +121,17 @@ class ServerExtensionTest {
         runner.withPropertyValues("harness.enabled=false")
                 .run(
                         context -> {
-                            assertThat(context).hasNotFailed().doesNotHaveBean(ChatService.class);
+                            assertThat(context)
+                                    .hasNotFailed()
+                                    .doesNotHaveBean(ConversationService.class)
+                                    .doesNotHaveBean(
+                                            io.github.differentialmanifold.jagentharness.core
+                                                    .execution.RunService.class)
+                                    .doesNotHaveBean(ChatController.class)
+                                    .doesNotHaveBean(RunnerController.class)
+                                    .doesNotHaveBean(
+                                            io.github.differentialmanifold.jagentharness.spring.web
+                                                    .personal.PersonalAgentController.class);
                         });
     }
 
@@ -173,7 +184,15 @@ class ServerExtensionTest {
                             assertThat(context)
                                     .hasNotFailed()
                                     .hasSingleBean(AgentHarness.class)
-                                    .doesNotHaveBean(ChatService.class)
+                                    .hasSingleBean(ConversationService.class)
+                                    .hasSingleBean(
+                                            io.github.differentialmanifold.jagentharness.core
+                                                    .execution.RunService.class)
+                                    .doesNotHaveBean(ChatController.class)
+                                    .doesNotHaveBean(RunnerController.class)
+                                    .doesNotHaveBean(
+                                            io.github.differentialmanifold.jagentharness.spring.web
+                                                    .personal.PersonalAgentController.class)
                                     .doesNotHaveBean(VirtualFileController.class)
                                     .doesNotHaveBean(ProviderController.class);
                         });

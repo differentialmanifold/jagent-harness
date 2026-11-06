@@ -17,7 +17,7 @@ Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and prot
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>2.1.0</version>
+  <version>2.2.0</version>
 </dependency>
 ```
 
@@ -59,7 +59,7 @@ try (AgentRunner runner = AgentRunner.builder(
 }
 ```
 
-Open the frontend, create a project, and select **My device**. The SDK registers the tool descriptions, receives work, executes your tool implementation, and returns results through the ordinary conversation API. Tool code stays in your application.
+Open the frontend, create a project, and select **My device**. The SDK registers the tool descriptions, receives work, executes your tool implementation, and returns results through the authenticated internal `/api/v1/runners/chat` protocol. Frontends submit work through `/api/v1/chat`. Tool code stays in your application.
 
 `serve()` blocks the calling thread. An existing application can run it on a worker thread and call `close()` during shutdown. The SDK does not install JVM shutdown hooks or terminate the process. A standalone application should connect its shutdown lifecycle to `close()`; the [coding CLI](../../examples/coding-runner/src/main/java/io/github/differentialmanifold/jagentharness/runner/RunnerMain.java) demonstrates this.
 

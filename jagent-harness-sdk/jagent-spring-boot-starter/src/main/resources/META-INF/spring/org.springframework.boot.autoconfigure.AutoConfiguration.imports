@@ -1,1 +1,3 @@
 io.github.differentialmanifold.jagentharness.spring.AgentHarnessAutoConfiguration
+io.github.differentialmanifold.jagentharness.spring.ExecutionAutoConfiguration
+io.github.differentialmanifold.jagentharness.spring.personal.PersonalAgentAutoConfiguration

@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import io.github.differentialmanifold.jagentharness.core.agent.*;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore;
+import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.AgentContextRequest;
 import java.nio.file.Path;

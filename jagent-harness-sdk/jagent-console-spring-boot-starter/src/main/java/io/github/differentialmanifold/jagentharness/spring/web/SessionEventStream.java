@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.event.*;
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolMapper;
 import io.github.differentialmanifold.jagentharness.core.session.*;
 import java.util.*;
 import java.util.concurrent.*;

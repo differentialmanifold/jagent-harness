@@ -1,5 +1,5 @@
 io.github.differentialmanifold.jagentharness.spring.web.AgentConsoleAutoConfiguration
 io.github.differentialmanifold.jagentharness.spring.web.ChatAutoConfiguration
 io.github.differentialmanifold.jagentharness.spring.web.RunnerAutoConfiguration
-io.github.differentialmanifold.jagentharness.spring.personal.PersonalAgentAutoConfiguration
-io.github.differentialmanifold.jagentharness.spring.personal.FeishuAutoConfiguration
+io.github.differentialmanifold.jagentharness.spring.web.personal.PersonalAgentWebAutoConfiguration
+io.github.differentialmanifold.jagentharness.spring.channel.feishu.FeishuAutoConfiguration
