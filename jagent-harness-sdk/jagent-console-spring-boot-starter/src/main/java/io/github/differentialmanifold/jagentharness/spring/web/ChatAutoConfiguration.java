@@ -2,16 +2,17 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
-import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.session.*;
-import io.github.differentialmanifold.jagentharness.core.timeline.TimelineEventRepository;
-import io.github.differentialmanifold.jagentharness.core.tool.ToolRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.Bean;
 
-@AutoConfiguration(after = AgentConsoleAutoConfiguration.class)
+@AutoConfiguration(
+        after = {
+            AgentConsoleAutoConfiguration.class,
+            io.github.differentialmanifold.jagentharness.spring.ExecutionAutoConfiguration.class
+        })
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnProperty(
         prefix = "harness",
@@ -27,22 +28,9 @@ public class ChatAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ChatService chatService(
-            ObjectMapper json,
-            AgentHarness runner,
-            SessionStore sessions,
-            SessionRepository records,
-            TimelineEventRepository timeline,
-            ToolRegistry tools,
-            RunInputCoordinator inputs,
-            AgentEventPublisher publisher) {
-        return new ChatService(json, runner, sessions, records, timeline, tools, inputs, publisher);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public ChatController chatController(ChatService service, RunInputCoordinator inputs) {
-        return new ChatController(service, inputs);
+    public ChatController chatController(
+            io.github.differentialmanifold.jagentharness.core.execution.RunService service) {
+        return new ChatController(service);
     }
 
     @Bean

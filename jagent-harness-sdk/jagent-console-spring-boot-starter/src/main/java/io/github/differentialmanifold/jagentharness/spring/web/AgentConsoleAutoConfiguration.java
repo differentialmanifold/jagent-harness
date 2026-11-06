@@ -116,11 +116,9 @@ public class AgentConsoleAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public SessionController sessionController(
-            SessionManager sessionManager,
-            WorkspaceRootResolver workspaceRootResolver,
+            io.github.differentialmanifold.jagentharness.core.project.ProjectService projects,
             ObjectProvider<ModelCallUsageStore> modelCallUsageStore) {
-        return new SessionController(
-                sessionManager, workspaceRootResolver, modelCallUsageStore.getIfAvailable());
+        return new SessionController(projects, modelCallUsageStore.getIfAvailable());
     }
 
     @Bean

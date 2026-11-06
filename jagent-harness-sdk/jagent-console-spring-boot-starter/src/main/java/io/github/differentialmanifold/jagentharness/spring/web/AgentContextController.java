@@ -7,6 +7,7 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
+import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;

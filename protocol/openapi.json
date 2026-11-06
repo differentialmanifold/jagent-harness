@@ -2,7 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "JAgent conversation API",
-    "version": "2.1.0"
+    "version": "2.2.0",
+    "description": "Conversation and Runner SDK contract. Personal Agent delegation is documented separately in skills/jagent/references/api.md."
   },
   "servers": [
     {
@@ -26,7 +27,7 @@
     "/chat": {
       "post": {
         "operationId": "chat",
-        "summary": "Append user or tool-result messages and execute the agent",
+        "summary": "Send a message to a project; the server selects its configured execution target",
         "requestBody": {
           "required": true,
           "content": {
@@ -70,7 +71,7 @@
             "description": "Capacity exhausted"
           }
         },
-        "description": "Ordinary multi-turn conversation. No idempotency or automatic replay. Tool results reference unanswered toolCallId values in session history. Remaining calls are returned without another model request when results are partial.",
+        "description": "Public conversation entry point. A Runner-bound session accepts one user message and dispatches using the project tool selection; JSON waits for the terminal result and SSE streams the whole run. runId is optional. Callers never execute the bound Runner tools or post their results here. A session without a registered Runner executes directly; standalone embedded AgentClient applications may still advertise and execute their own clientTools and return role=tool results through this endpoint. No automatic replay or idempotency is provided.",
         "parameters": [
           {
             "name": "X-Runner-Id",
@@ -88,6 +89,9 @@
               "type": "string"
             }
           }
+        ],
+        "tags": [
+          "Public conversation API"
         ]
       }
     },
@@ -382,21 +386,42 @@
     },
     "/runners/chat": {
       "post": {
-        "operationId": "dispatchRunnerChat",
-        "summary": "Queue one user message for the session runner; stream the entire conversation",
+        "operationId": "advanceRunnerConversation",
+        "summary": "Internal Runner protocol: advance a claimed conversation with user input or tool results",
         "responses": {
           "200": {
-            "description": "Model and local execution events followed by a terminal response",
+            "description": "Conversation response",
             "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/ChatResponse"
+                }
+              },
               "text/event-stream": {
                 "schema": {
                   "type": "string"
-                }
+                },
+                "example": "event: response\ndata: {\"sessionId\":\"sess_example\",\"runId\":\"run_example\",\"status\":\"COMPLETED\",\"toolCalls\":[]}\n\n"
               }
             }
           },
+          "400": {
+            "description": "Invalid message, tool catalog or history association"
+          },
+          "401": {
+            "description": "Invalid bearer token"
+          },
           "409": {
-            "description": "Offline runner or unfinished session"
+            "description": "Runner does not own a claimed job for this session, or the session is busy"
+          },
+          "413": {
+            "description": "Request too large"
+          },
+          "503": {
+            "description": "Capacity exhausted"
+          },
+          "403": {
+            "description": "Missing or invalid Runner credentials, or session not assigned to a Runner"
           }
         },
         "requestBody": {
@@ -408,7 +433,30 @@
               }
             }
           }
-        }
+        },
+        "description": "Called only by a registered Runner with a claimed job. Requires X-Runner-Id and X-Runner-Secret in addition to the server token. The server verifies the session/job assignment and uses the frozen tool catalog. This endpoint never queues another job; REQUIRES_ACTION returns tools to that Runner. Not a public UI or external Agent entry point.",
+        "parameters": [
+          {
+            "name": "X-Runner-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "tags": [
+          "Internal Runner protocol"
+        ],
+        "x-internal": true
       }
     },
     "/runners/{id}/complete": {

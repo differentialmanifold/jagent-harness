@@ -68,6 +68,7 @@ public final class AgentRunner implements AutoCloseable {
             info.toolDiagnostics.putAll(b.toolDiagnostics);
             http =
                     new HttpAgentTransport(server, b.token)
+                            .runnerProtocol()
                             .header("X-Runner-Id", info.runnerId)
                             .header("X-Runner-Secret", (String) config.get("secret"));
             for (ToolDefinition tool : b.tools) {

@@ -1,12 +1,12 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolMapper;
+import io.github.differentialmanifold.jagentharness.core.project.CreateSessionRequest;
 import io.github.differentialmanifold.jagentharness.core.session.SessionDetails;
-import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
-import io.github.differentialmanifold.jagentharness.spring.web.dto.CreateSessionRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.DeleteSessionRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.RenameSessionRequest;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.SessionDetailsRequest;
@@ -22,35 +22,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class SessionController {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private RunnerService runners;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore personal;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private io.github.differentialmanifold.jagentharness.spring.personal.PersonalAgentService
-            agents;
+    private io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentService agents;
 
-    private SessionRecord decorate(SessionRecord session) {
-        if (runners != null) session.setRunnerId(runners.binding(session.getSessionId()));
-        return session;
-    }
-
-    private final SessionManager sessionManager;
-    private final WorkspaceRootResolver workspaceRootResolver;
+    private final io.github.differentialmanifold.jagentharness.core.project.ProjectService projects;
     private final ModelCallUsageStore modelCallUsageStore;
 
     public SessionController(
-            SessionManager sessionManager, WorkspaceRootResolver workspaceRootResolver) {
-        this(sessionManager, workspaceRootResolver, new NoopModelCallUsageStore());
-    }
-
-    public SessionController(
-            SessionManager sessionManager,
-            WorkspaceRootResolver workspaceRootResolver,
+            io.github.differentialmanifold.jagentharness.core.project.ProjectService projects,
             ModelCallUsageStore modelCallUsageStore) {
-        this.sessionManager = sessionManager;
-        this.workspaceRootResolver = workspaceRootResolver;
+        this.projects = projects;
         this.modelCallUsageStore =
                 modelCallUsageStore == null ? new NoopModelCallUsageStore() : modelCallUsageStore;
     }
@@ -65,22 +48,7 @@ public class SessionController {
             @org.springframework.web.bind.annotation.RequestParam(required = false)
                     String ownerAgentId) {
         if (ownerAgentId != null && ownerAgentId.isEmpty()) ownerAgentId = null;
-        if (request != null && runners != null) {
-            io.github.differentialmanifold.jagentharness.protocol.RunnerProject existing =
-                    runners.project(request.getProjectId());
-            if (existing != null
-                    || (request.getRunnerId() != null && !request.getRunnerId().isEmpty())) {
-                return decorate(runners.createSession(request, existing, ownerAgentId));
-            }
-        }
-        String title = request == null ? null : request.getTitle();
-        String workspacePath = request == null ? null : request.getWorkspacePath();
-        String normalizedWorkspacePath =
-                workspaceRootResolver.normalizeWorkspacePath(workspacePath);
-        String projectName = request == null ? null : request.getProjectName();
-        String projectId = request == null ? null : request.getProjectId();
-        return sessionManager.createSession(
-                title, normalizedWorkspacePath, projectName, projectId, ownerAgentId);
+        return projects.createSession(ownerAgentId, request);
     }
 
     public List<SessionRecord> list() {
@@ -92,21 +60,16 @@ public class SessionController {
             @org.springframework.web.bind.annotation.RequestParam(required = false)
                     String ownerAgentId) {
         final String owner = ownerAgentId == null || ownerAgentId.isEmpty() ? null : ownerAgentId;
-        List<SessionRecord> sessions =
-                sessionManager.listSessions().stream()
-                        .filter(s -> Objects.equals(owner, s.getOwnerAgentId()))
-                        .collect(java.util.stream.Collectors.toList());
-        for (SessionRecord session : sessions) decorate(session);
-        return sessions;
+        return projects.sessions(owner);
     }
 
     @PostMapping("/detail")
     public Map<String, Object> detail(@RequestBody SessionDetailsRequest request) {
         String sessionId = requireSessionId(request == null ? null : request.getSessionId());
-        SessionDetails details = sessionManager.getDetails(sessionId);
+        SessionDetails details = projects.details(sessionId);
         details.setLatestUsage(modelCallUsageStore.findLatestBySessionId(sessionId));
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("session", decorate(details.getSession()));
+        response.put("session", details.getSession());
         response.put("latestUsage", details.getLatestUsage());
         List<Object> events = new ArrayList<>();
         ObjectMapper json = new ObjectMapper();
@@ -127,11 +90,9 @@ public class SessionController {
         if (conversation != null && agents != null) {
             agents.renameConversation(
                     conversation.agentId, conversation.sessionId, request.getTitle());
-            return decorate(sessionManager.requireSession(conversation.sessionId));
+            return projects.session(conversation.sessionId);
         }
-        return decorate(
-                sessionManager.renameSession(
-                        requireSessionId(request.getSessionId()), request.getTitle()));
+        return projects.renameSession(requireSessionId(request.getSessionId()), request.getTitle());
     }
 
     @PostMapping("/delete")
@@ -141,7 +102,7 @@ public class SessionController {
                 conversation = personal == null ? null : personal.conversation(id);
         if (conversation != null && agents != null)
             agents.deleteConversation(conversation.agentId, id);
-        else sessionManager.deleteSession(id);
+        else projects.deleteSession(id);
     }
 
     private String requireSessionId(String sessionId) {

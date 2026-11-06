@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator;
+import io.github.differentialmanifold.jagentharness.core.execution.*;
+import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.protocol.ChatRequest;
 import io.github.differentialmanifold.jagentharness.protocol.ChatResponse;
 import java.util.concurrent.CountDownLatch;
@@ -18,8 +20,8 @@ class ChatControllerTest {
         CountDownLatch entered = new CountDownLatch(count);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch finished = new CountDownLatch(count);
-        ChatService service = mock(ChatService.class);
-        when(service.chat(any(), any()))
+        ConversationService service = mock(ConversationService.class);
+        when(service.chat(any(), any(), any()))
                 .thenAnswer(
                         invocation -> {
                             entered.countDown();
@@ -30,11 +32,17 @@ class ChatControllerTest {
                                 finished.countDown();
                             }
                         });
-        ChatController controller = new ChatController(service, mock(RunInputCoordinator.class));
+        RunService runs =
+                new RunService(
+                        service, null, mock(SessionManager.class), mock(RunInputCoordinator.class));
+        ChatController controller = new ChatController(runs);
         try {
             for (int i = 0; i < count; i++) {
                 ChatRequest request = new ChatRequest();
                 request.sessionId = "session_" + i;
+                request.messages.add(
+                        io.github.differentialmanifold.jagentharness.protocol.ChatMessage.user(
+                                "work"));
                 assertNotNull(controller.stream(request));
             }
             assertTrue(
@@ -47,6 +55,7 @@ class ChatControllerTest {
                 assertTrue(finished.await(10, TimeUnit.SECONDS));
             } finally {
                 controller.close();
+                runs.close();
             }
         }
     }

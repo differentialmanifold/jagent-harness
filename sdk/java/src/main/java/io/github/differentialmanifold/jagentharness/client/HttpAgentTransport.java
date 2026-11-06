@@ -10,11 +10,18 @@ import java.util.function.Consumer;
 /** JDK HTTP transport: no Spring, OkHttp, JDBC, YAML or server runtime dependency. */
 public final class HttpAgentTransport implements AgentTransport {
     private final URL endpoint;
+    private boolean runnerProtocol;
     private final String token;
     private final java.util.Map<String, String> headers = new java.util.LinkedHashMap<>();
 
     public HttpAgentTransport header(String name, String value) {
         headers.put(name, value);
+        return this;
+    }
+
+    /** Select the authenticated, claimed-job protocol used by AgentRunner. */
+    public HttpAgentTransport runnerProtocol() {
+        runnerProtocol = true;
         return this;
     }
 
@@ -32,7 +39,10 @@ public final class HttpAgentTransport implements AgentTransport {
 
     @Override
     public ChatResponse chat(ChatRequest request, Consumer<StreamEvent> events) throws IOException {
-        HttpURLConnection c = (HttpURLConnection) endpoint.openConnection();
+        HttpURLConnection c =
+                (HttpURLConnection)
+                        (runnerProtocol ? new URL(endpoint, "/api/v1/runners/chat") : endpoint)
+                                .openConnection();
         c.setRequestMethod("POST");
         for (java.util.Map.Entry<String, String> h : headers.entrySet())
             c.setRequestProperty(h.getKey(), h.getValue());

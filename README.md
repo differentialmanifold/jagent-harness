@@ -41,16 +41,16 @@ sequenceDiagram
     participant R as Client Runner / SDK
 
     R->>S: Register local tools and start long polling
-    UI->>S: Submit a message to a runner-bound session
+    UI->>S: POST /api/v1/chat with the session and message
     S-->>UI: Keep SSE open for progress
     S-->>R: Return the conversation task in the poll response
 
-    R->>S: Submit the user message through the chat API
+    R->>S: POST /api/v1/runners/chat with the claimed job
     Note over S: Call the model and execute server tools
     S-->>R: Return client tool calls and end this request
 
     Note over R: Execute tools locally
-    R->>S: Submit role=tool results in the same session
+    R->>S: POST /api/v1/runners/chat with role=tool results
     Note over S: Append history and continue the agent loop
     S-->>R: Return more tool calls or the final answer
 
@@ -97,6 +97,12 @@ The server drives the conversation while the runner reads the local file. All se
 
 See [Quick start](QUICK_START.md) for independent startup, manual commands, remote machines, and Windows/macOS shortcuts.
 
+## Use it from another Agent
+
+Install the [JAgent skill](skills/jagent/SKILL.md) in your external Agent's skill directory, including its `scripts/` and `references/` folders. Configure `JAGENT_SERVER_URL` and, when required, `JAGENT_CLIENT_TOKEN`. The bundled Node.js client has no npm dependencies or MCP setup.
+
+The external Agent finds a suitable Personal Agent or creates one on a connected Runner, sends it a goal, and follows progress and results in the same conversation. No Agent needs to be created manually beforehand. JAgent handles planning, task tracking and project execution; the same conversation is visible in the Console. See the [API and SDK reference](skills/jagent/references/api.md).
+
 ## Integrate it
 
 - [Server integration](jagent-harness-sdk/README.md): deploy and extend the harness through Maven libraries.
@@ -105,7 +111,7 @@ See [Quick start](QUICK_START.md) for independent startup, manual commands, remo
 - [Java client SDK](sdk/java/README.md): register native tools with `AgentRunner`, or start conversations with `AgentClient`.
 - [HTTP/JSON protocol](protocol/README.md): implement another runner or frontend.
 
-This source tree targets `2.1.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
+This source tree targets `2.2.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
 
 The source layout follows these roles: `jagent-harness-sdk/` contains the server libraries, `sdk/java/` contains the reusable client and runner runtime, `examples/` contains the server host and coding tool host, `console/` contains the frontend, and `protocol/` contains the language-independent contract and its tests.
 
@@ -115,6 +121,7 @@ The source layout follows these roles: `jagent-harness-sdk/` contains the server
 mvn clean install
 npm ci --prefix protocol
 npm test --prefix protocol
+node --test skills/tests/*.test.mjs
 npm ci --prefix console
 npm test --prefix console
 npm run build --prefix console

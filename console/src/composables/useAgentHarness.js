@@ -507,7 +507,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
   async function sendMessage(override = null) {
     if (!currentSession.value) return
     const sessionId = currentSession.value.sessionId
-    const chatEndpoint = currentSession.value.runnerId ? '/api/v1/runners/chat' : '/api/v1/chat'
+    const chatEndpoint = '/api/v1/chat'
     const state = runtimeState(sessionId)
     const content = override ? override.content : state.draft
     const images = override ? override.images : state.draftImages.slice()

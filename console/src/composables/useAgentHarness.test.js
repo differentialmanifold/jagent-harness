@@ -17,7 +17,7 @@ function fixture(t, historyEvents = []) {
     if (url === '/api/v1/agent/context') return Response.json({ tools: [] })
     if (url === '/api/v1/sessions') return Response.json(sessions)
     if (url === '/api/v1/sessions/rename') return new Promise(resolve => { finishRename = () => resolve(Response.json(sessions[1])) })
-    if (url === '/api/v1/runners/chat') return new Promise((resolve, reject) => {
+    if (url === '/api/v1/chat') return new Promise((resolve, reject) => {
       streams.set(body.sessionId, { resolve, reject, body })
     })
     throw new Error(`Unexpected request: ${url}`)
