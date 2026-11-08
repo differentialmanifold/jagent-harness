@@ -36,14 +36,26 @@ public class RunService implements AutoCloseable {
         this.inputs = inputs;
     }
 
-    public RunHandle submit(ChatRequest request, Consumer<StreamEvent> events) {
+    public RunHandle submit(ChatSubmission submission, Consumer<StreamEvent> events) {
+        if (submission == null
+                || submission.messages == null
+                || submission.messages.size() != 1
+                || submission.messages.get(0) == null
+                || !"user".equals(submission.messages.get(0).role)
+                || submission.messages.get(0).toolCallId != null
+                || submission.messages.get(0).status != null)
+            throw new ProtocolException(
+                    400,
+                    "INVALID_MESSAGES",
+                    "Submit exactly one user message; tool results require the Runner protocol");
+        ChatRequest request = new ChatRequest();
+        request.sessionId = submission.sessionId;
+        request.runId = submission.runId;
+        request.messages = submission.messages;
+        request.stream = submission.stream;
         conversations.validate(request);
         sessions.requireSession(request.sessionId);
-        if (request.runId == null)
-            request.runId =
-                    "tool".equals(request.messages.get(0).role)
-                            ? conversations.state(request.sessionId).runId
-                            : Ids.newId("run");
+        if (request.runId == null) request.runId = Ids.newId("run");
         if (runners != null && runners.binding(request.sessionId) != null)
             return runners.submit(request, events);
         RunHandle handle = new RunHandle(request.sessionId, request.runId, events);

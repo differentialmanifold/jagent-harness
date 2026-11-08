@@ -1,6 +1,8 @@
-# 快速体验个人 Agent
+# 个人 Agent
 
-[English](README.md) | **简体中文**
+[English](agents.md) | **简体中文**
+
+[文档导航](../README.zh-CN.md) · [项目指南（英文）](projects.md)
 
 交给 Agent 一个小开发任务，看看它如何自己创建项目、调用工具并验证结果。
 
@@ -62,12 +64,28 @@ Agent 应先通过 Project 查看现有实现，再决定怎么改。可以观�
 - 点击会话旁的 **…** 重命名或删除。Agent 正在执行时不能删除会话；删除会清理排队消息、解除后续检查，但保留项目、记忆和 Skills。下一条飞书消息会创建新会话。
 - 打开 **Configuration → Runtime Context** 查看当前模型、可用工具和可发现的 Skills。列出的 Skill 不代表模型已经读取过它。
 - **Configuration → Tools** 选择 Agent 自己可用的服务端操作。**Default project Runner** 决定新项目在哪里执行，不代表 Agent 聊天直接拥有 Runner 的全部工具；项目工具仍在项目的 **Configuration → Tools** 中选择。
-- **Configuration → Runtime Context → Runtime Preview** 按当前指引、记忆和 Skills 预览提示词，不是某一轮历史模型请求的快照。
+- **Configuration → Runtime Context → Runtime Preview** 展示当前配置生成的系统提示词，不是某一轮历史请求的快照。实时记忆和任务进度分别在 **Knowledge** 与 **Tasks** 查看，详见[配置指南（英文）](configuration.md)。
+
+**Pause Agent** 阻止新决策并停止当前决策。已经提交的项目任务和外部进程需要到 Project 中检查或停止。每个 Agent 同时进行一个决策，独立的项目工作可以并行；Agent 派发到同一目录的写入任务顺序执行，但不会锁住手动在该派发流程之外启动的命令。
+
+Agent 有五个管理工具，具体操作由工具参数定义直接说明：
+
+| 工具 | 用途 |
+| --- | --- |
+| `projects` | 创建、检查、发送要求、调整和停止自己的项目工作 |
+| `tasks` | 追踪计划、依赖、验收依据和一次性检查 |
+| `memory` | 读取和编辑长期偏好与事实 |
+| `skills` | 发现和维护自己的可复用方法 |
+| `history` | 从过去的会话和项目工作中查找证据 |
+
+核心规划规则始终存在，不需要读取某个 Skill 才能启用这些工具。Agent 通过 Project 会话调查文件、执行修改并验证结果；选择 Runner 不等于给 Agent 聊天直接开放 Shell。
 
 ## 想继续体验时
 
 - **记忆**：说“记住，我喜欢没有额外依赖的小示例”。在 **Knowledge → Memory** 查看，后续新对话也能使用。
 - **Skill**：任务成功后说“把这次已验证的实现和测试方法保存为可复用 Skill”。在 **Knowledge → Skills & learning** 查看。
-- **飞书**：以后需要时，再从 Agent 的 **Configuration → Channels** 页按[连接指引](../../console/README.md#connect-feishu)配置。
+- **飞书**：以后需要时，再从 Agent 的 **Configuration → Channels** 页按[连接指引](feishu.md)配置。
+
+评审与撤销见[记忆与学习](knowledge.md)；通过其他助手提交目标见[外部 Agent 接入](external-agents.md)（均为英文）。
 
 如果没有开始执行，检查模型是否支持工具调用、Runner 是否在线。如果命令失败，打开项目 Chat 查看错误，让 Agent 继续处理即可。

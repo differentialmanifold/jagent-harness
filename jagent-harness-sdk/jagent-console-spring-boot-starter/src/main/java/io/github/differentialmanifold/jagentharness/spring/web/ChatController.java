@@ -24,12 +24,12 @@ public class ChatController {
     }
 
     @PostMapping(value = "/chat", produces = MediaType.APPLICATION_JSON_VALUE)
-    public DeferredResult<ChatResponse> chat(@RequestBody ChatRequest request) {
+    public DeferredResult<ChatResponse> chat(@RequestBody ChatSubmission request) {
         return HttpExecution.result(service.submit(request, null).result());
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestBody ChatRequest request) {
+    public SseEmitter stream(@RequestBody ChatSubmission request) {
         return http.stream(events -> service.submit(request, events));
     }
 

@@ -1,13 +1,10 @@
 # Java client SDK
 
+[Documentation](../../docs/README.md) · [Coding Runner](../../examples/coding-runner/README.md)
+
 Bring server-side agents to your own runtime. Implement local tools with `ToolDefinition`; the SDK handles communication, tool execution, and result delivery. No Spring, JDBC, model SDK, inbound port, or working directory is required.
 
-The SDK provides two entry points:
-
-| Entry point | Use it when |
-| --- | --- |
-| `AgentRunner` | A separate frontend submits work to the server, and your application receives and executes it. Includes registration, long polling, cancellation, local records, and recovery. |
-| `AgentClient` | Your application starts conversations itself and executes local tools during those conversations. |
+Use `AgentRunner` to register native tools and receive work from the server. Run it as a standalone process or embed it in an existing application's lifecycle. The frontend or an external Agent submits work through the server APIs; project configuration selects the execution terminal.
 
 Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and protocol types) and Jackson. HTTP uses the JDK.
 
@@ -75,33 +72,13 @@ For file-based scenarios, add `.workspaces(new LocalWorkspaces())` to the builde
 
 Both server and client tools implement `ToolDefinition`. Its `descriptor()` method produces the name, description, and parameter schema sent over the wire. Return structured content with `ToolExecutionResult.success(...)`, `.failure(...)`, or `.unknown(...)`; no coding-specific interface or JSON string adapter is needed. Tools should check the shared `StopSignal` or register a callback to cancel blocking device operations.
 
-## Start conversations from your application
-
-Use `AgentClient` when the application owns the conversation entry point. With the `status` tool above:
-
-```java
-import io.github.differentialmanifold.jagentharness.protocol.*;
-
-HttpAgentTransport transport = new HttpAgentTransport(
-    "http://127.0.0.1:18181", System.getenv("JAGENT_CLIENT_TOKEN"));
-AgentClient client = new AgentClient(transport, Collections.singletonList(status));
-ChatRequest request = new ChatRequest();
-request.sessionId = transport.createSession("Device assistant", null);
-request.messages.add(ChatMessage.user("Check this device"));
-request.stream = true;
-ChatResponse response = client.run(request,
-    new ClientRunOptions().onEvent(event -> System.out.println(event.type)));
-```
-
-Reuse `sessionId` for follow-up messages. `run()` executes on the calling thread and may make several HTTP requests before returning. By default it advertises all registered tools; a request can provide a nonempty subset in `clientTools`. `ClientRunOptions.toolContext(...)` supplies local dependencies; `.stopSignal(...)` controls local cancellation. Call `transport.stop(runId)` to stop a server-side operation.
-
 ## Cancellation and recovery
 
 `AgentRunner` keeps receiving cancellation while tools execute. It records accepted jobs and tool outcomes before delivery, so a redelivered job does not replay the initial prompt or a tool that already started. A crash before saving the tool result leaves the outcome `UNKNOWN`.
 
 After inspecting the local effects of an interrupted operation, stop the receiver and create a runner with the same server URL, state directory, and tool implementations. The saved job supplies its project workspace and selected catalog. Call `runner.recover(sessionId)` to submit saved results. Recovery does not re-execute pending calls; the server may issue new calls after receiving their results. Restart `serve()` afterwards.
 
-`AgentClient` alone does not keep a durable journal or retry requests automatically. If a connection fails, inspect `transport.state(sessionId)` and the actual tool effects before continuing. Both entry points submit tool results as ordinary `role=tool` messages under the same session.
+Tool results are submitted as ordinary `role=tool` messages through the authenticated Runner protocol under the same session and claimed run. The SDK does not expose a separate conversation client. To build a frontend, use the public [server APIs](../../protocol/README.md); to delegate to a Personal Agent, use the [external Agent Skill](../../docs/guides/external-agents.md).
 
 A runner executes independent conversations concurrently without a fixed conversation limit. Each session still runs one job at a time; cancelling a run affects only that run. Tool implementations, local context, and event listeners are shared across runs and must support concurrent use. Projects select enabled tools in the frontend. Each job freezes that selection, and the SDK rejects calls outside it, including when no tools are selected. Selected tools run with Full access under the host process’s permissions. Application lifecycle remains local. Frontends use the server APIs independently of the SDK. Another language can implement the same [HTTP/JSON protocol](../../protocol/README.md#remote-runners) without MCP.
 

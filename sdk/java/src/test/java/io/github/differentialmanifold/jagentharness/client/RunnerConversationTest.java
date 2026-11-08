@@ -10,7 +10,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
-class AgentClientTest {
+class RunnerConversationTest {
     final ObjectMapper json = new ObjectMapper();
 
     ToolDefinition tool(AtomicInteger calls) {
@@ -41,6 +41,7 @@ class AgentClientTest {
         request.sessionId = "session";
         request.messages.add(ChatMessage.user("hello"));
         request.clientInstructions = "Business instructions";
+        request.clientTools.add(tool(new AtomicInteger()).descriptor());
         return request;
     }
 
@@ -63,8 +64,8 @@ class AgentClientTest {
     @Test
     void toolResultsUseOrdinaryChatAndSameDefinitionMetadata() throws Exception {
         AtomicInteger exchanges = new AtomicInteger(), effects = new AtomicInteger();
-        AgentClient client =
-                new AgentClient(
+        RunnerConversation client =
+                new RunnerConversation(
                         (request, events) -> {
                             assertEquals("echo", request.clientTools.get(0).name);
                             assertEquals("Business instructions", request.clientInstructions);
@@ -75,36 +76,52 @@ class AgentClientTest {
                             return response(false);
                         },
                         Collections.singletonList(tool(effects)));
-        assertEquals("COMPLETED", client.run(request(), new ClientRunOptions()).status);
+        assertEquals("COMPLETED", client.run(request(), new RunnerRunOptions()).status);
         assertEquals(2, exchanges.get());
         assertEquals(1, effects.get());
     }
 
     @Test
+    void emptyJobCatalogNeverAdvertisesOrExecutesRegisteredTools() {
+        AtomicInteger effects = new AtomicInteger();
+        ChatRequest request = request();
+        request.clientTools.clear();
+        RunnerConversation conversation =
+                new RunnerConversation(
+                        (step, events) -> {
+                            assertTrue(step.clientTools.isEmpty());
+                            return response(true);
+                        },
+                        Collections.singletonList(tool(effects)));
+        assertThrows(IOException.class, () -> conversation.run(request, new RunnerRunOptions()));
+        assertEquals(0, effects.get());
+    }
+
+    @Test
     void uncertainUserRequestIsNotRetried() {
         AtomicInteger calls = new AtomicInteger();
-        AgentClient client =
-                new AgentClient(
+        RunnerConversation client =
+                new RunnerConversation(
                         (request, events) -> {
                             calls.incrementAndGet();
                             throw new IOException("lost response");
                         },
                         Collections.emptyList());
-        assertThrows(IOException.class, () -> client.run(request(), new ClientRunOptions()));
+        assertThrows(IOException.class, () -> client.run(request(), new RunnerRunOptions()));
         assertEquals(1, calls.get());
     }
 
     @Test
     void lostToolResultResponseDoesNotReplayRequestOrLocalEffect() {
         AtomicInteger calls = new AtomicInteger(), effects = new AtomicInteger();
-        AgentClient client =
-                new AgentClient(
+        RunnerConversation client =
+                new RunnerConversation(
                         (request, events) -> {
                             if (calls.getAndIncrement() == 0) return response(true);
                             throw new IOException("result accepted, response lost");
                         },
                         Collections.singletonList(tool(effects)));
-        assertThrows(IOException.class, () -> client.run(request(), new ClientRunOptions()));
+        assertThrows(IOException.class, () -> client.run(request(), new RunnerRunOptions()));
         assertEquals(2, calls.get());
         assertEquals(1, effects.get());
     }
@@ -114,10 +131,10 @@ class AgentClientTest {
         AtomicInteger effects = new AtomicInteger();
         ChatResponse pending = response(true);
         pending.toolCalls.add(pending.toolCalls.get(0));
-        AgentClient client =
-                new AgentClient(
+        RunnerConversation client =
+                new RunnerConversation(
                         (request, events) -> pending, Collections.singletonList(tool(effects)));
-        assertThrows(IOException.class, () -> client.run(request(), new ClientRunOptions()));
+        assertThrows(IOException.class, () -> client.run(request(), new RunnerRunOptions()));
         assertEquals(0, effects.get());
     }
 
@@ -126,18 +143,18 @@ class AgentClientTest {
         AtomicInteger effects = new AtomicInteger();
         ChatResponse pending = response(true);
         pending.toolCalls.get(0).name = "hidden";
-        AgentClient client =
-                new AgentClient(
+        RunnerConversation client =
+                new RunnerConversation(
                         (request, events) -> pending, Collections.singletonList(tool(effects)));
-        assertThrows(IOException.class, () -> client.run(request(), new ClientRunOptions()));
+        assertThrows(IOException.class, () -> client.run(request(), new RunnerRunOptions()));
         assertEquals(0, effects.get());
     }
 
     @Test
     void repeatedServerStartsAppearAsOneUiOperation() throws Exception {
         AtomicInteger calls = new AtomicInteger(), starts = new AtomicInteger();
-        AgentClient client =
-                new AgentClient(
+        RunnerConversation client =
+                new RunnerConversation(
                         (request, events) -> {
                             StreamEvent event = new StreamEvent();
                             event.type = "agent_start";
@@ -147,7 +164,7 @@ class AgentClientTest {
                         Collections.singletonList(tool(new AtomicInteger())));
         client.run(
                 request(),
-                new ClientRunOptions()
+                new RunnerRunOptions()
                         .onEvent(
                                 event -> {
                                     if ("agent_start".equals(event.type)) starts.incrementAndGet();

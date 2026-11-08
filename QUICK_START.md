@@ -1,5 +1,7 @@
 # Quick start
 
+[Project overview](README.md) · [Documentation](docs/README.md)
+
 The coding demo has three independent processes: the harness server, a coding runner with built-in tools, and the web frontend. Both the runner and frontend connect to the server. Only the runner accesses the local workspace.
 
 ## Prerequisites
@@ -114,9 +116,9 @@ Open **Projects → Configuration → Tools** to configure a project’s Runner 
 
 ## Try personal Agents
 
-Open **Agents** and follow the [hands-on Agent guide](examples/personal-agents/README.md) ([简体中文](examples/personal-agents/README.zh-CN.md)). Create an Agent, choose an online Runner, and send the guide's short TODO request. No workspace setup is needed. Memory, Skills, and follow-up tasks are optional next steps. Use the same running services; no extra packages or browser tests are needed. Feishu is optional.
+Open **Agents** and follow the [hands-on Agent guide](docs/guides/agents.md) ([简体中文](docs/guides/agents.zh-CN.md)). Create an Agent, choose an online Runner, and send the guide's short TODO request. No workspace setup is needed. Memory, Skills, and follow-up tasks are optional next steps. Use the same running services; no extra packages or browser tests are needed. Feishu is optional.
 
-**System Settings** separates **Project defaults** and **Agent defaults** for instructions, Skills and MCP servers. Existing global resources remain Project defaults. Each workspace inherits only its own type's defaults; an Agent's private resources do not automatically become project resources. View the effective model, tools, Skills and prompt under that workspace's **Configuration → Runtime Context**.
+For everyday use, continue with [Projects](docs/guides/projects.md) or [Personal Agents](docs/guides/agents.md). [Configuration and Skills](docs/guides/configuration.md) explains defaults and project/Agent settings. All feature guides and integration references are listed in the [documentation index](docs/README.md).
 
 ## Configuration reference
 
@@ -137,7 +139,7 @@ Open **Agents** and follow the [hands-on Agent guide](examples/personal-agents/R
 | `JAGENT_RUNNER_NAME` | Display name; machine hostname for direct startup, `coding-local` in launchers |
 | `JAGENT_RG_PATH` | Optional path to ripgrep; search tools also have a Java fallback |
 
-The standalone runner defaults to `~/.jagent-runner` unless `--home` or `JAGENT_RUNNER_HOME` is provided. One identity represents one terminal and can serve multiple project directories. Use another home for another terminal or server.
+The standalone runner defaults to `~/.jagent-runner` unless `--home` or `JAGENT_RUNNER_HOME` is provided. One identity represents one terminal and can serve multiple project directories. The SDK keeps a separate identity and journal for each server URL under that home; do not copy an identity to another terminal. See [Runner state](examples/coding-runner/README.md#state-cancellation-and-recovery).
 
 ### Connect to a remote server
 

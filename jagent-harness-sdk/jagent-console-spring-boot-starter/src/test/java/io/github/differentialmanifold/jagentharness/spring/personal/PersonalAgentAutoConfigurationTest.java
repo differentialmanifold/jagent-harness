@@ -79,10 +79,10 @@ class PersonalAgentAutoConfigurationTest {
                             when(ctx.getBean(AgentHarness.class)
                                             .run(eq("headless"), anyList(), any()))
                                     .thenReturn(outcome);
-                            io.github.differentialmanifold.jagentharness.protocol.ChatRequest
+                            io.github.differentialmanifold.jagentharness.protocol.ChatSubmission
                                     request =
                                             new io.github.differentialmanifold.jagentharness
-                                                    .protocol.ChatRequest();
+                                                    .protocol.ChatSubmission();
                             request.sessionId = "headless";
                             request.runId = "run_headless";
                             request.messages.add(

@@ -1,6 +1,8 @@
 # 随 Skill 按需加载 MCP 工具
 
-[English](skill-mcp-loading.md) | **简体中文**
+[English](skills-and-mcp.md) | **简体中文**
+
+[文档导航](../README.zh-CN.md) · [配置与 Skills（英文）](configuration.md)
 
 将业务流程写在 Skill 中，将业务接口通过 MCP 提供。模型读取某个业务 Skill 后，它需要的工具才会加入后续调用，并在当前会话中持续可用。
 

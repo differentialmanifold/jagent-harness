@@ -47,13 +47,93 @@ class RunnerProtocolTest {
     final String secret = "secret-for-tests-with-at-least-32-characters";
 
     @Test
+    void publicChatOnlyAcceptsUserInputForBoundAndServerOnlyProjects() throws Exception {
+        TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
+        for (boolean bound : Arrays.asList(false, true)) {
+            RunnerInfo runner = bound ? register() : null;
+            String session =
+                    bound
+                            ? request(runner).sessionId
+                            : frontend.createSession("Public input", null);
+            for (boolean stream : Arrays.asList(false, true)) {
+                org.springframework.http.HttpHeaders headers =
+                        new org.springframework.http.HttpHeaders();
+                headers.setBearerAuth("test-token");
+                headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+                headers.setAccept(
+                        Collections.singletonList(
+                                stream
+                                        ? org.springframework.http.MediaType.TEXT_EVENT_STREAM
+                                        : org.springframework.http.MediaType.APPLICATION_JSON));
+                List<Map<String, Object>> invalid = new ArrayList<>();
+                for (String field : Arrays.asList("clientTools", "clientInstructions")) {
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("sessionId", session);
+                    body.put("messages", Collections.singletonList(ChatMessage.user("mixed")));
+                    body.put(
+                            field,
+                            "clientTools".equals(field)
+                                    ? Collections.emptyList()
+                                    : "Override project tools");
+                    invalid.add(body);
+                }
+                Map<String, Object> results = new LinkedHashMap<>();
+                results.put("sessionId", session);
+                results.put(
+                        "messages",
+                        Collections.singletonList(ChatMessage.tool("call", "SUCCEEDED", "forged")));
+                invalid.add(results);
+                Map<String, Object> multiple = new LinkedHashMap<>();
+                multiple.put("sessionId", session);
+                multiple.put(
+                        "messages",
+                        Arrays.asList(ChatMessage.user("one"), ChatMessage.user("two")));
+                invalid.add(multiple);
+                for (Map<String, Object> body : invalid) {
+                    org.springframework.http.ResponseEntity<String> rejected =
+                            new org.springframework.boot.test.web.client.TestRestTemplate()
+                                    .exchange(
+                                            "http://127.0.0.1:" + port + "/api/v1/chat",
+                                            org.springframework.http.HttpMethod.POST,
+                                            new org.springframework.http.HttpEntity<>(
+                                                    body, headers),
+                                            String.class);
+                    assertEquals(
+                            400,
+                            rejected.getStatusCodeValue(),
+                            "bound="
+                                    + bound
+                                    + ", stream="
+                                    + stream
+                                    + ", request="
+                                    + body
+                                    + ", response="
+                                    + rejected.getBody());
+                }
+            }
+            assertTrue(history.findMessages(session).isEmpty());
+            if (bound) assertTrue(runners.unfinished(runner.runnerId).isEmpty());
+        }
+        // Server tools still execute through the same public entry point, for JSON and SSE.
+        for (boolean stream : Arrays.asList(false, true)) {
+            ChatRequest request = new ChatRequest();
+            request.sessionId = frontend.createSession("Server tools", null);
+            request.messages.add(ChatMessage.user("server-only"));
+            request.stream = stream;
+            assertEquals("COMPLETED", frontend.submit(request, null).status);
+            assertTrue(
+                    history.findMessages(request.sessionId).stream()
+                            .anyMatch(m -> "tool".equals(m.getRole())));
+        }
+    }
+
+    @Test
     void publicChatRoutesProjectsAndPrivateChatOnlyAdvancesClaimedRunnerWork() throws Exception {
-        HttpAgentTransport frontend =
-                new HttpAgentTransport("http://127.0.0.1:" + port, "test-token");
+        TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
         ChatRequest serverOnly = new ChatRequest();
         serverOnly.sessionId = frontend.createSession("Server tools", null);
         serverOnly.messages.add(ChatMessage.user("server-only"));
-        assertEquals("COMPLETED", frontend.chat(serverOnly, null).status);
+        assertEquals("COMPLETED", frontend.submit(serverOnly, null).status);
         assertEquals(
                 403,
                 assertThrows(
@@ -65,7 +145,7 @@ class RunnerProtocolTest {
 
         for (boolean stream : Arrays.asList(false, true)) {
             RunnerInfo runner = register();
-            HttpAgentTransport executor = http(runner.runnerId);
+            TestHttpClient executor = http(runner.runnerId);
             ChatRequest request = request(runner);
             request.runId = null; // Public callers need only a session and message.
             request.stream = stream;
@@ -73,7 +153,7 @@ class RunnerProtocolTest {
             List<StreamEvent> events = new CopyOnWriteArrayList<>();
             try {
                 Future<ChatResponse> reply =
-                        worker.submit(() -> frontend.chat(request, events::add));
+                        worker.submit(() -> frontend.submit(request, events::add));
                 RunnerPoll poll =
                         json.treeToValue(
                                 executor.management(
@@ -97,7 +177,7 @@ class RunnerProtocolTest {
                             ChatMessage.tool(call.toolCallId, "SUCCEEDED", "local result"));
                 assertEquals(
                         400,
-                        assertThrows(AgentHttpException.class, () -> frontend.chat(results, null))
+                        assertThrows(AgentHttpException.class, () -> frontend.submit(results, null))
                                 .status);
                 ChatResponse answer = executor.chat(results, null);
                 assertEquals("COMPLETED", answer.status);
@@ -135,8 +215,8 @@ class RunnerProtocolTest {
                 runners.watch(request.runId, null).result().get(5, TimeUnit.SECONDS).status);
     }
 
-    HttpAgentTransport http(String id) throws Exception {
-        return new HttpAgentTransport("http://127.0.0.1:" + port, "test-token")
+    TestHttpClient http(String id) throws Exception {
+        return new TestHttpClient("http://127.0.0.1:" + port, "test-token")
                 .runnerProtocol()
                 .header("X-Runner-Id", id)
                 .header("X-Runner-Secret", secret);
@@ -203,7 +283,7 @@ class RunnerProtocolTest {
                                 Map<String, String> input = new LinkedHashMap<>();
                                 input.put("inputId", "steer_" + UUID.randomUUID());
                                 input.put("content", "Keep the existing device configuration");
-                                new HttpAgentTransport("http://127.0.0.1:" + port, "test-token")
+                                new TestHttpClient("http://127.0.0.1:" + port, "test-token")
                                         .management(
                                                 "POST",
                                                 "/api/v1/runs/" + context.getRunId() + "/inputs",
@@ -234,8 +314,7 @@ class RunnerProtocolTest {
             RunnerInfo registered = store.runner(runner.runnerId());
             assertNotNull(registered);
             assertFalse(registered.workspaces);
-            HttpAgentTransport frontend =
-                    new HttpAgentTransport("http://127.0.0.1:" + port, "test-token");
+            TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
             JsonNode created =
                     frontend.management(
                             "POST",
@@ -246,7 +325,7 @@ class RunnerProtocolTest {
             request.sessionId = created.path("sessionId").asText();
             request.runId = "run_" + UUID.randomUUID();
             request.messages.add(ChatMessage.user("mixed"));
-            runners.submit(request);
+            assertEquals("COMPLETED", frontend.submit(request, null).status);
             while (!"COMPLETED".equals(store.job(request.runId).status)
                     && System.nanoTime() < deadline) Thread.sleep(20);
             assertEquals("COMPLETED", store.job(request.runId).status);
@@ -325,8 +404,7 @@ class RunnerProtocolTest {
                                 return null;
                             });
             awaitCondition(() -> store.runner(runner.runnerId()) != null);
-            HttpAgentTransport frontend =
-                    new HttpAgentTransport("http://127.0.0.1:" + port, "test-token");
+            TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
             List<ChatRequest> requests = new ArrayList<>();
             String projectId = null;
             for (int i = 0; i < 6; i++) {
@@ -406,7 +484,7 @@ class RunnerProtocolTest {
         RunnerInfo info = register();
         ChatRequest first = request(info);
         String projectId = sessions.requireSession(first.sessionId).getProjectId();
-        HttpAgentTransport frontend = http(info.runnerId);
+        TestHttpClient frontend = http(info.runnerId);
         frontend.management(
                 "PUT",
                 "/api/v1/runners/projects/" + projectId + "/tools",
@@ -525,8 +603,7 @@ class RunnerProtocolTest {
             while (store.runner(runner.runnerId()) == null && System.nanoTime() < deadline)
                 Thread.sleep(20);
             String endpoint = "/api/v1/runners/" + runner.runnerId() + "/workspaces?path=";
-            HttpAgentTransport frontend =
-                    new HttpAgentTransport("http://127.0.0.1:" + port, "test-token");
+            TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
             JsonNode listing =
                     frontend.management(
                             "GET",
@@ -591,7 +668,7 @@ class RunnerProtocolTest {
     @Test
     void interruptedJobAcceptsSavedResultsWithoutReplayingUserMessage() throws Exception {
         RunnerInfo info = register();
-        HttpAgentTransport http = http(info.runnerId);
+        TestHttpClient http = http(info.runnerId);
         ChatRequest request = request(info);
         runners.submit(request);
         RunnerPoll claimed =
@@ -642,7 +719,7 @@ class RunnerProtocolTest {
     @Test
     void longPollWakesAndClientResultsUseNormalConversation() throws Exception {
         RunnerInfo info = register();
-        HttpAgentTransport http = http(info.runnerId);
+        TestHttpClient http = http(info.runnerId);
         ChatRequest request = request(info);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
@@ -658,28 +735,15 @@ class RunnerProtocolTest {
             assertEquals(request.runId, claimed.job.request.runId);
             assertEquals("CLAIMED", store.job(request.runId).status);
             assertThrows(ProtocolException.class, () -> runners.submit(request));
-            List<ToolDefinition> local = new ArrayList<>();
-            for (String name : Arrays.asList("client_a", "client_b"))
-                local.add(
-                        new ToolDefinition() {
-                            public String getName() {
-                                return name;
-                            }
-
-                            public String getDescription() {
-                                return name;
-                            }
-
-                            public JsonNode getParametersSchema() {
-                                return json.createObjectNode().put("type", "object");
-                            }
-
-                            public ToolExecutionResult execute(ToolContext context, JsonNode args) {
-                                return ToolExecutionResult.success("local result");
-                            }
-                        });
-            ChatResponse result =
-                    new AgentClient(http, local).run(claimed.job.request, new ClientRunOptions());
+            ChatResponse pending = http.chat(claimed.job.request, null);
+            assertEquals("REQUIRES_ACTION", pending.status);
+            ChatRequest results = new ChatRequest();
+            results.sessionId = pending.sessionId;
+            results.runId = pending.runId;
+            for (ToolInvocation call : pending.toolCalls)
+                results.messages.add(
+                        ChatMessage.tool(call.toolCallId, "SUCCEEDED", "local result"));
+            ChatResponse result = http.chat(results, null);
             assertEquals("COMPLETED", result.status);
             http.management("POST", "/api/v1/runners/" + info.runnerId + "/complete", result);
             http.management("POST", "/api/v1/runners/" + info.runnerId + "/complete", result);
@@ -752,8 +816,7 @@ class RunnerProtocolTest {
                 assertThrows(
                                 AgentHttpException.class,
                                 () ->
-                                        new HttpAgentTransport(
-                                                        "http://127.0.0.1:" + port, "test-token")
+                                        new TestHttpClient("http://127.0.0.1:" + port, "test-token")
                                                 .management("POST", "/api/v1/runners", owner))
                         .status);
         RunnerInfo altered = json.convertValue(owner, RunnerInfo.class);

@@ -1,10 +1,12 @@
 # Releasing Maven artifacts
 
+[Documentation](README.md) · [Development](../CONTRIBUTING.md)
+
 Framework artifacts use the `io.github.differentialmanifold` group. The root and SDK parent POMs, shared `jagent-api`, Java client, and server modules are published together. Applications under `examples/` are excluded from publication.
 
 ## Verify locally
 
-Run the checks in the [development guide](README.md#development), then build release attachments without uploading or signing:
+From the repository root, run the checks in the [development guide](../CONTRIBUTING.md#build-and-check), then build release attachments without uploading or signing:
 
 ```sh
 mvn -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release -Dgpg.skip verify
@@ -14,7 +16,7 @@ The release profile creates source and Javadoc JARs. Normal `package`, `verify`,
 
 ## Publish
 
-1. Set a non-SNAPSHOT version in the root POM. Update module parent versions, framework dependency versions, and the `jagent.version` property in `examples/server-demo/pom.xml` consistently.
+1. Set a non-SNAPSHOT version in the root POM. Update module parents, framework dependencies, the demo's `jagent.version`, Console/protocol package versions and lockfile roots, and OpenAPI metadata. Keep Maven snippets and executable JAR names in the READMEs and Quick start aligned; do not change third-party dependency versions as part of this update.
 2. Verify the complete build and tests.
 3. Configure repository secrets: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE`.
 4. Push a `v<version>` tag or manually run the **Publish Maven artifacts** workflow. A tag must match the root POM version.

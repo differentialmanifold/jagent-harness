@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+[Documentation](../../docs/README.md) · [Quick start](../../QUICK_START.md)
+
 A headless Java process that brings coding tools to the machine containing your workspace. The executable includes `read`, `ls`, `find`, `grep`, `write`, `edit`, and `bash`. It requires Java 8+ and contains no Spring, database driver, model SDK, or web server.
 
 The [Harness server](../../examples/server-demo/README.md) owns the agent loop, model, state, and server tools such as skills. The [frontend](../../console/README.md) talks directly to that server. The runner advertises its built-in tools, receives work over outbound HTTP long polling, executes locally, and returns results. Tool implementations are distributed with the runner, never downloaded from the Harness.
