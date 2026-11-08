@@ -7,8 +7,8 @@ import static org.mockito.Mockito.*;
 import io.github.differentialmanifold.jagentharness.core.agent.RunInputCoordinator;
 import io.github.differentialmanifold.jagentharness.core.execution.*;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
-import io.github.differentialmanifold.jagentharness.protocol.ChatRequest;
 import io.github.differentialmanifold.jagentharness.protocol.ChatResponse;
+import io.github.differentialmanifold.jagentharness.protocol.ChatSubmission;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ class ChatControllerTest {
         ChatController controller = new ChatController(runs);
         try {
             for (int i = 0; i < count; i++) {
-                ChatRequest request = new ChatRequest();
+                ChatSubmission request = new ChatSubmission();
                 request.sessionId = "session_" + i;
                 request.messages.add(
                         io.github.differentialmanifold.jagentharness.protocol.ChatMessage.user(

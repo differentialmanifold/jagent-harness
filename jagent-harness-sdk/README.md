@@ -1,5 +1,7 @@
 # Server integration
 
+[Documentation](../docs/README.md) · [Server host example](../examples/server-demo/README.md)
+
 Run the harness independently of the applications that execute its tools. This Maven integration hosts the agent loop, model connection, and conversation state; clients embed the lightweight SDK and connect over HTTP. Your server application owns deployment, configuration, and storage.
 
 The Spring modules target Java 8 and Spring Boot 2.7.18. For a complete runnable application, see [server-demo](../examples/server-demo/README.md).
@@ -53,13 +55,11 @@ Set the model environment variables before launching. Configure a shared API tok
 
 ## Execution boundary
 
-The server owns the agent loop, model calls, and conversation history. Client applications advertise their tools over the [protocol](../protocol/README.md); the server returns calls in HTTP responses, and the client sends execution results through the same chat endpoint. No device callback endpoint is needed.
+The server owns the agent loop, model calls, and conversation history. Applications host an `AgentRunner` that registers local tools and receives work over the [protocol](../protocol/README.md). Users submit messages through `/api/v1/chat`; the server selects the project's execution target. Only the assigned Runner exchanges tool calls and results through `/api/v1/runners/chat`. No device callback endpoint is needed.
 
 The host may also register server-side tools as `ToolDefinition` beans or use `ToolProvider`. Client tools implement the same Java contract but stay in their own application. Tool names must be unique across the combined catalog.
 
-Optional skills are Markdown instructions stored through the console or knowledge-file API. Import a ZIP containing `skills/{name}/SKILL.md`, a skill directory, or `SKILL.md` directly at the archive root. Supporting files keep their paths relative to `SKILL.md`. For a root-level skill, its descriptor name (or ZIP filename when unnamed) determines the destination directory. Skills guide tool use; they do not contain tool implementations.
-
-A skill can declare exact MCP dependencies in `tool_dependencies`; servers with `exposure: "on_skill"` expose those tools only after the main Skill is loaded, retaining activation for the session. Existing servers default to `eager`. JDBC persists activations across restarts; the memory fallback does not. See the [MCP tool loading guide](../docs/skill-mcp-loading.md).
+Skills are Markdown instructions stored through the Console or knowledge-file API. See [Configuration and Skills](../docs/guides/configuration.md) for scopes and ZIP import, and [Skills and MCP](../docs/guides/skills-and-mcp.md) for optional tool activation. Tool implementations remain in their server or Runner host.
 
 ## Select modules and extension points
 
@@ -92,6 +92,19 @@ Project and execution services are shared by the Console and Personal Agents:
 
 Frontend messages use `/api/v1/chat` regardless of execution target. Registered Runners advance claimed jobs through `/api/v1/runners/chat`, which verifies Runner credentials and assignment. External Agents delegate through the existing Personal Agent APIs using the [JAgent skill and bundled client](../skills/jagent/SKILL.md). Feishu remains an optional channel under `spring.channel.feishu`.
 
+### Personal Agent settings
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `harness.personal.enabled` | `true` | Enable personal Agents when storage and execution services are available |
+| `harness.personal.learning.enabled` | `true` | Enable asynchronous knowledge reviews; foreground knowledge editing remains available when disabled |
+| `harness.personal.learning.timeout-ms` | `30000` | Review cancellation deadline, clamped to 1–60 seconds; providers must honor `StopSignal` |
+| `harness.personal.feishu.enabled` | `true` | Enable Feishu when its optional SDK is present; connection requires account configuration |
+
+For Feishu, the demo includes `com.larksuite.oapi:oapi-sdk:2.8.7`. Other server hosts can add it or omit it for Console-only use. It is not a dependency of the lightweight client SDK. User setup is covered by the [Feishu guide](../docs/guides/feishu.md).
+
+Run one Personal Agent worker per database application ID. User messages, project results and due checks wake it; waiting alone causes no model activity. Multi-replica hosts need a single-worker arrangement or must disable this feature. One decision runs per Agent; different Agents and project sessions can run concurrently.
+
 ## Storage
 
 The demo uses SQLite. The JDBC library does not supply a database driver: your application chooses the dependency and provides `spring.datasource` configuration or a `DataSource` bean.
@@ -106,5 +119,7 @@ The demo uses SQLite. The JDBC library does not supply a database driver: your a
 To use another database, replace the SQLite driver in your application, configure the connection, and select or provide its schema. SQLite and H2 are covered by integration tests. PostgreSQL DDL is included but has not been verified against a live instance. Other databases may need DDL and SQL adaptations or custom storage implementations.
 
 Custom `MessageRepository` implementations should preserve `AgentMessage.metadataJson` when saving and loading history.
+
+Custom session stores must preserve `ownerAgentId` across a project's sessions and reject conflicting ownership. Custom Personal Agent stores must save knowledge edits and their revision/history atomically. The JDBC module supplies the Personal Agent tables alongside conversation and virtual file storage.
 
 The current HTTP host serializes conversation writes within one process and uses an application-level API token. Multi-instance coordination and tenant-level authorization must be provided by the host application.

@@ -174,7 +174,7 @@ final class PersonalAgentProjects {
                                 ? "\nRead-only investigation: do not modify files or other environment state."
                                 : "");
         try {
-            ChatRequest request = new ChatRequest();
+            ChatSubmission request = new ChatSubmission();
             request.sessionId = watch.projectSessionId;
             request.runId = watch.projectRunId;
             request.messages = Collections.singletonList(ChatMessage.user(input));

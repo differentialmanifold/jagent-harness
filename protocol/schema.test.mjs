@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import Ajv from 'ajv'
 const schema=JSON.parse(readFileSync(new URL('./schema.json',import.meta.url)))
 const ajv=new Ajv({strict:false}); ajv.addSchema(schema,'protocol')
-const cases={'user-request':'ChatRequest','tool-results':'ChatRequest','requires-action':'ChatResponse','completed':'ChatResponse','stream-event':'StreamEvent','runner-registration':'RunnerInfo','runner-poll':'RunnerPoll','runner-workspace-listing':'WorkspaceListing','runner-project':'RunnerProject'}
+const cases={'user-request':'ChatSubmission','runner-request':'ChatRequest','tool-results':'ChatRequest','requires-action':'ChatResponse','completed':'ChatResponse','stream-event':'StreamEvent','runner-registration':'RunnerInfo','runner-poll':'RunnerPoll','runner-workspace-listing':'WorkspaceListing','runner-project':'RunnerProject'}
 for(const [file,type] of Object.entries(cases)) test(file,()=>{
  const validate=ajv.getSchema(`protocol#/definitions/${type}`)
  assert.ok(validate(JSON.parse(readFileSync(new URL(`./fixtures/${file}.json`,import.meta.url)))),JSON.stringify(validate.errors))
@@ -12,6 +12,23 @@ for(const [file,type] of Object.entries(cases)) test(file,()=>{
 test('mixed roles are rejected',()=>{
  const validate=ajv.getSchema('protocol#/definitions/ChatRequest')
  assert.equal(validate({sessionId:'s',messages:[{role:'user',content:'hi'},{role:'tool',toolCallId:'c',status:'SUCCEEDED',content:'ok'}]}),false)
+})
+test('public submissions reject tool results, tool metadata and multiple user messages',()=>{
+ const validate=ajv.getSchema('protocol#/definitions/ChatSubmission')
+ const user={sessionId:'s',messages:[{role:'user',content:'hi'}]}
+ assert.ok(validate(user))
+ assert.equal(validate({...user,clientTools:[]}),false)
+ assert.equal(validate({...user,clientInstructions:'local instructions'}),false)
+ assert.equal(validate({...user,messages:[{role:'tool',toolCallId:'c',status:'SUCCEEDED',content:'ok'}]}),false)
+ assert.equal(validate({...user,messages:[...user.messages,...user.messages]}),false)
+})
+test('public and Runner endpoints use distinct request contracts',()=>{
+ const api=JSON.parse(readFileSync(new URL('./openapi.json',import.meta.url)))
+ assert.equal(api.paths['/chat'].post.requestBody.content['application/json'].schema.$ref,'schema.json#/definitions/ChatSubmission')
+ assert.equal(api.paths['/runners/chat'].post.requestBody.content['application/json'].schema.$ref,'schema.json#/definitions/ChatRequest')
+ const validate=ajv.getSchema('protocol#/definitions/ChatRequest')
+ assert.equal(validate({sessionId:'s',messages:[{role:'user',content:'hi'}]}),false)
+ assert.ok(validate({sessionId:'s',runId:'r',messages:[{role:'tool',toolCallId:'c',status:'SUCCEEDED',content:'ok'}]}))
 })
 test('runners and jobs do not require a workspace',()=>{
  const runner=JSON.parse(readFileSync(new URL('./fixtures/runner-registration.json',import.meta.url)))

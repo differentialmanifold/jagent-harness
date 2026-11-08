@@ -1,6 +1,8 @@
-# Your first personal Agent
+# Personal Agents
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](agents.zh-CN.md)
+
+[Documentation](../README.md) · [Projects](projects.md)
 
 Give your Agent a small development task and watch it create a project, run tools, and check the result.
 
@@ -62,12 +64,28 @@ To also try a scheduled follow-up, send “In two minutes, check this project's 
 - Use **…** beside a chat to rename or delete it. Deletion is blocked during an active Agent turn. It removes queued messages and detaches follow-ups; projects, memory and Skills remain. A later Feishu message creates a new chat.
 - Open **Configuration → Runtime Context** to inspect the current model, available tools and discoverable Skills. Listed Skills have not necessarily been read by the model.
 - **Configuration → Tools** selects this Agent's own server-side operations. **Default project Runner** controls where new projects execute; it does not give the Agent chat direct access to every Runner tool. Configure those tools in the project's **Configuration → Tools**.
-- **Configuration → Runtime Context → Runtime Preview** shows the prompt produced from current instructions, memory and Skills. It is not a saved historical model request.
+- **Configuration → Runtime Context → Runtime Preview** shows the system prompt produced from current settings. It is not a saved historical model request. Current memory and task progress are visible in **Knowledge** and **Tasks**; see [Configuration](configuration.md).
+
+**Pause Agent** prevents new decisions and stops its current turn. Already submitted project jobs and external processes need to be inspected or stopped through their Projects. Each Agent runs one decision at a time; independent project work can proceed concurrently. For writes in the same workspace, Agent-dispatched work runs in sequence; this does not lock commands started manually outside that dispatch.
+
+The Agent has five management tools, with operations described directly in their schemas:
+
+| Tool | Purpose |
+| --- | --- |
+| `projects` | Create, inspect, send, steer and stop owned project work |
+| `tasks` | Track plans, dependencies, acceptance evidence and one-shot checks |
+| `memory` | Read and edit persistent preferences and facts |
+| `skills` | Discover and maintain private reusable methods |
+| `history` | Find evidence in older conversations and project work |
+
+Core planning rules are always present; no Skill must be read to enable these tools. The Agent uses Project sessions to investigate files, execute changes and verify results. Its Runner selection does not give the Agent chat direct shell access.
 
 ## Explore when ready
 
 - **Memory:** say “Remember that I prefer small examples without dependencies.” Check **Knowledge → Memory**; it is available in later chats too.
 - **Skills:** after a successful task, say “Save the verified way you built and tested this example as a reusable Skill.” Inspect **Knowledge → Skills & learning**.
-- **Feishu:** connect later from the Agent's **Configuration → Channels** using the [connection guide](../../console/README.md#connect-feishu).
+- **Feishu:** connect later from the Agent's **Configuration → Channels** using the [connection guide](feishu.md).
+
+See [Memory and learning](knowledge.md) for reviews and undo, or [External Agent access](external-agents.md) to submit goals from another assistant.
 
 If work does not start, check that the model supports tool calls and the selected Runner is online. If a command fails, open the project chat for its error and ask the Agent to resolve it.

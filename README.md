@@ -2,11 +2,11 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+[Quick start](QUICK_START.md) · [Documentation](docs/README.md)
+
 **Give an Agent a goal. Execute the work where your tools live.**
 
 Work directly in a Project, or give a persistent Agent a goal to plan, track and follow through. JAgentHarness runs both layers on the server, while a lightweight Runner executes native tools where your files and applications live.
-
-Business skills can activate their declared MCP tools on demand and retain them for the session. See the [MCP tool loading guide](docs/skill-mcp-loading.md).
 
 ## Architecture
 
@@ -17,7 +17,17 @@ Business skills can activate their declared MCP tools on demand and retain them 
 
 The shared Harness provides model calls, context management and server tools, backed by unified conversation and virtual file storage.
 
-Try the [hands-on Agent guide](examples/personal-agents/README.md) to follow a goal through planning, execution and verification.
+## What you can do
+
+| Capability | Get started |
+| --- | --- |
+| Work directly with files and tools in project conversations | [Projects](docs/guides/projects.md) |
+| Delegate a goal; let an Agent plan, track tasks and verify results | [Personal Agents](docs/guides/agents.md) |
+| Retain preferences and turn verified methods into reusable Skills | [Memory and learning](docs/guides/knowledge.md) |
+| Configure instructions, Skills, native tools and optional MCP tools | [Configuration](docs/guides/configuration.md) |
+| Talk to an Agent from Feishu or another AI assistant | [Feishu](docs/guides/feishu.md) · [External Agent access](docs/guides/external-agents.md) |
+
+Start with [Quick start](QUICK_START.md). The [documentation index](docs/README.md) maps every guide to its purpose and Console entry.
 
 ## Three parts, one protocol
 
@@ -58,7 +68,7 @@ sequenceDiagram
     S-->>UI: Send the final result and close SSE
 ```
 
-The tool-call exchange repeats as needed. The runner keeps polling during local execution to receive cancellation. Applications that initiate their own conversations can use `AgentClient.run()` directly, without runner dispatch.
+The tool-call exchange repeats as needed. The runner keeps polling during local execution to receive cancellation. Custom frontends use the same public server APIs; all local tool execution goes through the assigned Runner.
 
 </details>
 
@@ -88,7 +98,7 @@ node scripts/dev.mjs
 
 Open **http://127.0.0.1:5175** and choose an entry point:
 
-- **Let an Agent work:** open **Agents → New Agent**, enter a name and select **coding-local**. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](examples/personal-agents/README.md) for a ready-to-use request and what to look for.
+- **Let an Agent work:** open **Agents → New Agent**, enter a name and select **coding-local**. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](docs/guides/agents.md) for a ready-to-use request and what to look for.
 - **Work in your own project:** add a project, select **coding-local**, then browse or enter a workspace on that terminal. Ask:
 
 > Read the README in this workspace and summarize the project.
@@ -97,36 +107,12 @@ The server drives the conversation while the runner reads the local file. All se
 
 See [Quick start](QUICK_START.md) for independent startup, manual commands, remote machines, and Windows/macOS shortcuts.
 
-## Use it from another Agent
+## Documentation and development
 
-Install the [JAgent skill](skills/jagent/SKILL.md) in your external Agent's skill directory, including its `scripts/` and `references/` folders. Configure `JAGENT_SERVER_URL` and, when required, `JAGENT_CLIENT_TOKEN`. The bundled Node.js client has no npm dependencies or MCP setup.
-
-The external Agent finds a suitable Personal Agent or creates one on a connected Runner, sends it a goal, and follows progress and results in the same conversation. No Agent needs to be created manually beforehand. JAgent handles planning, task tracking and project execution; the same conversation is visible in the Console. See the [API and SDK reference](skills/jagent/references/api.md).
-
-## Integrate it
-
-- [Server integration](jagent-harness-sdk/README.md): deploy and extend the harness through Maven libraries.
-- [Coding runner](examples/coding-runner/README.md): run built-in tools on a target machine; [中文指南](examples/coding-runner/README.zh-CN.md).
-- [Web Console](console/README.md): host the same frontend beside the server or on a client machine.
-- [Java client SDK](sdk/java/README.md): register native tools with `AgentRunner`, or start conversations with `AgentClient`.
-- [HTTP/JSON protocol](protocol/README.md): implement another runner or frontend.
+- [Documentation index](docs/README.md): feature guides, UI locations and integration references.
+- [Server integration](jagent-harness-sdk/README.md), [Java client SDK](sdk/java/README.md), [Console hosting](console/README.md) and [HTTP/JSON protocol](protocol/README.md): extend or deploy the parts you need.
+- [Development guide](CONTRIBUTING.md): source layout, checks and where documentation belongs when adding a feature.
 
 This source tree targets `2.2.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
-
-The source layout follows these roles: `jagent-harness-sdk/` contains the server libraries, `sdk/java/` contains the reusable client and runner runtime, `examples/` contains the server host and coding tool host, `console/` contains the frontend, and `protocol/` contains the language-independent contract and its tests.
-
-## Development
-
-```sh
-mvn clean install
-npm ci --prefix protocol
-npm test --prefix protocol
-node --test skills/tests/*.test.mjs
-npm ci --prefix console
-npm test --prefix console
-npm run build --prefix console
-```
-
-The Maven reactor contains the shared API, Java client SDK, coding runner, server libraries, and server example. The frontend builds independently into `console/dist/`. See [Releasing](RELEASING.md) for publication.
 
 [MIT License](LICENSE).

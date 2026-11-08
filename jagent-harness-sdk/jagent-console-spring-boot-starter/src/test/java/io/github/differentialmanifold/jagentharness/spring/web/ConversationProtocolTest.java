@@ -303,12 +303,15 @@ class ConversationProtocolTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth("test-token");
         headers.setContentType(MediaType.APPLICATION_JSON);
+        ChatSubmission submission = new ChatSubmission();
+        submission.sessionId = manager.createSession("Public chat", null).getSessionId();
+        submission.messages.add(ChatMessage.user("hello"));
         ResponseEntity<ChatResponse> response =
                 new TestRestTemplate()
                         .exchange(
                                 "http://127.0.0.1:" + port + "/api/v1/chat",
                                 HttpMethod.POST,
-                                new HttpEntity<>(user("hello"), headers),
+                                new HttpEntity<>(submission, headers),
                                 ChatResponse.class);
         assertEquals(200, response.getStatusCodeValue());
         assertEquals("COMPLETED", response.getBody().status);

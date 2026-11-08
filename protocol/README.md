@@ -1,5 +1,7 @@
 # HTTP protocol
 
+[Documentation](../docs/README.md) · [Java client SDK](../sdk/java/README.md)
+
 Use this protocol to connect a custom application or language SDK to JAgentHarness. The server exposes JSON APIs and server-sent events. Java clients can use [jagent-client-java](../sdk/java/README.md).
 
 Java tool contracts and protocol DTOs are provided by `io.github.differentialmanifold:jagent-api`. The JSON protocol remains independent of Java.
@@ -21,39 +23,32 @@ Both use the same `sessionId` and stored conversation. A Runner-bound public cal
 
 This document and its OpenAPI cover the application/Runner protocol. To delegate goals to a Personal Agent instead, use the [JAgent skill and client](../skills/jagent/SKILL.md); those Agent APIs have a [separate reference](../skills/jagent/references/api.md).
 
-## Start a conversation
+## Submit a user message
 
-Create a session with `POST /api/v1/sessions`:
+Create a session with `POST /api/v1/sessions`. Choose the execution target when creating its project:
 
 ```json
-{"title":"My assistant"}
+{"title":"My project","runnerId":"runner_linux"}
 ```
 
-Use the returned `sessionId` in `POST /api/v1/chat`. For a Runner-bound project, send one user message; the server handles dispatch. `runId` is optional and generated when omitted.
-
-The following examples describe the standalone `AgentClient` mode, where the calling application itself owns local tools and the session has no registered Runner. It sends either one user message or a list of tool results:
+Omit `runnerId` for a server-tools-only project. Use the returned `sessionId` with public `POST /api/v1/chat`:
 
 ```json
 {
   "sessionId": "ses_example",
-  "messages": [{"role":"user","content":"Read README.md"}],
-  "clientTools": [{
-    "name":"read_file",
-    "description":"Read a file in the current workspace",
-    "parameters":{
-      "type":"object",
-      "properties":{"path":{"type":"string"}},
-      "required":["path"]
-    }
-  }]
+  "messages": [{"role":"user","content":"Read README.md"}]
 }
 ```
 
-Set `clientTools` to an empty list when all tools run on the server. Tool metadata contains `name`, `description`, and a JSON Schema `parameters` object. In Java, `ToolDefinition.descriptor()` supplies this shape; implementations and local context are never transmitted.
+The public request contains only `sessionId`, `messages`, optional `runId`, and `stream`. Exactly one `role=user` message is accepted. Do not send `clientTools`, `clientInstructions`, or `role=tool` results: these are rejected for both Runner-bound and server-only projects. The frontend does not implement a tool-execution loop.
 
-## Execute client tools
+The server obtains native tools and instructions from the registered Runner and the project's enabled tool selection. With no Runner, the Harness uses server tools only. A separate frontend can submit messages without embedding any tool SDK.
 
-When local execution is needed, the response has status `REQUIRES_ACTION`:
+## Runner tool exchange
+
+Only an authenticated Runner holding a claimed job advances local tool execution. See [Remote runners](#remote-runners) for registration and polling. Every internal request uses `POST /api/v1/runners/chat` with `X-Runner-Id` and `X-Runner-Secret`, plus the server token when configured.
+
+Submit the claimed job's `request`. When local tools are needed, the response has status `REQUIRES_ACTION`:
 
 ```json
 {
@@ -63,54 +58,46 @@ When local execution is needed, the response has status `REQUIRES_ACTION`:
   "toolCalls":[{
     "toolCallId":"call_example",
     "turnId":"turn_example",
-    "name":"read_file",
+    "name":"read",
     "arguments":{"path":"README.md"}
   }]
 }
 ```
 
-Execute the listed tools and submit their results to the same `POST /api/v1/chat` endpoint:
+Execute those tools on the Runner and return results through the same **internal** endpoint:
 
 ```json
 {
   "sessionId":"ses_example",
+  "runId":"run_example",
   "messages":[{
     "role":"tool",
     "toolCallId":"call_example",
     "status":"SUCCEEDED",
     "content":"The contents of README.md"
-  }],
-  "clientTools":[{
-    "name":"read_file",
-    "description":"Read a file in the current workspace",
-    "parameters":{
-      "type":"object",
-      "properties":{"path":{"type":"string"}},
-      "required":["path"]
-    }
   }]
 }
 ```
 
-Continue until the response is terminal. Include the tool catalog needed for the next model call on every request. Optional `clientInstructions` supplies application-specific guidance. Java SDK clients carry both automatically.
+Repeat until the response is terminal, then report completion. The server verifies the session/run assignment and uses the job's frozen tool catalog; callers cannot override it with another catalog. `ToolDefinition.descriptor()` supplies tool metadata during registration. Tool code and process-local context stay on the Runner.
 
-`sessionId` selects the conversation, and `toolCallId` matches each result to an unanswered client tool call. `runId` is optional on submissions and supports UI tracking and cancellation. Results may be submitted together or in parts; the model is called only after all outstanding results arrive. The server completes its own tools before returning client calls and does not hold a request open while the client executes them.
+`toolCallId` matches an unanswered call in session history. Results may arrive together or in parts; the model runs again after all outstanding results arrive. The server executes its own tools before returning local calls and ends that internal request while the Runner executes. The public observer can stay connected throughout the run.
 
-Tool results use `SUCCEEDED`, `FAILED`, or `UNKNOWN`, with string or JSON content. UNKNOWN indicates an uncertain outcome. User and tool roles cannot be mixed in a request. Outstanding calls must be resolved before sending another user message.
+Tool result status is `SUCCEEDED`, `FAILED`, or `UNKNOWN`, with string or JSON content. `UNKNOWN` means an uncertain outcome. User and tool roles cannot be mixed. Outstanding calls must be resolved before starting another user turn.
 
 ## Streaming and operation status
 
-Send `Accept: text/event-stream` for streaming. Events contain a JSON-object `payload`; the final `event: response` carries the complete chat response. Wait for that response before deciding whether to execute tools or finish the interaction.
+Send `Accept: text/event-stream` for streaming. Events contain a JSON-object `payload`; the final `event: response` carries the complete chat response. Public callers display the result; only Runners act on `REQUIRES_ACTION` from the internal endpoint. A final event marks completion of that HTTP exchange.
 
 | Status | Meaning |
 | --- | --- |
 | `COMPLETED` | The answer is ready. |
-| `REQUIRES_ACTION` | The client must execute the returned tools. |
+| `REQUIRES_ACTION` | The Runner must execute the returned tools; issued by the internal exchange. |
 | `CANCELLED` | The operation was stopped. |
 | `INTERRUPTED` | The operation did not finish normally. |
 | `RUNNING` | A request is active; returned by the inspection endpoint. |
 
-Inspect an operation with `GET /api/v1/sessions/{id}/state`. Request cancellation with `POST /api/v1/runs/{id}/stop`. The client must also stop its own local tools. Results can still be submitted for cancelled operations; the server records them without requesting another model response.
+Inspect an operation with `GET /api/v1/sessions/{id}/state`. Request cancellation with `POST /api/v1/runs/{id}/stop`. The Runner also stops its local tools. Results can still be submitted through the internal endpoint for cancelled operations; the server records them without requesting another model response.
 
 ## Error handling
 

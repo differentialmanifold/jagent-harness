@@ -1,6 +1,8 @@
 # Load MCP tools with skills
 
-**English** | [简体中文](skill-mcp-loading.zh-CN.md)
+**English** | [简体中文](skills-and-mcp.zh-CN.md)
+
+[Documentation](../README.md) · [Configuration and Skills](configuration.md)
 
 Describe a business workflow in a skill and provide its interfaces through MCP. When the model reads the skill, its required tools become available for subsequent calls and remain available in the current session.
 

@@ -33,7 +33,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "schema.json#/definitions/ChatRequest"
+                "$ref": "schema.json#/definitions/ChatSubmission"
               }
             }
           }
@@ -56,7 +56,7 @@
             }
           },
           "400": {
-            "description": "Invalid message, tool catalog or history association"
+            "description": "Invalid user message or unsupported submission fields, including tool results and client tool metadata"
           },
           "401": {
             "description": "Invalid bearer token"
@@ -71,25 +71,7 @@
             "description": "Capacity exhausted"
           }
         },
-        "description": "Public conversation entry point. A Runner-bound session accepts one user message and dispatches using the project tool selection; JSON waits for the terminal result and SSE streams the whole run. runId is optional. Callers never execute the bound Runner tools or post their results here. A session without a registered Runner executes directly; standalone embedded AgentClient applications may still advertise and execute their own clientTools and return role=tool results through this endpoint. No automatic replay or idempotency is provided.",
-        "parameters": [
-          {
-            "name": "X-Runner-Id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "X-Runner-Secret",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "description": "Public user message submission. Accepts exactly one user message, sessionId, optional runId and stream. The server selects execution from project configuration. Runner-bound projects dispatch to their assigned Runner; server-only projects execute on the server. Tool results, clientTools and clientInstructions are rejected here. JSON waits for the terminal result; SSE streams progress. No automatic replay or idempotency is provided.",
         "tags": [
           "Public conversation API"
         ]

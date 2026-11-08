@@ -67,8 +67,8 @@ class PersonalAgentIntegrationTest {
 
     @Test
     void externalAgentCanCreateThenSubmitReadProgressAndPageHistory() throws Exception {
-        io.github.differentialmanifold.jagentharness.client.HttpAgentTransport api =
-                new io.github.differentialmanifold.jagentharness.client.HttpAgentTransport(
+        io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient api =
+                new io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient(
                         "http://127.0.0.1:" + port, "test-token");
         RunnerInfo runner = new RunnerInfo();
         runner.runnerId = "test_" + UUID.randomUUID().toString().replace("-", "");

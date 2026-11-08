@@ -8,20 +8,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 
 /** JDK HTTP transport: no Spring, OkHttp, JDBC, YAML or server runtime dependency. */
-public final class HttpAgentTransport implements AgentTransport {
+final class HttpRunnerTransport implements RunnerExchange {
     private final URL endpoint;
-    private boolean runnerProtocol;
     private final String token;
     private final java.util.Map<String, String> headers = new java.util.LinkedHashMap<>();
 
-    public HttpAgentTransport header(String name, String value) {
+    public HttpRunnerTransport header(String name, String value) {
         headers.put(name, value);
-        return this;
-    }
-
-    /** Select the authenticated, claimed-job protocol used by AgentRunner. */
-    public HttpAgentTransport runnerProtocol() {
-        runnerProtocol = true;
         return this;
     }
 
@@ -32,17 +25,14 @@ public final class HttpAgentTransport implements AgentTransport {
                                     .FAIL_ON_UNKNOWN_PROPERTIES,
                             false);
 
-    public HttpAgentTransport(String baseUrl, String token) throws MalformedURLException {
-        endpoint = new URL(baseUrl.replaceAll("/$", "") + "/api/v1/chat");
+    public HttpRunnerTransport(String baseUrl, String token) throws MalformedURLException {
+        endpoint = new URL(baseUrl.replaceAll("/$", "") + "/api/v1/runners/chat");
         this.token = token;
     }
 
     @Override
     public ChatResponse chat(ChatRequest request, Consumer<StreamEvent> events) throws IOException {
-        HttpURLConnection c =
-                (HttpURLConnection)
-                        (runnerProtocol ? new URL(endpoint, "/api/v1/runners/chat") : endpoint)
-                                .openConnection();
+        HttpURLConnection c = (HttpURLConnection) endpoint.openConnection();
         c.setRequestMethod("POST");
         for (java.util.Map.Entry<String, String> h : headers.entrySet())
             c.setRequestProperty(h.getKey(), h.getValue());
@@ -106,24 +96,10 @@ public final class HttpAgentTransport implements AgentTransport {
         }
     }
 
-    public String createSession(String title, String workspacePath) throws IOException {
-        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("title", title);
-        body.put("workspacePath", workspacePath);
-        return management("POST", "/api/v1/sessions", body).path("sessionId").asText();
-    }
-
     public ChatResponse state(String sessionId) throws IOException {
         return json.treeToValue(
                 management("GET", "/api/v1/sessions/" + segment(sessionId) + "/state", null),
                 ChatResponse.class);
-    }
-
-    public void stop(String runId) throws IOException {
-        management(
-                "POST",
-                "/api/v1/runs/" + segment(runId) + "/stop",
-                java.util.Collections.emptyMap());
     }
 
     private static String segment(String id) {

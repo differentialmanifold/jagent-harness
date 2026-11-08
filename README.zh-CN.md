@@ -2,6 +2,8 @@
 
 [English](README.md) | **简体中文**
 
+[快速启动](QUICK_START.md) · [文档导航](docs/README.zh-CN.md)
+
 **把目标交给 Agent，让工具在实际工作环境中执行。**
 
 你可以直接在 Project 中工作，也可以把目标交给持续存在的 Agent，由它规划、追踪并推进任务。JAgentHarness 在服务端运行这两层能力，通过轻量 Runner 在文件和应用所在的终端执行原生工具。
@@ -15,9 +17,17 @@
 
 共享 Harness 提供模型调用、上下文管理和服务端工具，以统一的会话与虚拟文件存储作为支撑。
 
-业务 Skill 可声明 MCP 工具依赖，在读取 Skill 后才向模型提供对应接口，并在同一会话内持续可用。配置与示例见 [随 Skill 按需加载 MCP 工具](docs/skill-mcp-loading.zh-CN.md)。
+## 可以做什么
 
-跟随 [Agent 上手示例](examples/personal-agents/README.zh-CN.md)，体验从提出目标到规划、执行和验证的过程。
+| 能力 | 从这里开始 |
+| --- | --- |
+| 在项目会话中直接操作文件和工具 | [项目指南](docs/guides/projects.md) |
+| 交给 Agent 一个目标，由它规划、追踪任务并验证结果 | [个人 Agent](docs/guides/agents.zh-CN.md) |
+| 记住偏好，将已验证的方法沉淀为可复用 Skill | [记忆与学习](docs/guides/knowledge.md) |
+| 配置指引、Skills、原生工具和可选的 MCP 工具 | [配置指南](docs/guides/configuration.md) |
+| 通过飞书或其他 AI 助手与 Agent 交流 | [飞书](docs/guides/feishu.md) · [外部 Agent 接入](docs/guides/external-agents.md) |
+
+首次使用从 [Quick start](QUICK_START.md) 开始。[文档导航](docs/README.zh-CN.md) 按使用目的列出功能指南、界面入口和集成参考。
 
 ## 三个部分，一套协议
 
@@ -41,16 +51,16 @@ sequenceDiagram
     participant R as 客户端 Runner / SDK
 
     R->>S: 注册本地工具描述，开始长轮询
-    UI->>S: 提交消息，指定已绑定 Runner 的会话
+    UI->>S: POST /api/v1/chat，提交会话和消息
     S-->>UI: 保持 SSE 连接，推送进度
     S-->>R: 在长轮询响应中返回对话任务
 
-    R->>S: 调用普通对话接口，提交用户消息
+    R->>S: POST /api/v1/runners/chat，推进已领取的任务
     Note over S: 调用模型，执行服务端工具
     S-->>R: 返回客户端工具调用，本次请求结束
 
     Note over R: 执行本地工具
-    R->>S: 同一会话提交 role=tool 的执行结果
+    R->>S: POST /api/v1/runners/chat，提交 role=tool 结果
     Note over S: 追加历史，继续 Agent 循环
     S-->>R: 返回下一批工具调用或最终回答
 
@@ -58,7 +68,7 @@ sequenceDiagram
     S-->>UI: 推送完成结果，结束 SSE
 ```
 
-工具调用与结果回传可以重复多轮。执行本地工具期间，Runner 继续长轮询以接收取消指令。由应用自身发起对话时，可以直接使用 `AgentClient.run()`，无需经过 Runner 任务派发。
+工具调用与结果回传可以重复多轮。执行本地工具期间，Runner 继续长轮询以接收取消指令。自定义前端使用同一套公开服务端接口，本地工具统一由项目绑定的 Runner 执行。
 
 </details>
 
@@ -88,7 +98,7 @@ node scripts/dev.mjs
 
 打开 **http://127.0.0.1:5175**，选择一种方式开始：
 
-- **让 Agent 自主推进：** 打开 **Agents → New Agent**，填写名称并选择 **coding-local**。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](examples/personal-agents/README.zh-CN.md) 提供可直接发送的要求和观察指引。
+- **让 Agent 自主推进：** 打开 **Agents → New Agent**，填写名称并选择 **coding-local**。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](docs/guides/agents.zh-CN.md) 提供可直接发送的要求和观察指引。
 - **操作自己的项目：** 添加项目，选择 **coding-local**，浏览或输入该终端上的工作目录，然后发送：
 
 > 阅读工作区中的 README，总结这个项目。
@@ -97,36 +107,12 @@ node scripts/dev.mjs
 
 独立启动、手动命令、远程终端和 Windows/macOS 快捷方式见 [Quick start](QUICK_START.md)（英文）。
 
-## 接入项目
+## 文档与开发
 
-- [服务端集成](jagent-harness-sdk/README.md)：通过 Maven 库部署和扩展 Harness。
-- [Coding Runner](examples/coding-runner/README.zh-CN.md)：在目标终端运行内置工具。
-- [Web Console](console/README.md)：在服务端或客户端部署同一个前端。
-- [Java 客户端 SDK](sdk/java/README.md)：通过 `AgentRunner` 托管原生工具，或通过 `AgentClient` 发起对话。
-- [HTTP/JSON 协议](protocol/README.md)：实现其他语言的 Runner 或其他形式的前端。
+- [文档导航](docs/README.zh-CN.md)：查找功能指南、界面入口和集成参考；尚无中文版本的指南标为英文。
+- [服务端集成](jagent-harness-sdk/README.md)、[Java 客户端 SDK](sdk/java/README.md)、[Console 部署](console/README.md)、[HTTP/JSON 协议](protocol/README.md)：按需部署与扩展。
+- [开发指南](CONTRIBUTING.md)：源码结构、验证命令，以及新增功能时文档应该放在哪里。
 
-除 Runner 指南外，上述集成文档目前为英文。本源码树的目标版本为 `2.2.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
-
-源码目录按职责划分：`jagent-harness-sdk/` 是服务端库，`sdk/java/` 是包含 Runner 运行能力的通用客户端 SDK，`examples/` 是服务端与 coding 工具宿主示例，`console/` 是前端，`protocol/` 是跨语言协议及其测试。
-
-## 从外部 Agent 使用
-
-将 [JAgent Skill](skills/jagent/SKILL.md) 整个目录放入外部 Agent 的技能目录，保留其中的 `scripts/` 和 `references/`。配置 `JAGENT_SERVER_URL`，需要认证时再设置 `JAGENT_CLIENT_TOKEN`。内置 Node.js 客户端无需安装 npm 依赖，也无需配置 MCP。
-
-外部 Agent 可以查找合适的 Personal Agent，也可以选择已连接的 Runner 自行创建，无需先在界面中手动配置 Agent。随后发送目标，在同一会话中查看进度和结果。规划、任务跟踪和项目执行由 JAgent 完成，会话也会显示在 Console 中。详见 [API 与 SDK 说明](skills/jagent/references/api.md)。
-
-## 开发
-
-```sh
-mvn clean install
-npm ci --prefix protocol
-npm test --prefix protocol
-node --test skills/tests/*.test.mjs
-npm ci --prefix console
-npm test --prefix console
-npm run build --prefix console
-```
-
-Maven 构建共享 API、Java 客户端 SDK、Coding Runner、服务端库和服务端示例。前端独立构建，产物位于 `console/dist/`。发布说明见 [Releasing](RELEASING.md)。
+本源码树的目标版本为 `2.2.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
 
 [MIT License](LICENSE)。

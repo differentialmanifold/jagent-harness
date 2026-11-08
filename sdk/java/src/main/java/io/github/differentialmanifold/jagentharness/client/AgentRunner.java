@@ -18,7 +18,7 @@ import java.util.function.Consumer;
 public final class AgentRunner implements AutoCloseable {
     private final Path home;
     private final RunnerFiles.Lease lease;
-    private final HttpAgentTransport http;
+    private final HttpRunnerTransport http;
     private final RunnerInfo info = new RunnerInfo();
     private final List<ToolDefinition> tools = new ArrayList<>();
     private final Object toolContext;
@@ -52,7 +52,10 @@ public final class AgentRunner implements AutoCloseable {
                     "Plain HTTP to a non-loopback server; the token and job traffic are sent unencrypted");
         if (b.tools.isEmpty()) throw new IllegalArgumentException("Register at least one tool");
         // Validate duplicates before acquiring resources or creating identity files.
-        new AgentClient(new HttpAgentTransport(server, b.token), b.tools);
+        Set<String> names = new HashSet<>();
+        for (ToolDefinition tool : b.tools)
+            if (!names.add(tool.getName()))
+                throw new IllegalArgumentException("Duplicate tool: " + tool.getName());
         home = RunnerFiles.stateDirectory(server, b.home);
         toolContext = b.toolContext;
         workspaces = b.workspaces;
@@ -67,8 +70,7 @@ public final class AgentRunner implements AutoCloseable {
             info.instructions = b.instructions;
             info.toolDiagnostics.putAll(b.toolDiagnostics);
             http =
-                    new HttpAgentTransport(server, b.token)
-                            .runnerProtocol()
+                    new HttpRunnerTransport(server, b.token)
                             .header("X-Runner-Id", info.runnerId)
                             .header("X-Runner-Secret", (String) config.get("secret"));
             for (ToolDefinition tool : b.tools) {
@@ -256,10 +258,10 @@ public final class AgentRunner implements AutoCloseable {
             ToolJournal journal = new ToolJournal(home.resolve("results"));
             for (ToolDefinition tool : tools)
                 if (enabled.contains(tool.getName())) selected.add(journal.wrap(tool));
-            return new AgentClient(http, selected)
+            return new RunnerConversation(http, selected)
                     .run(
                             request,
-                            new ClientRunOptions()
+                            new RunnerRunOptions()
                                     .toolContext(toolContext)
                                     .workspace(workspace)
                                     .stopSignal(run.signal)

@@ -22,7 +22,7 @@ public class ApiExceptionHandler {
             }
             current = current.getCause();
         }
-        return serverError(exception);
+        return badRequest(exception);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -48,6 +48,8 @@ public class ApiExceptionHandler {
     private ResponseEntity<ErrorResponse> error(HttpStatus status, Exception exception) {
         ErrorResponse body =
                 new ErrorResponse(status.value(), status.getReasonPhrase(), exception.getMessage());
-        return ResponseEntity.status(status).body(body);
+        return ResponseEntity.status(status)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(body);
     }
 }

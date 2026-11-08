@@ -2,6 +2,8 @@
 
 [English](README.md) | **简体中文**
 
+[文档导航](../../docs/README.zh-CN.md) · [Quick start](../../QUICK_START.md)
+
 一个运行在工作区所在机器上的无界面 Java 进程，自带 `read`、`ls`、`find`、`grep`、`write`、`edit` 和 `bash` 工具。需要 Java 8+，不包含 Spring、数据库驱动、模型 SDK 或 Web 服务。
 
 [Harness 服务端](../../examples/server-demo/README.md)负责 Agent 循环、模型、状态和 skills 等服务端工具。[交互前端](../../console/README.md)直接访问服务端。Runner 声明内置工具，通过主动发起的 HTTP 长轮询领取任务，在本地执行并回传结果。工具实现随 Runner 一起交付，无需从 Harness 下载。

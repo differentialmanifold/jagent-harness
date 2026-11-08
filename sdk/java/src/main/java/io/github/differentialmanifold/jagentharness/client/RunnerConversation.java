@@ -7,29 +7,26 @@ import java.io.IOException;
 import java.util.*;
 import java.util.function.Consumer;
 
-/**
- * Drives ordinary conversation turns. Requests and local effects are never automatically replayed.
- */
-public final class AgentClient {
-    private final AgentTransport transport;
+/** Advances a claimed Runner job. Requests and local effects are never automatically replayed. */
+final class RunnerConversation {
+    private final RunnerExchange transport;
     private final Map<String, ToolDefinition> tools = new LinkedHashMap<>();
     private final ObjectMapper json = new ObjectMapper();
 
-    public AgentClient(AgentTransport transport, Collection<? extends ToolDefinition> tools) {
+    public RunnerConversation(
+            RunnerExchange transport, Collection<? extends ToolDefinition> tools) {
         this.transport = Objects.requireNonNull(transport);
         for (ToolDefinition tool : tools)
             if (this.tools.put(tool.getName(), tool) != null)
                 throw new IllegalArgumentException("Duplicate tool: " + tool.getName());
     }
 
-    public ChatResponse run(ChatRequest request, ClientRunOptions options) throws IOException {
+    public ChatResponse run(ChatRequest request, RunnerRunOptions options) throws IOException {
         Objects.requireNonNull(options);
         if (request.messages == null || request.messages.isEmpty())
             throw new IllegalArgumentException("Messages are required");
         if (options.stop.isAborted() && !"tool".equals(request.messages.get(0).role))
             throw new java.util.concurrent.CancellationException("Operation stopped");
-        if (request.clientTools.isEmpty())
-            for (ToolDefinition tool : tools.values()) request.clientTools.add(tool.descriptor());
         Set<String> advertised = new HashSet<>();
         for (ToolDescriptor descriptor : request.clientTools) advertised.add(descriptor.name);
         final boolean[] started = {false};

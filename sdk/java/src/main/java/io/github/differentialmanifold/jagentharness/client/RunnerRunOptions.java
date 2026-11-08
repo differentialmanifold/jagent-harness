@@ -4,29 +4,29 @@ import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.protocol.StreamEvent;
 import java.util.function.*;
 
-/** Caller-owned process-local options. No field is serialized onto the wire. */
-public final class ClientRunOptions {
+/** Process-local options for one Runner job. No field is serialized onto the wire. */
+final class RunnerRunOptions {
     Consumer<StreamEvent> events;
     StopSignal stop = StopSignal.none();
     Object toolContext;
     java.nio.file.Path workspace;
 
-    public ClientRunOptions workspace(java.nio.file.Path workspace) {
+    public RunnerRunOptions workspace(java.nio.file.Path workspace) {
         this.workspace = workspace;
         return this;
     }
 
-    public ClientRunOptions onEvent(Consumer<StreamEvent> events) {
+    public RunnerRunOptions onEvent(Consumer<StreamEvent> events) {
         this.events = events;
         return this;
     }
 
-    public ClientRunOptions stopSignal(StopSignal stop) {
+    public RunnerRunOptions stopSignal(StopSignal stop) {
         this.stop = java.util.Objects.requireNonNull(stop);
         return this;
     }
 
-    public ClientRunOptions toolContext(Object context) {
+    public RunnerRunOptions toolContext(Object context) {
         this.toolContext = context;
         return this;
     }

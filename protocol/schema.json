@@ -104,10 +104,7 @@
           "pattern": "^[A-Za-z0-9_-]{1,128}$"
         },
         "runId": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": "string",
           "pattern": "^[A-Za-z0-9_-]{1,64}$"
         },
         "messages": {
@@ -149,9 +146,10 @@
       },
       "required": [
         "sessionId",
+        "runId",
         "messages"
       ],
-      "description": "Ordinary conversation messages. Tool results reference unanswered toolCallId values in the session history. runId is optional tracking metadata. No idempotency or automatic request replay."
+      "description": "Internal Runner exchange for a claimed job. User input or tool results reference the assigned session and run; the server uses the frozen job catalog."
     },
     "ToolInvocation": {
       "type": "object",
@@ -519,6 +517,39 @@
         "runnerId",
         "enabledTools"
       ]
+    },
+    "ChatSubmission": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "messages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/definitions/UserMessage"
+          }
+        },
+        "stream": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sessionId",
+        "messages"
+      ],
+      "additionalProperties": false,
+      "description": "One user message submitted to a project. Execution target, tools and instructions come from server-side project configuration."
     }
   }
 }

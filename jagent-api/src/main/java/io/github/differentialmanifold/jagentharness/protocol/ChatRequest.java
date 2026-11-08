@@ -2,7 +2,7 @@ package io.github.differentialmanifold.jagentharness.protocol;
 
 import java.util.*;
 
-/** JSON wire contract. Independent of any framework and JSON library. */
+/** Internal conversation step carried by a claimed Runner job and its tool-result requests. */
 public class ChatRequest {
     public String sessionId;
     public String runId;
