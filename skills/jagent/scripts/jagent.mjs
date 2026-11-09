@@ -26,6 +26,11 @@ export class JAgentError extends Error {
 }
 
 /** Dependency-free client for creating Personal Agents and delegating work to them. */
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const isList = value => Array.isArray(value) && value.every(isObject)
+const hasText = (value, key) => isObject(value) && typeof value[key] === 'string' && value[key].length > 0
+const invalidResponse = status => new JAgentError('JAgent returned an invalid JSON response', { status, code: 'INVALID_RESPONSE' })
+
 export class JAgentClient {
   constructor({ server = process.env.JAGENT_SERVER_URL || 'http://127.0.0.1:18181',
     token = process.env.JAGENT_CLIENT_TOKEN, timeoutMs = 15000 } = {}) {
@@ -38,8 +43,9 @@ export class JAgentClient {
     this.timeoutMs = integer(timeoutMs, 'timeoutMs', 1, 300000)
   }
 
-  async request(method, path, body, timeoutMs = this.timeoutMs) {
+  async request(method, path, body, timeoutMs = this.timeoutMs, validate = isObject) {
     let response
+    let text
     try {
       response = await fetch(`${this.server}/api/v1${path}`, {
         method,
@@ -52,30 +58,31 @@ export class JAgentClient {
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       })
+      text = await response.text()
     } catch (error) {
       throw new JAgentError(method === 'GET'
         ? `Could not read JAgent (${error.name}). Check the server and connection.`
         : `JAgent did not confirm the request (${error.name}). Delivery is uncertain; inspect existing Agents or conversations before retrying.`,
       { code: 'CONNECTION_FAILED' })
     }
-    const text = await response.text()
     let value
-    try { value = text ? JSON.parse(text) : null } catch {
-      throw new JAgentError('JAgent returned a non-JSON response', { status: response.status, code: 'INVALID_RESPONSE' })
+    try { value = JSON.parse(text) } catch {
+      if (response.ok) throw invalidResponse(response.status)
     }
     if (!response.ok) throw new JAgentError(value?.message || `HTTP ${response.status}`, {
       status: response.status, code: value?.code || 'HTTP_ERROR'
     })
+    if (!validate(value)) throw invalidResponse(response.status)
     return value
   }
 
   async agents() {
-    const agents = await this.request('GET', '/personal/agents')
+    const agents = await this.request('GET', '/personal/agents', undefined, this.timeoutMs, value => isList(value) && value.every(agent => hasText(agent, 'id')))
     return agents.map(agentSummary)
   }
 
   async runners() {
-    const runners = await this.request('GET', '/runners')
+    const runners = await this.request('GET', '/runners', undefined, this.timeoutMs, value => isList(value) && value.every(runner => hasText(runner, 'runnerId') && (runner.tools === undefined || isList(runner.tools))))
     return runners.map(({ runnerId, name, online, runtime, workspaces, workspaceRoot, tools = [] }) => ({
       runnerId, name, online, runtime, workspaces, workspaceRoot,
       tools: tools.map(({ name, description }) => ({ name, description }))
@@ -87,22 +94,22 @@ export class JAgentClient {
     if (runnerId != null) id(runnerId)
     if (typeof instructions !== 'string' || instructions.length > 16000) throw new Error('instructions must be a string of at most 16000 characters')
     // Omit identity/revision fields: this always creates, never updates an existing Agent.
-    const agent = await this.request('POST', '/personal/agents', { name: name.trim(), runnerId: runnerId ?? null, instructions })
+    const agent = await this.request('POST', '/personal/agents', { name: name.trim(), runnerId: runnerId ?? null, instructions }, this.timeoutMs, value => hasText(value, 'id'))
     return agentSummary(agent)
   }
 
-  conversations(agentId) { return this.request('GET', `/personal/agents/${id(agentId)}/conversations`) }
+  conversations(agentId) { return this.request('GET', `/personal/agents/${id(agentId)}/conversations`, undefined, this.timeoutMs, isList) }
 
   createConversation(agentId, title = 'New conversation') {
     if (typeof title !== 'string' || !title.trim() || title.length > 256) throw new Error('title must contain 1–256 characters')
-    return this.request('POST', `/personal/agents/${id(agentId)}/conversations`, { title })
+    return this.request('POST', `/personal/agents/${id(agentId)}/conversations`, { title }, this.timeoutMs, value => hasText(value, 'sessionId'))
   }
 
   async send(agentId, sessionId, text, { messageId = `msg_${randomUUID()}` } = {}) {
     if (typeof text !== 'string' || !text.trim() || text.length > 32000) throw new Error('text must contain 1–32000 characters')
     id(messageId)
     try {
-      const message = await this.request('POST', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}`, { text, messageId })
+      const message = await this.request('POST', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}`, { text, messageId }, this.timeoutMs, value => hasText(value, 'id') && hasText(value, 'sessionId') && hasText(value, 'agentId') && hasText(value, 'status'))
       return { messageId: message.id, agentId: message.agentId, sessionId: message.sessionId, status: message.status }
     } catch (error) {
       error.messageId = messageId
@@ -112,20 +119,20 @@ export class JAgentClient {
 
   status(agentId, sessionId, messageId, { timeoutMs = this.timeoutMs } = {}) {
     const query = messageId ? `?messageId=${id(messageId)}` : ''
-    return this.request('GET', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}/status${query}`, undefined, timeoutMs)
+    return this.request('GET', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}/status${query}`, undefined, timeoutMs, value => isObject(value) && (!messageId || hasText(value.message, 'status')))
   }
 
   history(agentId, sessionId, { after, limit = 40 } = {}) {
     const query = new URLSearchParams({ limit: String(integer(limit, 'limit', 1, 100)) })
     if (after) query.set('after', id(after))
-    return this.request('GET', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}/history?${query}`)
+    return this.request('GET', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}/history?${query}`, undefined, this.timeoutMs, value => isObject(value) && isList(value.messages))
   }
 
   async tasks(agentId, sessionId) {
     id(sessionId)
     // Verify the conversation even when there are no tasks.
     await this.status(agentId, sessionId)
-    const tasks = await this.request('GET', `/personal/agents/${id(agentId)}/cards`)
+    const tasks = await this.request('GET', `/personal/agents/${id(agentId)}/cards`, undefined, this.timeoutMs, isList)
     return tasks.filter(task => task.conversationId === sessionId).map(task => ({
       id: task.id, title: task.title, status: task.status, parentId: task.parentId,
       description: task.description, acceptance: task.acceptance, progress: task.progress,

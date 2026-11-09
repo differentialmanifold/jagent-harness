@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 public class JdbcSessionRepository implements SessionRepository {
 
@@ -90,27 +92,37 @@ public class JdbcSessionRepository implements SessionRepository {
         session.setStatus(SessionRecord.STATUS_ACTIVE);
         session.setCreatedAt(now);
         session.setUpdatedAt(now);
-        if (standalone) session.setMetadataJson(SessionRecord.STANDALONE_METADATA);
-        else {
-            if (ownerAgentId != null) session.setOwnerAgentId(ownerAgentId);
-            upsertProject(session, now);
-        }
-        jdbcTemplate.update(
-                "insert into sessions "
-                        + "(application_id, session_id, title, project_id, project_name, workspace_path, status, metadata_json, "
-                        + "created_at, updated_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                applicationId,
-                session.getSessionId(),
-                session.getTitle(),
-                session.getProjectId(),
-                session.getProjectName(),
-                session.getWorkspacePath(),
-                session.getStatus(),
-                session.getMetadataJson(),
-                JdbcTimeCodec.encode(session.getCreatedAt()),
-                JdbcTimeCodec.encode(session.getUpdatedAt()));
-        return session;
+        JdbcFields.maxLength(session.getTitle(), "title", 512);
+        JdbcFields.maxLength(session.getProjectName(), "projectName", 512);
+        JdbcFields.maxLength(projectId, "projectId", 64);
+        JdbcFields.maxLength(workspacePath, "workspacePath", 1024);
+        return new TransactionTemplate(
+                        new DataSourceTransactionManager(jdbcTemplate.getDataSource()))
+                .execute(
+                        transaction -> {
+                            if (standalone)
+                                session.setMetadataJson(SessionRecord.STANDALONE_METADATA);
+                            else {
+                                if (ownerAgentId != null) session.setOwnerAgentId(ownerAgentId);
+                                upsertProject(session, now);
+                            }
+                            jdbcTemplate.update(
+                                    "insert into sessions "
+                                            + "(application_id, session_id, title, project_id, project_name, workspace_path, status, metadata_json, "
+                                            + "created_at, updated_at) "
+                                            + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                    applicationId,
+                                    session.getSessionId(),
+                                    session.getTitle(),
+                                    session.getProjectId(),
+                                    session.getProjectName(),
+                                    session.getWorkspacePath(),
+                                    session.getStatus(),
+                                    session.getMetadataJson(),
+                                    JdbcTimeCodec.encode(session.getCreatedAt()),
+                                    JdbcTimeCodec.encode(session.getUpdatedAt()));
+                            return session;
+                        });
     }
 
     @Override
@@ -118,7 +130,7 @@ public class JdbcSessionRepository implements SessionRepository {
         if (projectId == null || projectId.isEmpty() || agentId == null || agentId.isEmpty())
             return false;
         return Boolean.TRUE.equals(
-                new org.springframework.transaction.support.TransactionTemplate(
+                new TransactionTemplate(
                                 new org.springframework.jdbc.datasource
                                         .DataSourceTransactionManager(jdbcTemplate.getDataSource()))
                         .execute(
@@ -224,6 +236,7 @@ public class JdbcSessionRepository implements SessionRepository {
 
     @Override
     public void updateTitle(String sessionId, String title) {
+        JdbcFields.maxLength(title, "title", 512);
         jdbcTemplate.update(
                 "update sessions set title = ?, updated_at = ? where application_id = ? and session_id = ?",
                 title,

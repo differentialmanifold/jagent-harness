@@ -193,6 +193,10 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
             synchronized (listenersMonitor) {
                 listeners.clear();
             }
+            jdbcTemplate.update(
+                    "delete from agent_runs where application_id = ? and run_id = ?",
+                    applicationId,
+                    runId);
         }
 
         private void refresh() {

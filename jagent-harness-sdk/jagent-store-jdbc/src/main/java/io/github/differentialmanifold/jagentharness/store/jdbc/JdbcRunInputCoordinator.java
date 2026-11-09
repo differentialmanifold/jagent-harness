@@ -17,14 +17,16 @@ import java.util.Objects;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * JDBC-backed best-effort input queue for an agent run.
  *
  * <p>Pending inputs stay in {@code agent_run_inputs} until the agent loop checks the next safe turn
- * boundary. Queue operations intentionally do not open a transaction or seal the run at an empty
- * boundary. A late submission may therefore be acknowledged without being stored or consumed,
- * matching the queue's best-effort settling semantics.
+ * boundary. Submitting, claiming and closing serialize on the active run row. An empty boundary
+ * does not seal the run. A late submission may therefore be acknowledged without being stored or
+ * consumed, matching the queue's best-effort settling semantics.
  */
 public class JdbcRunInputCoordinator implements RunInputCoordinator {
 
@@ -35,6 +37,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final String applicationId;
+    private final TransactionTemplate transactions;
     private final RowMapper<StoredInput> inputMapper =
             new RowMapper<StoredInput>() {
                 @Override
@@ -55,6 +58,9 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
             JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, JdbcStoreProperties properties) {
         this.jdbcTemplate = requireJdbcTemplate(jdbcTemplate);
         this.objectMapper = requireObjectMapper(objectMapper);
+        this.transactions =
+                new TransactionTemplate(
+                        new DataSourceTransactionManager(jdbcTemplate.getDataSource()));
         this.applicationId = properties.requireApplicationId();
     }
 
@@ -116,23 +122,27 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         int inserted;
         try {
             inserted =
-                    jdbcTemplate.update(
-                            "insert into agent_run_inputs "
-                                    + "(application_id, input_id, session_id, run_id, content, images_json, "
-                                    + "status, created_at, updated_at) "
-                                    + "select ?, ?, active.session_id, active.run_id, ?, ?, ?, ?, ? "
-                                    + "from agent_active_runs active "
-                                    + "where active.application_id = ? and active.run_id = ? "
-                                    + "and active.accepting_inputs = 1",
-                            applicationId,
-                            inputId,
-                            normalizedContent,
-                            imagesJson,
-                            STATUS_ACCEPTED,
-                            now,
-                            now,
-                            applicationId,
-                            runId);
+                    transactions.execute(
+                            status -> {
+                                if (!lockActiveRun(runId)) return 0;
+                                return jdbcTemplate.update(
+                                        "insert into agent_run_inputs "
+                                                + "(application_id, input_id, session_id, run_id, content, images_json, "
+                                                + "status, created_at, updated_at) "
+                                                + "select ?, ?, active.session_id, active.run_id, ?, ?, ?, ?, ? "
+                                                + "from agent_active_runs active "
+                                                + "where active.application_id = ? and active.run_id = ? "
+                                                + "and active.accepting_inputs = 1",
+                                        applicationId,
+                                        inputId,
+                                        normalizedContent,
+                                        imagesJson,
+                                        STATUS_ACCEPTED,
+                                        now,
+                                        now,
+                                        applicationId,
+                                        runId);
+                            });
         } catch (DataAccessException e) {
             StoredInput concurrent = findByInputId(inputId);
             if (concurrent != null) {
@@ -162,6 +172,14 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         requireText(runId, "runId");
         requireText(completedTurnId, "completedTurnId");
 
+        return transactions.execute(
+                status -> {
+                    if (!lockActiveRun(runId)) return Collections.emptyList();
+                    return claimInputs(sessionId, runId, completedTurnId);
+                });
+    }
+
+    private List<RunInput> claimInputs(String sessionId, String runId, String completedTurnId) {
         List<StoredInput> pending =
                 jdbcTemplate.query(
                         "select * from agent_run_inputs "
@@ -206,31 +224,46 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
     public void closeRun(String sessionId, String runId) {
         requireText(sessionId, "sessionId");
         requireText(runId, "runId");
-        long now = System.currentTimeMillis();
+        transactions.execute(
+                status -> {
+                    long now = System.currentTimeMillis();
 
-        jdbcTemplate.update(
-                "update agent_active_runs set accepting_inputs = 0, updated_at = ? "
-                        + "where application_id = ? and session_id = ? and run_id = ?",
-                now,
-                applicationId,
-                sessionId,
-                runId);
-        jdbcTemplate.update(
-                "update agent_run_inputs set status = ?, updated_at = ? "
-                        + "where application_id = ? and session_id = ? and run_id = ? "
-                        + "and status = ?",
-                STATUS_CANCELLED,
-                now,
-                applicationId,
-                sessionId,
-                runId,
-                STATUS_ACCEPTED);
-        jdbcTemplate.update(
-                "delete from agent_active_runs "
-                        + "where application_id = ? and session_id = ? and run_id = ?",
-                applicationId,
-                sessionId,
-                runId);
+                    jdbcTemplate.update(
+                            "update agent_active_runs set accepting_inputs = 0, updated_at = ? "
+                                    + "where application_id = ? and session_id = ? and run_id = ?",
+                            now,
+                            applicationId,
+                            sessionId,
+                            runId);
+                    jdbcTemplate.update(
+                            "update agent_run_inputs set status = ?, updated_at = ? "
+                                    + "where application_id = ? and session_id = ? and run_id = ? "
+                                    + "and status = ?",
+                            STATUS_CANCELLED,
+                            now,
+                            applicationId,
+                            sessionId,
+                            runId,
+                            STATUS_ACCEPTED);
+                    jdbcTemplate.update(
+                            "delete from agent_active_runs "
+                                    + "where application_id = ? and session_id = ? and run_id = ?",
+                            applicationId,
+                            sessionId,
+                            runId);
+                    return null;
+                });
+    }
+
+    // A write lock works on SQLite as well as databases with row-level locks. It is acquired
+    // before reading, avoiding SQLite's deferred read-to-write transaction upgrade race.
+    private boolean lockActiveRun(String runId) {
+        return jdbcTemplate.update(
+                        "update agent_active_runs set accepting_inputs = accepting_inputs "
+                                + "where application_id = ? and run_id = ? and accepting_inputs = 1",
+                        applicationId,
+                        runId)
+                == 1;
     }
 
     private StoredInput findByInputId(String inputId) {

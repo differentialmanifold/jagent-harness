@@ -9,7 +9,9 @@ import io.github.differentialmanifold.jagentharness.core.message.MessageReposito
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -131,15 +133,10 @@ public class JdbcMessageRepository implements MessageRepository {
     public List<AgentMessage> search(
             java.util.Collection<String> sessionIds, String query, int limit) {
         if (sessionIds.isEmpty()) return java.util.Collections.emptyList();
-        // A literal substring also works for CJK; no tokenizer or database-specific extension is
-        // required.
-        String pattern =
-                "%"
-                        + query.toLowerCase(java.util.Locale.ROOT)
-                                .replace("!", "!!")
-                                .replace("%", "!%")
-                                .replace("_", "!_")
-                        + "%";
+        // Fold both operands in Java: SQL lower() has different Unicode behavior on SQLite,
+        // H2 and PostgreSQL. Page through text only, retaining at most the requested matches.
+        String needle = query.toLowerCase(java.util.Locale.ROOT);
+        int maximum = Math.min(50, Math.max(1, limit));
         List<String> ids = new ArrayList<>(sessionIds);
         List<AgentMessage> matches = new ArrayList<>();
         for (int start = 0; start < ids.size(); start += 100) {
@@ -147,17 +144,52 @@ public class JdbcMessageRepository implements MessageRepository {
             List<Object> args = new ArrayList<>();
             args.add(applicationId);
             args.addAll(batch);
-            args.add(pattern);
-            args.add(Math.min(50, Math.max(1, limit)));
-            matches.addAll(
-                    jdbcTemplate.query(
-                            "select * from messages where application_id=? and session_id in ("
-                                    + String.join(
-                                            ",", java.util.Collections.nCopies(batch.size(), "?"))
-                                    + ") and lower(content) like ? escape '!' order by id desc limit ?",
-                            mapper(),
-                            args.toArray()));
+            List<Long> matchingIds = new ArrayList<>();
+            long before = Long.MAX_VALUE;
+            while (matchingIds.size() < maximum) {
+                List<Object> pageArgs = new ArrayList<>(args);
+                pageArgs.add(before);
+                List<Map<String, Object>> page =
+                        jdbcTemplate.query(
+                                "select id, content from messages where application_id=? and session_id in ("
+                                        + String.join(
+                                                ",",
+                                                java.util.Collections.nCopies(batch.size(), "?"))
+                                        + ") and id < ? order by id desc limit 250",
+                                (rs, rowNum) -> {
+                                    Map<String, Object> row = new HashMap<>();
+                                    row.put("id", rs.getLong("id"));
+                                    row.put("content", rs.getString("content"));
+                                    return row;
+                                },
+                                pageArgs.toArray());
+                for (Map<String, Object> row : page) {
+                    before = ((Number) row.get("id")).longValue();
+                    String content = (String) row.get("content");
+                    if (content != null
+                            && content.toLowerCase(java.util.Locale.ROOT).contains(needle))
+                        matchingIds.add(before);
+                    if (matchingIds.size() == maximum) break;
+                }
+                if (page.size() < 250) break;
+            }
+            if (!matchingIds.isEmpty()) {
+                List<Object> matchArgs = new ArrayList<>();
+                matchArgs.add(applicationId);
+                matchArgs.addAll(matchingIds);
+                matches.addAll(
+                        jdbcTemplate.query(
+                                "select * from messages where application_id=? and id in ("
+                                        + String.join(
+                                                ",",
+                                                java.util.Collections.nCopies(
+                                                        matchingIds.size(), "?"))
+                                        + ") order by id desc",
+                                mapper(),
+                                matchArgs.toArray()));
+            }
         }
+
         return matches.stream()
                 .sorted(java.util.Comparator.comparing(AgentMessage::getCreatedAt).reversed())
                 .limit(Math.min(50, Math.max(1, limit)))
