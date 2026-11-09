@@ -19,7 +19,7 @@ public class DefaultSessionStore implements SessionStore {
     public SessionRecord requireSession(String sessionId) {
         SessionRecord session = sessionRepository.findBySessionId(sessionId);
         if (session == null) {
-            throw new IllegalArgumentException("Session not found: " + sessionId);
+            throw new SessionNotFoundException(sessionId);
         }
         return session;
     }

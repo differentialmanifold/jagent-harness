@@ -295,6 +295,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
 
     private ModelResponse parseResponse(String body) throws IOException {
         JsonNode root = objectMapper.readTree(body);
+        checkProviderError(root);
         JsonNode message = root.path("choices").path(0).path("message");
         ModelResponse response = new ModelResponse();
         JsonNode contentNode = message.path("content");
@@ -328,11 +329,15 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
         StreamAccumulator accumulator = new StreamAccumulator();
         StringBuilder data = new StringBuilder();
+        String event = "";
         String line;
         while ((line = reader.readLine()) != null) {
             if (line.trim().isEmpty()) {
-                consumeSseData(data, accumulator, deltaConsumer);
+                consumeSseData(event, data, accumulator, deltaConsumer);
                 data.setLength(0);
+                event = "";
+            } else if (line.startsWith("event:")) {
+                event = line.substring("event:".length()).trim();
             } else if (line.startsWith("data:")) {
                 if (data.length() > 0) {
                     data.append('\n');
@@ -340,13 +345,26 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 data.append(line.substring("data:".length()).trim());
             }
         }
-        consumeSseData(data, accumulator, deltaConsumer);
+        consumeSseData(event, data, accumulator, deltaConsumer);
         return accumulator.toResponse(objectMapper);
     }
 
     private void consumeSseData(
-            StringBuilder data, StreamAccumulator accumulator, ModelDeltaConsumer deltaConsumer)
+            String event,
+            StringBuilder data,
+            StreamAccumulator accumulator,
+            ModelDeltaConsumer deltaConsumer)
             throws IOException {
+        if ("error".equals(event)) {
+            JsonNode error = null;
+            try {
+                error = objectMapper.readTree(data.toString());
+            } catch (IOException ignored) {
+                // Some gateways send plain text in error events.
+            }
+            checkProviderError(error);
+            throw providerError(error, data.toString());
+        }
         if (data.length() == 0) {
             return;
         }
@@ -356,6 +374,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         }
         accumulator.rawChunks.add(value);
         JsonNode root = objectMapper.readTree(value);
+        checkProviderError(root);
         ModelUsage usage = parseUsage(root.path("usage"));
         if (usage != null) {
             accumulator.usage = usage;
@@ -382,15 +401,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         JsonNode toolCallsNode = delta.path("tool_calls");
         if (toolCallsNode.isArray()) {
             for (JsonNode node : toolCallsNode) {
-                int index = node.path("index").asInt(0);
-                ToolCallAccumulator toolCall = accumulator.toolCalls.get(index);
-                if (toolCall == null) {
-                    toolCall = new ToolCallAccumulator();
-                    accumulator.toolCalls.put(index, toolCall);
-                }
-                if (node.hasNonNull("id")) {
-                    toolCall.id = node.path("id").asText();
-                }
+                ToolCallAccumulator toolCall = accumulator.toolCall(node);
                 JsonNode function = node.path("function");
                 if (function.hasNonNull("name")) {
                     toolCall.name.append(function.path("name").asText());
@@ -400,6 +411,30 @@ public class OpenAiCompatibleProvider implements ModelProvider {
                 }
             }
         }
+    }
+
+    private void checkProviderError(JsonNode root) {
+        if (root != null && root.hasNonNull("error")) {
+            throw providerError(root.get("error"), root.get("error").toString());
+        }
+    }
+
+    private ModelProviderException providerError(JsonNode error, String fallback) {
+        String message = error == null ? fallback : error.path("message").asText(fallback);
+        int status = error == null ? 0 : error.path("status").asInt(error.path("code").asInt(0));
+        String code = error == null ? "" : error.path("code").asText("");
+        boolean retryable =
+                status == 429
+                        || status == 500
+                        || status == 502
+                        || status == 503
+                        || status == 504
+                        || "rate_limit_exceeded".equals(code)
+                        || "server_error".equals(code);
+        return new ModelProviderException(
+                "Model provider error: " + (message.isEmpty() ? "unspecified error" : message),
+                null,
+                retryable);
     }
 
     private ModelUsage parseUsage(JsonNode usageNode) {
@@ -523,19 +558,63 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         private final StringBuilder reasoningContent = new StringBuilder();
         private final Map<Integer, ToolCallAccumulator> toolCalls =
                 new TreeMap<Integer, ToolCallAccumulator>();
+        private final Map<String, ToolCallAccumulator> callsById = new LinkedHashMap<>();
+        private final List<ToolCallAccumulator> unindexedCalls = new ArrayList<>();
         private final List<String> rawChunks = new ArrayList<String>();
         private ModelUsage usage;
+
+        private ToolCallAccumulator toolCall(JsonNode node) {
+            Integer index = node.hasNonNull("index") ? node.path("index").asInt() : null;
+            String id = node.hasNonNull("id") ? node.path("id").asText() : null;
+            if (id != null && id.isEmpty()) id = null;
+            ToolCallAccumulator call = index == null ? null : toolCalls.get(index);
+            ToolCallAccumulator identified = id == null ? null : callsById.get(id);
+            if (call != null && identified != null && call != identified
+                    || call != null && id != null && call.id != null && !id.equals(call.id)) {
+                throw new ModelProviderException("Conflicting streamed tool call identity");
+            }
+            if (call == null) call = identified;
+            if (call == null && index == null && id == null) {
+                int count = toolCalls.size() + unindexedCalls.size();
+                if (count > 1)
+                    throw new ModelProviderException(
+                            "Ambiguous streamed tool call without index or id");
+                if (count == 1)
+                    call =
+                            toolCalls.isEmpty()
+                                    ? unindexedCalls.get(0)
+                                    : toolCalls.values().iterator().next();
+            }
+            if (call == null) {
+                call = new ToolCallAccumulator();
+                if (index == null) unindexedCalls.add(call);
+            }
+            if (index != null) {
+                if (call.index != null && !index.equals(call.index))
+                    throw new ModelProviderException("Conflicting streamed tool call index");
+                call.index = index;
+                toolCalls.put(index, call);
+                unindexedCalls.remove(call);
+            }
+            if (id != null) {
+                call.id = id;
+                callsById.put(id, call);
+            }
+            return call;
+        }
 
         private ModelResponse toResponse(ObjectMapper objectMapper) {
             ModelResponse response = new ModelResponse();
             response.setContent(content.toString());
             response.setReasoningContent(reasoningContent.toString());
             List<ToolCall> calls = new ArrayList<ToolCall>();
-            for (Map.Entry<Integer, ToolCallAccumulator> entry : toolCalls.entrySet()) {
-                ToolCallAccumulator toolCall = entry.getValue();
+            List<ToolCallAccumulator> ordered = new ArrayList<>(toolCalls.values());
+            ordered.addAll(unindexedCalls);
+            for (ToolCallAccumulator toolCall : ordered) {
                 String id =
                         toolCall.id == null || toolCall.id.isEmpty()
-                                ? "call_stream_" + entry.getKey()
+                                ? "call_stream_"
+                                        + (toolCall.index == null ? calls.size() : toolCall.index)
                                 : toolCall.id;
                 calls.add(
                         new ToolCall(id, toolCall.name.toString(), toolCall.arguments.toString()));
@@ -556,6 +635,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private static class ToolCallAccumulator {
+        private Integer index;
         private String id;
         private final StringBuilder name = new StringBuilder();
         private final StringBuilder arguments = new StringBuilder();

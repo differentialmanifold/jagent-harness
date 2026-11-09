@@ -14,6 +14,27 @@ public class ErrorResponse {
         this.message = message;
     }
 
+    public String getCode() {
+        return codeFor(status);
+    }
+
+    public static String codeFor(int status) {
+        switch (status) {
+            case 400:
+                return "BAD_REQUEST";
+            case 404:
+                return "NOT_FOUND";
+            case 409:
+                return "CONFLICT";
+            case 502:
+                return "MODEL_PROVIDER_ERROR";
+            case 500:
+                return "INTERNAL_ERROR";
+            default:
+                return "HTTP_" + status;
+        }
+    }
+
     public int getStatus() {
         return status;
     }

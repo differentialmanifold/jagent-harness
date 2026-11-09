@@ -1,5 +1,6 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
@@ -64,7 +65,7 @@ public class VirtualFileController {
             @RequestParam(value = "sessionId", required = false) String sessionId) {
         KnowledgeFile file = knowledgeFileStore.readFile(scope(scope, sessionId), path);
         if (file == null) {
-            throw new IllegalArgumentException("Knowledge file not found: " + path);
+            throw new ProtocolException(404, "NOT_FOUND", "Knowledge file not found: " + path);
         }
         return new VirtualFileContentResponse(file);
     }

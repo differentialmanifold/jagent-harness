@@ -38,6 +38,88 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiCompatibleProviderTest {
 
+    private ModelResponse stream(String data) {
+        ModelHttpClient client =
+                new ModelHttpClient() {
+                    public ModelHttpResponse postJson(ModelHttpRequest request) {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    public <T> T postStream(
+                            ModelHttpRequest request, ModelHttpStreamHandler<T> handler)
+                            throws IOException {
+                        return handler.handle(
+                                new java.io.ByteArrayInputStream(
+                                        data.getBytes(StandardCharsets.UTF_8)));
+                    }
+                };
+        return new OpenAiCompatibleProvider(config(true), new ObjectMapper(), client)
+                .chat(request(), ModelDeltaConsumer.contentOnly(value -> {}));
+    }
+
+    @Test
+    void separatesUnindexedCallsByIdAndAppendsTheirArguments() {
+        String first =
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{\"}},{\"id\":\"b\",\"function\":{\"name\":\"write\",\"arguments\":\"{}\"}}]}}]}\n\n";
+        String second =
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"arguments\":\"}\"}}]}}]}\n\n";
+        ModelResponse response = stream(first + second + "data: [DONE]\n\n");
+        assertEquals(2, response.getToolCalls().size());
+        assertEquals("read", response.getToolCalls().get(0).getName());
+        assertEquals("{}", response.getToolCalls().get(0).getArgumentsJson());
+        assertEquals("b", response.getToolCalls().get(1).getToolCallId());
+        assertEquals("write", response.getToolCalls().get(1).getName());
+        assertThrows(
+                ModelProviderException.class,
+                () ->
+                        stream(
+                                first
+                                        + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"arguments\":\"}\"}}]}}]}\n\n"));
+    }
+
+    @Test
+    void keepsIndexedOrderAndResolvesIdOnlyContinuation() {
+        ModelResponse response =
+                stream(
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"b\",\"function\":{\"name\":\"write\",\"arguments\":\"{\"}},{\"index\":0,\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}}]}\n\n"
+                                + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"b\",\"function\":{\"arguments\":\"}\"}}]}}]}\n\n");
+        assertEquals(2, response.getToolCalls().size());
+        assertEquals("a", response.getToolCalls().get(0).getToolCallId());
+        assertEquals("{}", response.getToolCalls().get(1).getArgumentsJson());
+    }
+
+    @Test
+    void neverTreatsProviderErrorEventsAsSuccessfulAnswers() {
+        for (String data :
+                java.util.Arrays.asList(
+                        "event: error\ndata: upstream failed\n\n",
+                        "event: error\n\n",
+                        "data: {\"error\":{\"message\":\"invalid key\",\"code\":401}}\n\n")) {
+            ModelProviderException error =
+                    assertThrows(ModelProviderException.class, () -> stream(data));
+            assertFalse(error.isRetryable());
+        }
+        ModelProviderException temporary =
+                assertThrows(
+                        ModelProviderException.class,
+                        () ->
+                                stream(
+                                        "event: error\ndata: {\"error\":{\"message\":\"busy\",\"code\":503}}\n\n"));
+        assertTrue(temporary.isRetryable());
+        assertTrue(temporary.getMessage().contains("busy"));
+        ModelProviderException json =
+                assertThrows(
+                        ModelProviderException.class,
+                        () ->
+                                new OpenAiCompatibleProvider(
+                                                config(false),
+                                                new ObjectMapper(),
+                                                new UsageHttpClient(
+                                                        "{\"error\":{\"message\":\"invalid key\",\"code\":401}}"))
+                                        .chat(request()));
+        assertFalse(json.isRetryable());
+    }
+
     @Test
     void serializesTextMessagesAsStringsAndImageMessagesAsOpenAiContentParts() throws Exception {
         RecordingHttpClient httpClient = new RecordingHttpClient();

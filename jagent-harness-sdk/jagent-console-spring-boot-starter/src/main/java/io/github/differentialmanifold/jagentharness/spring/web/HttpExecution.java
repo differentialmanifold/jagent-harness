@@ -1,7 +1,11 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import io.github.differentialmanifold.jagentharness.core.agent.ActiveRunException;
 import io.github.differentialmanifold.jagentharness.core.execution.*;
+import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
+import io.github.differentialmanifold.jagentharness.core.session.SessionNotFoundException;
 import io.github.differentialmanifold.jagentharness.protocol.*;
+import io.github.differentialmanifold.jagentharness.spring.web.dto.ErrorResponse;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -75,18 +79,22 @@ final class HttpExecution implements AutoCloseable {
         return error;
     }
 
-    private static Map<String, Object> errorBody(Throwable failure) {
+    static Map<String, Object> errorBody(Throwable failure) {
         Throwable error = unwrap(failure);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("message", error.getMessage() == null ? error.toString() : error.getMessage());
+        int status = 500;
+        if (error instanceof ProtocolException) status = ((ProtocolException) error).status;
+        else if (error instanceof ModelProviderException) status = 502;
+        else if (error instanceof SessionNotFoundException) status = 404;
+        else if (error instanceof ActiveRunException) status = 409;
+        else if (error instanceof IllegalArgumentException) status = 400;
+        body.put("status", status);
         body.put(
                 "code",
                 error instanceof ProtocolException
                         ? ((ProtocolException) error).code
-                        : "INTERNAL_ERROR");
-        body.put(
-                "status",
-                error instanceof ProtocolException ? ((ProtocolException) error).status : 500);
+                        : ErrorResponse.codeFor(status));
         return body;
     }
 

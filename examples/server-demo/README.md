@@ -27,7 +27,7 @@ The application listens on `127.0.0.1:18181` and stores conversations in `agent-
 
 This application hosts the harness for local or remote clients. Use the [server integration guide](../../jagent-harness-sdk/README.md) to configure it, or the [client SDK guide](../../sdk/java/README.md) to connect tools in another application.
 
-SQLite is the only database dependency in this example. Configure `JAGENT_DATASOURCE_URL` to choose its file location. Other database integrations are supported through the JDBC module or storage interfaces; see [Server integration](../../jagent-harness-sdk/README.md#storage). MCP is optional and can be removed from the application's dependencies when unused.
+SQLite is the only database dependency in this example. The default pool uses one connection to serialize short database transactions and avoid concurrent SQLite write conflicts; Agent sessions still run concurrently. Configure `JAGENT_DATASOURCE_URL` to choose its file location. Other database integrations are supported through the JDBC module or storage interfaces; see [Server integration](../../jagent-harness-sdk/README.md#storage). MCP is optional and can be removed from the application's dependencies when unused.
 
 ## Personal Agents and Feishu
 

@@ -46,18 +46,13 @@ class JdbcRunStopCoordinatorTest {
             apiInstance.close();
         }
 
-        assertEquals(StopRequestResult.ALREADY_REQUESTED, coordinatorResult(jdbcTemplate, "run-1"));
+        assertEquals(StopRequestResult.NOT_FOUND, coordinatorResult(jdbcTemplate, "run-1"));
         assertEquals(
-                "STOP_REQUESTED",
-                jdbcTemplate.queryForObject(
-                        "select status from agent_runs where application_id = ? and run_id = ?",
-                        String.class,
-                        "default",
-                        "run-1"));
+                0, jdbcTemplate.queryForObject("select count(*) from agent_runs", Integer.class));
     }
 
     @Test
-    void rejectsDuplicateRunIdAndRetainsNormalRecordOnClose() {
+    void rejectsActiveDuplicateAndReleasesRecordOnClose() {
         JdbcTemplate jdbcTemplate = createDatabase();
         JdbcRunStopCoordinator firstCoordinator = coordinator(jdbcTemplate);
         JdbcRunStopCoordinator secondCoordinator = coordinator(jdbcTemplate);
@@ -76,12 +71,14 @@ class JdbcRunStopCoordinatorTest {
                     () -> secondCoordinator.register("run-1", "session-2"));
             handle.close();
             assertEquals(
-                    "NORMAL",
-                    jdbcTemplate.queryForObject(
-                            "select status from agent_runs where application_id = ? and run_id = ?",
-                            String.class,
-                            "default",
-                            "run-1"));
+                    0,
+                    jdbcTemplate.queryForObject("select count(*) from agent_runs", Integer.class));
+            try (RunStopHandle next = secondCoordinator.register("run-1", "session-2")) {
+                handle.close(); // Closing the old handle again must not remove the new
+                // registration.
+                assertEquals(StopRequestResult.REQUESTED, secondCoordinator.requestStop("run-1"));
+            }
+
         } finally {
             handle.close();
             firstCoordinator.close();

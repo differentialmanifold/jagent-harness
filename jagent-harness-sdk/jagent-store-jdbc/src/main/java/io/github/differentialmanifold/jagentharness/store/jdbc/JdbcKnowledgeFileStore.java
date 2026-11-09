@@ -13,11 +13,12 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
 
     private static final String DEFAULT_CONTENT_TYPE = "text/markdown";
-    private static final String DIRECTORY_CONTENT_TYPE = "inode/directory";
 
     private final JdbcTemplate jdbcTemplate;
     private final String applicationId;
@@ -115,15 +116,35 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                 contentType == null || contentType.trim().isEmpty()
                         ? DEFAULT_CONTENT_TYPE
                         : contentType.trim();
-        ensureDirectories(effectiveScope, normalizedPath);
-        upsertFile(
-                effectiveScope,
-                normalizedPath,
-                KnowledgeFile.TYPE_FILE,
-                content == null ? "" : content,
-                effectiveContentType);
-        syncIndexes(effectiveScope, normalizedPath, content == null ? "" : content);
-        return readFile(effectiveScope, normalizedPath);
+        JdbcFields.maxLength(effectiveScope.getId(), "scopeId", 64);
+        JdbcFields.maxLength(normalizedPath, "path", 1024);
+        for (String segment : normalizedPath.split("/"))
+            JdbcFields.maxLength(segment, "path segment", 256);
+        JdbcFields.maxLength(effectiveContentType, "contentType", 128);
+        if (KnowledgeFilePaths.isSkillManifestFile(normalizedPath)) {
+            String key = KnowledgeFilePaths.skillKey(normalizedPath);
+            JdbcFields.maxLength(key, "skillKey", 256);
+            SkillDescriptor descriptor =
+                    SkillFileParser.readDescriptor(
+                            content == null ? "" : content, key, normalizedPath);
+            JdbcFields.maxLength(descriptor.getName(), "skill name", 256);
+        }
+        // Directories are derived from file paths by consumers; persisting unused directory rows
+        // on every write made deleted trees accumulate indefinitely.
+        return new TransactionTemplate(
+                        new DataSourceTransactionManager(jdbcTemplate.getDataSource()))
+                .execute(
+                        transaction -> {
+                            upsertFile(
+                                    effectiveScope,
+                                    normalizedPath,
+                                    KnowledgeFile.TYPE_FILE,
+                                    content == null ? "" : content,
+                                    effectiveContentType);
+                            syncIndexes(
+                                    effectiveScope, normalizedPath, content == null ? "" : content);
+                            return readFile(effectiveScope, normalizedPath);
+                        });
     }
 
     @Override
@@ -157,27 +178,6 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                 applicationId,
                 effectiveScope.getType(),
                 effectiveScope.getId());
-    }
-
-    private void ensureDirectories(KnowledgeScope scope, String path) {
-        String parent = KnowledgeFilePaths.parent(path);
-        if (parent.isEmpty()) {
-            return;
-        }
-        String[] segments = parent.split("/");
-        StringBuilder current = new StringBuilder();
-        for (String segment : segments) {
-            if (current.length() > 0) {
-                current.append('/');
-            }
-            current.append(segment);
-            upsertFile(
-                    scope,
-                    current.toString(),
-                    KnowledgeFile.TYPE_DIRECTORY,
-                    "",
-                    DIRECTORY_CONTENT_TYPE);
-        }
     }
 
     private void upsertFile(

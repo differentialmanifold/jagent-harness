@@ -181,3 +181,31 @@ test('CLI and HTTP errors are machine readable, credentials stay in the header',
   await assert.rejects(new JAgentClient({ server: state.url }).send('a', '../wrong', 'hello'), /valid ID/)
   assert.throws(() => new JAgentClient({ server: 'https://user:secret@example.com' }), /without credentials/)
 })
+
+
+test('reject empty or malformed successful responses without reporting a connection failure', async t => {
+  let body = ''
+  const state = await server(t, (req, res) => { res.end(body) })
+  const client = new JAgentClient({ server: state.url })
+  for (const invalid of ['', '   ', 'null', 'true', '"text"', '{}', '[null]']) {
+    body = invalid
+    await assert.rejects(client.agents(), { code: 'INVALID_RESPONSE', status: 200 })
+  }
+  body = ''
+  await assert.rejects(client.status('a', 's'), { code: 'INVALID_RESPONSE' })
+  await assert.rejects(client.history('a', 's'), { code: 'INVALID_RESPONSE' })
+  await assert.rejects(client.send('a', 's', 'work', { messageId: 'm' }), {
+    code: 'INVALID_RESPONSE', messageId: 'm'
+  })
+  body = '{}'
+  await assert.rejects(client.wait('a', 's', 'm'), { code: 'INVALID_RESPONSE' })
+  const script = fileURLToPath(new URL('../jagent/scripts/jagent.mjs', import.meta.url))
+  await assert.rejects(run(process.execPath, [script, 'agents'], {
+    env: { ...process.env, JAGENT_SERVER_URL: state.url }
+  }), error => { assert.equal(JSON.parse(error.stderr).code, 'INVALID_RESPONSE'); return true })
+})
+
+test('preserve HTTP failures even when the error body is empty', async t => {
+  const state = await server(t, (req, res) => { res.statusCode = 503; res.end() })
+  await assert.rejects(new JAgentClient({ server: state.url }).agents(), { code: 'HTTP_ERROR', status: 503 })
+})
