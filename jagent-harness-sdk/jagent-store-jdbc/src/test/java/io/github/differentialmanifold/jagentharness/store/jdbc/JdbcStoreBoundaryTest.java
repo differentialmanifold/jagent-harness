@@ -3,15 +3,12 @@ package io.github.differentialmanifold.jagentharness.store.jdbc;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -177,28 +174,40 @@ class JdbcStoreBoundaryTest {
         }
     }
 
-    @Test
-    void sqliteSingleConnectionPoolSerializesConcurrentOwnerAssignments() throws Exception {
-        HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:sqlite:" + directory.resolve("pool.db"));
-        config.setMaximumPoolSize(
-                1); // server-demo default: DB transactions, not sessions, are queued.
-        try (HikariDataSource source = new HikariDataSource(config)) {
-            new JdbcSchemaInitializer(source).initialize();
-            JdbcSessionRepository sessions =
-                    new JdbcSessionRepository(new JdbcTemplate(source), new JdbcStoreProperties());
-            sessions.create("task", "/work", "project", "p");
+    @org.junit.jupiter.api.Test
+    void sqliteMultiplePoolsCoordinateConcurrentWriteTransactions() throws Exception {
+        String url = "jdbc:sqlite:" + directory.resolve("concurrent.db");
+        com.zaxxer.hikari.HikariConfig firstConfig = new com.zaxxer.hikari.HikariConfig();
+        firstConfig.setJdbcUrl(url);
+        firstConfig.setMaximumPoolSize(5);
+        firstConfig.setConnectionInitSql("PRAGMA busy_timeout=5000");
+        com.zaxxer.hikari.HikariConfig secondConfig = new com.zaxxer.hikari.HikariConfig();
+        secondConfig.setJdbcUrl(url);
+        secondConfig.setMaximumPoolSize(5);
+        secondConfig.setConnectionInitSql("PRAGMA busy_timeout=5000");
+        try (com.zaxxer.hikari.HikariDataSource first =
+                        new com.zaxxer.hikari.HikariDataSource(firstConfig);
+                com.zaxxer.hikari.HikariDataSource second =
+                        new com.zaxxer.hikari.HikariDataSource(secondConfig)) {
+            new JdbcSchemaInitializer(first).initialize();
+            JdbcSessionRepository a =
+                    new JdbcSessionRepository(new JdbcTemplate(first), new JdbcStoreProperties());
+            JdbcSessionRepository b =
+                    new JdbcSessionRepository(new JdbcTemplate(second), new JdbcStoreProperties());
+            a.create("task", "/work", "project", "shared");
             ExecutorService executor = Executors.newFixedThreadPool(16);
             CountDownLatch start = new CountDownLatch(1);
             try {
                 List<Future<Boolean>> futures = new ArrayList<>();
                 for (int i = 0; i < 16; i++) {
-                    final String owner = "agent-" + i;
+                    final int number = i;
                     futures.add(
                             executor.submit(
                                     () -> {
                                         start.await();
-                                        return sessions.assignProjectOwnerIfUnowned("p", owner);
+                                        return (number % 2 == 0 ? a : b)
+                                                .assignProjectOwnerIfUnowned(
+                                                        "shared", "agent-" + number);
                                     }));
                 }
                 start.countDown();
@@ -206,9 +215,79 @@ class JdbcStoreBoundaryTest {
                 for (Future<Boolean> future : futures)
                     if (future.get(10, TimeUnit.SECONDS)) winners++;
                 assertEquals(1, winners);
+                futures.clear();
+                for (int i = 0; i < 16; i++) {
+                    final int number = i;
+                    futures.add(
+                            executor.submit(
+                                    () -> {
+                                        (number % 2 == 0 ? a : b)
+                                                .create(
+                                                        "parallel",
+                                                        "/work",
+                                                        "project",
+                                                        "p" + number);
+                                        return true;
+                                    }));
+                }
+                for (Future<Boolean> future : futures) assertTrue(future.get(10, TimeUnit.SECONDS));
+                JdbcTemplate db = new JdbcTemplate(first);
+                assertThrows(
+                        IllegalStateException.class,
+                        () ->
+                                JdbcTransactions.write(db)
+                                        .execute(
+                                                status -> {
+                                                    db.update(
+                                                            "update projects set name='rolled back' where project_id='shared'");
+                                                    throw new IllegalStateException("rollback");
+                                                }));
+                assertEquals(
+                        "project",
+                        db.queryForObject(
+                                "select name from projects where project_id='shared'",
+                                String.class));
+                assertEquals(17, db.queryForObject("select count(*) from projects", Integer.class));
+                JdbcTransactions.write(db)
+                        .execute(
+                                status -> {
+                                    try {
+                                        assertEquals(
+                                                17,
+                                                executor.submit(
+                                                                () ->
+                                                                        new JdbcTemplate(second)
+                                                                                .queryForObject(
+                                                                                        "select count(*) from projects",
+                                                                                        Integer
+                                                                                                .class))
+                                                        .get(2, TimeUnit.SECONDS));
+                                    } catch (Exception error) {
+                                        throw new AssertionError(
+                                                "A reserved write lock must allow readers", error);
+                                    }
+                                    return null;
+                                });
             } finally {
+                start.countDown();
                 executor.shutdownNow();
             }
         }
+    }
+
+    @org.junit.jupiter.api.Test
+    void postgresqlTransactionsDoNotExecuteTheSqliteLockStatement() throws Exception {
+        javax.sql.DataSource source = org.mockito.Mockito.mock(javax.sql.DataSource.class);
+        java.sql.Connection connection = org.mockito.Mockito.mock(java.sql.Connection.class);
+        java.sql.DatabaseMetaData metadata =
+                org.mockito.Mockito.mock(java.sql.DatabaseMetaData.class);
+        org.mockito.Mockito.when(source.getConnection()).thenReturn(connection);
+        org.mockito.Mockito.when(connection.getMetaData()).thenReturn(metadata);
+        org.mockito.Mockito.when(connection.getAutoCommit()).thenReturn(true);
+        org.mockito.Mockito.when(metadata.getDatabaseProductName()).thenReturn("PostgreSQL");
+        assertEquals(
+                "done", JdbcTransactions.write(new JdbcTemplate(source)).execute(status -> "done"));
+        org.mockito.Mockito.verify(connection).commit();
+        org.mockito.Mockito.verify(connection, org.mockito.Mockito.never()).createStatement();
     }
 }

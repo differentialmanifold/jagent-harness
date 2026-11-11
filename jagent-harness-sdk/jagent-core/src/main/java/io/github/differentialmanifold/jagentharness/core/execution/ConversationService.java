@@ -58,7 +58,7 @@ public class ConversationService {
             throw new ProtocolException(
                     409, "SESSION_BUSY", "Another request is modifying this session");
         try (StopRegistration registration = stop.onStop(running::stop)) {
-            List<AgentMessage> history = sessions.findMessages(request.sessionId);
+            List<AgentMessage> history = sessions.findExecutionMessages(request.sessionId);
             List<AgentMessage> incoming = new ArrayList<>();
             boolean toolResults = "tool".equals(request.messages.get(0).role);
             Map<String, ToolCall> pending = ConversationHistory.pendingTools(history);
@@ -89,7 +89,11 @@ public class ConversationService {
                                     call.getName(),
                                     "SUCCEEDED".equals(message.status)
                                             ? content(message.content)
-                                            : content(message));
+                                            : "Tool execution "
+                                                    + message.status
+                                                    + ": "
+                                                    + content(message.content));
+                    ToolOutcome.record(result, message.status);
                     result.setTurnId(calling.getTurnId());
                     incoming.add(result);
                 }
@@ -146,6 +150,8 @@ public class ConversationService {
                 return response;
             } catch (RuntimeException error) {
                 inputs.closeRun(request.sessionId, running.runId);
+                if (error instanceof NoProgressException)
+                    throw new ProtocolException(409, NoProgressException.CODE, error.getMessage());
                 throw error;
             }
         } finally {
@@ -167,49 +173,43 @@ public class ConversationService {
 
     /** Inspection derives from the ordinary event/message history; it cannot authorize replay. */
     private ChatResponse snapshot(String sessionId) {
-        List<AgentEvent> events = timeline.findBySessionId(sessionId);
-        for (int i = events.size() - 1; i >= 0; i--) {
-            AgentEvent event = events.get(i);
-            if ("agent_requires_action".equals(event.getType())) {
-                try {
-                    return response(json.readValue(event.getPayloadJson(), AgentRunResult.class));
-                } catch (Exception error) {
-                    throw new IllegalStateException("Invalid conversation event", error);
-                }
-            }
-            if (AgentEvent.AGENT_END.equals(event.getType())) {
-                // Original timeline boundaries omit payloads; the answer lives in message history.
-                ChatResponse response = new ChatResponse();
-                response.sessionId = sessionId;
-                response.runId = event.getRunId();
-                response.status = "COMPLETED";
-                List<AgentMessage> history = sessions.findMessages(sessionId);
-                for (int j = history.size() - 1; j >= 0; j--) {
-                    AgentMessage message = history.get(j);
-                    if (Objects.equals(event.getRunId(), message.getRunId())
-                            && AgentMessage.ROLE_ASSISTANT.equals(message.getRole())) {
-                        response.answer = message.getContent();
-                        break;
-                    }
-                }
-                return response;
-            }
-            if (Arrays.asList(
-                            AgentEvent.AGENT_START,
-                            AgentEvent.AGENT_ERROR,
-                            AgentEvent.AGENT_STOPPED)
-                    .contains(event.getType())) {
-                ChatResponse response = new ChatResponse();
-                response.sessionId = sessionId;
-                response.runId = event.getRunId();
-                response.status =
-                        AgentEvent.AGENT_STOPPED.equals(event.getType())
-                                ? "CANCELLED"
-                                : "INTERRUPTED";
-                return response;
+        AgentEvent event = timeline.findLatestRunBoundary(sessionId);
+        if (event == null)
+            throw new ProtocolException(404, "NOT_FOUND", "No operation for this session");
+        if ("agent_requires_action".equals(event.getType())) {
+            try {
+                return response(json.readValue(event.getPayloadJson(), AgentRunResult.class));
+            } catch (Exception error) {
+                throw new IllegalStateException("Invalid conversation event", error);
             }
         }
-        throw new ProtocolException(404, "NOT_FOUND", "No operation for this session");
+        if (AgentEvent.AGENT_END.equals(event.getType())) {
+            // Original timeline boundaries omit payloads; the answer lives in message history.
+            ChatResponse response = new ChatResponse();
+            response.sessionId = sessionId;
+            response.runId = event.getRunId();
+            response.status = "COMPLETED";
+            List<AgentMessage> history = sessions.findExecutionMessages(sessionId);
+            for (int j = history.size() - 1; j >= 0; j--) {
+                AgentMessage message = history.get(j);
+                if (Objects.equals(event.getRunId(), message.getRunId())
+                        && AgentMessage.ROLE_ASSISTANT.equals(message.getRole())) {
+                    response.answer = message.getContent();
+                    break;
+                }
+            }
+            return response;
+        }
+        if (Arrays.asList(AgentEvent.AGENT_START, AgentEvent.AGENT_ERROR, AgentEvent.AGENT_STOPPED)
+                .contains(event.getType())) {
+            ChatResponse response = new ChatResponse();
+            response.sessionId = sessionId;
+            response.runId = event.getRunId();
+            response.status =
+                    AgentEvent.AGENT_STOPPED.equals(event.getType()) ? "CANCELLED" : "INTERRUPTED";
+            return response;
+        }
+        throw new IllegalStateException("Unexpected run boundary: " + event.getType());
     }
 
     private ChatResponse response(AgentRunResult result) {
@@ -218,7 +218,7 @@ public class ConversationService {
         response.runId = result.getRunId();
         response.status = result.getStatus();
         response.answer = result.getAnswer();
-        List<AgentMessage> history = sessions.findMessages(response.sessionId);
+        List<AgentMessage> history = sessions.findExecutionMessages(response.sessionId);
         Map<String, ToolCall> pending = ConversationHistory.pendingTools(history);
         for (ToolCall call : result.getToolCalls()) {
             if (!pending.containsKey(call.getToolCallId())) continue;

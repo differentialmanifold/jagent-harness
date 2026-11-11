@@ -58,6 +58,21 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
+    void rejectsCleanEofWithoutACompletionMarker() {
+        String partial = "data: {\"choices\":[{\"delta\":{\"content\":\"partial answer\"}}]}\n\n";
+        ModelProviderException error =
+                assertThrows(ModelProviderException.class, () -> stream(partial));
+        assertTrue(error.isRetryable());
+        assertEquals("partial answer", stream(partial + "data: [DONE]\n\n").getContent());
+        assertEquals(
+                "partial answer",
+                stream(
+                                partial
+                                        + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+                        .getContent());
+    }
+
+    @Test
     void separatesUnindexedCallsByIdAndAppendsTheirArguments() {
         String first =
                 "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{\"}},{\"id\":\"b\",\"function\":{\"name\":\"write\",\"arguments\":\"{}\"}}]}}]}\n\n";
@@ -82,7 +97,7 @@ class OpenAiCompatibleProviderTest {
         ModelResponse response =
                 stream(
                         "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"b\",\"function\":{\"name\":\"write\",\"arguments\":\"{\"}},{\"index\":0,\"id\":\"a\",\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]}}]}\n\n"
-                                + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"b\",\"function\":{\"arguments\":\"}\"}}]}}]}\n\n");
+                                + "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"b\",\"function\":{\"arguments\":\"}\"}}]}}]}\n\ndata: [DONE]\n\n");
         assertEquals(2, response.getToolCalls().size());
         assertEquals("a", response.getToolCalls().get(0).getToolCallId());
         assertEquals("{}", response.getToolCalls().get(1).getArgumentsJson());

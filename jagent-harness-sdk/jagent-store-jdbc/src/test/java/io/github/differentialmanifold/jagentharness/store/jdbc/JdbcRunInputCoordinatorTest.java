@@ -129,7 +129,7 @@ class JdbcRunInputCoordinatorTest {
     }
 
     @Test
-    void lateSubmissionIsAcknowledgedButNotStoredOrExecuted() {
+    void lateSubmissionIsRejectedAndNotStoredOrExecuted() {
         JdbcTemplate jdbcTemplate = createDatabase("late-best-effort.db");
         JdbcRunInputCoordinator inputs = inputCoordinator(jdbcTemplate);
         inputs.activateRun("session-1", "run-1");
@@ -137,7 +137,10 @@ class JdbcRunInputCoordinatorTest {
 
         RunInputReceipt receipt = inputs.submitInput("run-1", "too late", "input-late");
 
-        assertEquals(RunInputStatus.ACCEPTED, receipt.getStatus());
+        assertEquals(RunInputStatus.REJECTED, receipt.getStatus());
+        assertEquals(
+                RunInputStatus.REJECTED,
+                inputs.submitInput("missing", "unknown", "new-input").getStatus());
         assertEquals(0, count(jdbcTemplate, "agent_run_inputs"));
         assertTrue(inputs.claimPendingInputs("session-1", "run-1", "turn-1").isEmpty());
     }
@@ -158,7 +161,7 @@ class JdbcRunInputCoordinatorTest {
     }
 
     @Test
-    void closedGateAlsoAcknowledgesSubmissionWithoutInsertingIt() {
+    void closedGateRejectsSubmissionWithoutInsertingIt() {
         JdbcTemplate jdbcTemplate = createDatabase("closed-gate.db");
         JdbcRunInputCoordinator inputs = inputCoordinator(jdbcTemplate);
         inputs.activateRun("session-1", "run-1");
@@ -167,7 +170,7 @@ class JdbcRunInputCoordinatorTest {
 
         RunInputReceipt receipt = inputs.submitInput("run-1", "best effort", "input-late");
 
-        assertEquals(RunInputStatus.ACCEPTED, receipt.getStatus());
+        assertEquals(RunInputStatus.REJECTED, receipt.getStatus());
         assertEquals(0, count(jdbcTemplate, "agent_run_inputs"));
     }
 
@@ -235,7 +238,7 @@ class JdbcRunInputCoordinatorTest {
         assertTrue(statuses.stream().allMatch("CANCELLED"::equals));
 
         RunInputReceipt late = inputs.submitInput("run-1", "new", "input-3");
-        assertEquals(RunInputStatus.ACCEPTED, late.getStatus());
+        assertEquals(RunInputStatus.REJECTED, late.getStatus());
         assertEquals(2, count(jdbcTemplate, "agent_run_inputs"));
     }
 

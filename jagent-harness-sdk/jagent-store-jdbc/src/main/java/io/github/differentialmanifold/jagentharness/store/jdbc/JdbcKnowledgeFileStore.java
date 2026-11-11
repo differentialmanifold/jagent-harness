@@ -13,8 +13,6 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
 
@@ -131,8 +129,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
         }
         // Directories are derived from file paths by consumers; persisting unused directory rows
         // on every write made deleted trees accumulate indefinitely.
-        return new TransactionTemplate(
-                        new DataSourceTransactionManager(jdbcTemplate.getDataSource()))
+        return JdbcTransactions.write(jdbcTemplate)
                 .execute(
                         transaction -> {
                             upsertFile(

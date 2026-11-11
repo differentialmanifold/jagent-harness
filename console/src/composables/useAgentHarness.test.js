@@ -17,6 +17,7 @@ function fixture(t, historyEvents = []) {
     if (url === '/api/v1/agent/context') return Response.json({ tools: [] })
     if (url === '/api/v1/sessions') return Response.json(sessions)
     if (url === '/api/v1/sessions/rename') return new Promise(resolve => { finishRename = () => resolve(Response.json(sessions[1])) })
+    if (url.endsWith('/inputs')) return Response.json({ inputId: body.inputId, status: 'REJECTED' })
     if (url === '/api/v1/chat') return new Promise((resolve, reject) => {
       streams.set(body.sessionId, { resolve, reject, body })
     })
@@ -129,4 +130,25 @@ test('legacy failures regain retry after a timeline reload', async t => {
   assert.equal(streams.get('b').body.messages[0].images[0].url, image.url)
   complete(streams.get('b'), 'b', 'old image')
   await retrying
+})
+
+
+test('a rejected live input is removed from the queue and restored to the draft', async t => {
+  const { harness: h, streams } = fixture(t)
+  await h.selectSession('b')
+  h.draft.value = 'Start work'
+  const sending = h.sendMessage()
+  let sink
+  const stream = new ReadableStream({ start(controller) { sink = controller } })
+  streams.get('b').resolve(new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }))
+  sink.enqueue(new TextEncoder().encode('event: agent_start\ndata: {"sessionId":"b","runId":"r","payload":{}}\n\n'))
+  for (let i = 0; i < 20 && !h.activeRunId.value; i++) await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(h.activeRunId.value, 'r')
+  h.draft.value = 'Follow-up requirement'
+  await h.sendMessage()
+  assert.equal(h.draft.value, 'Follow-up requirement')
+  assert.equal(h.pendingInputs.value.length, 0)
+  sink.enqueue(new TextEncoder().encode('event: response\ndata: {"sessionId":"b","status":"COMPLETED"}\n\n'))
+  sink.close()
+  await sending
 })

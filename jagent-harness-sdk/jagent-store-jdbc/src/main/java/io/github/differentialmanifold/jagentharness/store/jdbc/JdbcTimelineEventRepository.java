@@ -42,6 +42,19 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
                 sessionId);
     }
 
+    @Override
+    public AgentEvent findLatestRunBoundary(String sessionId) {
+        List<AgentEvent> events =
+                jdbcTemplate.query(
+                        "select * from timeline_events where application_id = ? and session_id = ? "
+                                + "and type in ('agent_start', 'agent_end', 'agent_error', 'agent_stopped', 'agent_requires_action') "
+                                + "order by id desc limit 1",
+                        mapper(),
+                        applicationId,
+                        sessionId);
+        return events.isEmpty() ? null : events.get(0);
+    }
+
     private RowMapper<AgentEvent> mapper() {
         return (rs, rowNum) -> {
             AgentEvent event = new AgentEvent();

@@ -100,7 +100,7 @@ final class RunnerConversation {
                     }
                 }
                 next.messages.add(ChatMessage.tool(call.toolCallId, value.status, value.content));
-                emit(events, response, call, "tool_execution_end", value.content);
+                // The server emits the terminal event once it accepts the durable result.
             }
             current = next;
         }

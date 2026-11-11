@@ -7,8 +7,6 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 public class JdbcSessionRepository implements SessionRepository {
 
@@ -96,8 +94,7 @@ public class JdbcSessionRepository implements SessionRepository {
         JdbcFields.maxLength(session.getProjectName(), "projectName", 512);
         JdbcFields.maxLength(projectId, "projectId", 64);
         JdbcFields.maxLength(workspacePath, "workspacePath", 1024);
-        return new TransactionTemplate(
-                        new DataSourceTransactionManager(jdbcTemplate.getDataSource()))
+        return JdbcTransactions.write(jdbcTemplate)
                 .execute(
                         transaction -> {
                             if (standalone)
@@ -130,9 +127,7 @@ public class JdbcSessionRepository implements SessionRepository {
         if (projectId == null || projectId.isEmpty() || agentId == null || agentId.isEmpty())
             return false;
         return Boolean.TRUE.equals(
-                new TransactionTemplate(
-                                new org.springframework.jdbc.datasource
-                                        .DataSourceTransactionManager(jdbcTemplate.getDataSource()))
+                JdbcTransactions.write(jdbcTemplate)
                         .execute(
                                 status -> {
                                     List<SessionRecord> existing =

@@ -108,7 +108,12 @@ public final class SkillFileParser {
     }
 
     private static Map<String, Object> parseMetadata(String content) {
-        Object parsed = new Yaml(new SafeConstructor(new LoaderOptions())).load(content);
+        Object parsed;
+        try {
+            parsed = new Yaml(new SafeConstructor(new LoaderOptions())).load(content);
+        } catch (org.yaml.snakeyaml.error.YAMLException error) {
+            throw new IllegalArgumentException("Invalid Skill YAML frontmatter", error);
+        }
         if (!(parsed instanceof Map)) {
             return Collections.emptyMap();
         }

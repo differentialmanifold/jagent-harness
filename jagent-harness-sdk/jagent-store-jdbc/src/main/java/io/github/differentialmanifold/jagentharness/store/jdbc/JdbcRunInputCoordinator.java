@@ -17,16 +17,11 @@ import java.util.Objects;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * JDBC-backed best-effort input queue for an agent run.
- *
- * <p>Pending inputs stay in {@code agent_run_inputs} until the agent loop checks the next safe turn
- * boundary. Submitting, claiming and closing serialize on the active run row. An empty boundary
- * does not seal the run. A late submission may therefore be acknowledged without being stored or
- * consumed, matching the queue's best-effort settling semantics.
+ * JDBC input queue. Submission, claiming and closing serialize within database transactions. Inputs
+ * submitted after the run closes receive REJECTED; stored receipts remain idempotent.
  */
 public class JdbcRunInputCoordinator implements RunInputCoordinator {
 
@@ -58,9 +53,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
             JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, JdbcStoreProperties properties) {
         this.jdbcTemplate = requireJdbcTemplate(jdbcTemplate);
         this.objectMapper = requireObjectMapper(objectMapper);
-        this.transactions =
-                new TransactionTemplate(
-                        new DataSourceTransactionManager(jdbcTemplate.getDataSource()));
+        this.transactions = JdbcTransactions.write(jdbcTemplate);
         this.applicationId = properties.requireApplicationId();
     }
 
@@ -160,9 +153,8 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
             }
         }
 
-        // INSERT ... SELECT may insert zero rows when the run has already settled. The input API
-        // deliberately acknowledges that late submission as best-effort instead of rejecting it.
-        return new RunInputReceipt(inputId, RunInputStatus.ACCEPTED);
+        return new RunInputReceipt(
+                inputId, inserted == 0 ? RunInputStatus.REJECTED : RunInputStatus.ACCEPTED);
     }
 
     @Override

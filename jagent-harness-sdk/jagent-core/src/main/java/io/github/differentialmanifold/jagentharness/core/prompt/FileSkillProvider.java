@@ -80,7 +80,16 @@ public class FileSkillProvider implements SkillProvider {
                     .forEach(paths::add);
             Collections.sort(paths, Comparator.comparing(path -> normalize(path).toString()));
             for (Path path : paths) {
-                skills.add(readDescriptor(path));
+                try {
+                    skills.add(readDescriptor(path));
+                } catch (IllegalArgumentException | IllegalStateException error) {
+                    java.util.logging.Logger.getLogger(FileSkillProvider.class.getName())
+                            .warning(
+                                    "Skipping unreadable or invalid Skill "
+                                            + path
+                                            + ": "
+                                            + error.getMessage());
+                }
             }
         } catch (IOException e) {
             throw new IllegalStateException("Failed to scan skills under " + skillsRoot, e);

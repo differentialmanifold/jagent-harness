@@ -236,7 +236,32 @@
         },
         "responses": {
           "200": {
-            "description": "Input receipt (inputId, status)"
+            "description": "Input receipt. REJECTED means the run is missing or no longer accepts input; the message was not queued. Retries of stored inputs return their current status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "inputId",
+                    "status"
+                  ],
+                  "properties": {
+                    "inputId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACCEPTED",
+                        "CLAIMED",
+                        "CANCELLED",
+                        "REJECTED"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

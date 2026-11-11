@@ -17,6 +17,27 @@ class FileSkillProviderTest {
     @TempDir Path tempDir;
 
     @Test
+    void malformedSkillsDoNotHideValidSiblings() throws IOException {
+        write(
+                tempDir.resolve("skills/good/SKILL.md"),
+                "---",
+                "name: good",
+                "---",
+                "Useful instructions");
+        String[] invalid = {"name: [unclosed", "\tname: bad", "key: value: value", "*"};
+        for (int i = 0; i < invalid.length; i++)
+            write(
+                    tempDir.resolve("skills/bad" + i + "/SKILL.md"),
+                    "---",
+                    invalid[i],
+                    "---",
+                    "Bad metadata");
+        List<SkillDescriptor> skills = new FileSkillProvider(tempDir, "skills").listSkills();
+        assertEquals(1, skills.size());
+        assertEquals("good", skills.get(0).getName());
+    }
+
+    @Test
     void readsStandardSkillFrontmatter() throws IOException {
         Path skill = tempDir.resolve("skills/code-review/SKILL.md");
         write(

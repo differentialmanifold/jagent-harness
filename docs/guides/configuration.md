@@ -51,3 +51,9 @@ Open the Project or Agent's **Configuration → Runtime Context**:
 - **Tools** shows the effective tool information for the selected context. The MCP configuration catalog and a session's activated tools are different views.
 
 Agent memory and current tasks are supplied as runtime context during its decisions. Inspect their live values in **Knowledge** and **Tasks**; do not use Runtime Preview as a record of an earlier decision's memory or plan.
+
+## Repeated tool failures
+
+There is no fixed limit on conversation turns. Within recent tool history, if three consecutive completed tool batches all fail with identical tools, arguments and errors, the Harness asks the model to change approach. If the next batch repeats that failure, the run ends with `NO_PROGRESS` and saves the error in the conversation. Fix the blocker or send new instructions in the same conversation to continue.
+
+This check covers both server tools and Runner results across requests. Successful calls, changed arguments or results, and new user instructions reset the streak. It does not stop successful polling or detect every possible cycle. JDBC storage retains the full history while loading recent messages for this check and messages after the compaction cursor for model context.

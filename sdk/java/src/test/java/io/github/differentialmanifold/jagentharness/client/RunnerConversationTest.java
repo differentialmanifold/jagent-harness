@@ -76,7 +76,12 @@ class RunnerConversationTest {
                             return response(false);
                         },
                         Collections.singletonList(tool(effects)));
-        assertEquals("COMPLETED", client.run(request(), new RunnerRunOptions()).status);
+        java.util.List<StreamEvent> events = new java.util.ArrayList<>();
+        RunnerRunOptions options = new RunnerRunOptions();
+        options.onEvent(events::add);
+        assertEquals("COMPLETED", client.run(request(), options).status);
+        assertEquals(1, events.stream().filter(e -> "tool_execution_start".equals(e.type)).count());
+        assertEquals(0, events.stream().filter(e -> "tool_execution_end".equals(e.type)).count());
         assertEquals(2, exchanges.get());
         assertEquals(1, effects.get());
     }

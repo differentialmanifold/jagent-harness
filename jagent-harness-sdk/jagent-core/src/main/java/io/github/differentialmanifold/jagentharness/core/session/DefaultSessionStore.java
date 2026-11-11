@@ -35,6 +35,16 @@ public class DefaultSessionStore implements SessionStore {
     }
 
     @Override
+    public List<AgentMessage> findExecutionMessages(String sessionId) {
+        return messageRepository.findExecutionBySessionId(sessionId);
+    }
+
+    @Override
+    public List<AgentMessage> findRecentMessages(String sessionId, int limit) {
+        return messageRepository.findRecentBySessionId(sessionId, limit);
+    }
+
+    @Override
     public void appendMessage(AgentMessage message) {
         messageRepository.append(message);
     }

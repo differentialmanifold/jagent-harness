@@ -200,6 +200,8 @@ public class BashTool implements ToolDefinition {
         if (context.getApprovalMode() == ToolApprovalMode.FULL_ACCESS) {
             return;
         }
+        // Shell redirections and expansions can choose targets at runtime (including via cd,
+        // symlinks and nested commands). Do not treat command-name heuristics as a shell sandbox.
         BashMutation mutation = findOutsideWorkspaceMutation(context, command, cwd);
         if (mutation == null) {
             return;
@@ -220,8 +222,41 @@ public class BashTool implements ToolDefinition {
                         metadata));
     }
 
+    private boolean requiresShellReview(String command) {
+        char quote = 0;
+        boolean escaped = false;
+        for (int i = 0; i < command.length(); i++) {
+            char c = command.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\' && quote != '\'') {
+                escaped = true;
+                continue;
+            }
+            if (quote == '\'') {
+                if (c == '\'') quote = 0;
+                continue;
+            }
+            if (c == '$' || c == '`') return true;
+            if (quote == '"') {
+                if (c == '"') quote = 0;
+                continue;
+            }
+            if (c == '\'' || c == '"') {
+                quote = c;
+                continue;
+            }
+            if (c == '>' || c == '<') return true;
+        }
+        return false;
+    }
+
     private BashMutation findOutsideWorkspaceMutation(
             ToolContext context, String command, Path cwd) {
+        if (requiresShellReview(command))
+            return new BashMutation(command, "Shell redirection or expansion requires approval");
         List<String> tokens = shellTokens(command);
         BashMutation commandMutation = findOutsideMutatingCommand(context, tokens, cwd);
         if (commandMutation != null) {
