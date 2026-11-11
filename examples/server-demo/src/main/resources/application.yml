@@ -9,8 +9,8 @@ spring:
     url: ${JAGENT_DATASOURCE_URL:jdbc:sqlite:agent-server.db}
     driver-class-name: org.sqlite.JDBC
     hikari:
-      # SQLite has a single writer. Queue short DB transactions, not Agent sessions.
-      maximum-pool-size: ${JAGENT_DATASOURCE_MAX_POOL_SIZE:1}
+      maximum-pool-size: ${JAGENT_DATASOURCE_MAX_POOL_SIZE:5}
+      connection-init-sql: PRAGMA busy_timeout=5000
 
 harness:
   protocol:

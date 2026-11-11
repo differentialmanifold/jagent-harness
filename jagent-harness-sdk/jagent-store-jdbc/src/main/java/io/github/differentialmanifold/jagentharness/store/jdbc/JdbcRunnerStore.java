@@ -5,7 +5,6 @@ import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 public class JdbcRunnerStore implements RunnerStore {
@@ -18,7 +17,7 @@ public class JdbcRunnerStore implements RunnerStore {
         this.db = db;
         this.json = json;
         app = properties.requireApplicationId();
-        tx = new TransactionTemplate(new DataSourceTransactionManager(db.getDataSource()));
+        tx = JdbcTransactions.write(db);
     }
 
     private String encode(Object value) {

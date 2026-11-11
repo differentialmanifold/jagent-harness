@@ -12,6 +12,7 @@ import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.ConversationHistory;
 import io.github.differentialmanifold.jagentharness.core.message.FailedTurn;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import io.github.differentialmanifold.jagentharness.core.message.ToolOutcome;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
@@ -132,7 +133,7 @@ public class AgentRunner implements AgentHarness {
             String sessionId, List<AgentMessage> messages, AgentRunOptions options) {
         AgentRunOptions effectiveOptions = options == null ? AgentRunOptions.empty() : options;
         ConversationHistory.validateInput(
-                sessionId, sessionStore.findMessages(sessionId), messages);
+                sessionId, sessionStore.findExecutionMessages(sessionId), messages);
         return eventPublisher.withEventConsumer(
                 effectiveOptions.getEventConsumer(),
                 () -> runInternal(sessionId, messages, effectiveOptions));
@@ -142,7 +143,7 @@ public class AgentRunner implements AgentHarness {
             String sessionId, List<AgentMessage> messages, AgentRunOptions effectiveOptions) {
         SessionRecord session = sessionStore.requireSession(sessionId);
         String runId = valueOrNewRunId(effectiveOptions.getRunId());
-        String parentMessageId = lastMessageId(sessionStore.findMessages(sessionId));
+        String parentMessageId = lastMessageId(sessionStore.findExecutionMessages(sessionId));
         List<AgentMessage> pendingUserMessages = new ArrayList<>(messages);
         if ("user".equals(messages.get(0).getRole())
                 && effectiveOptions.getRuntimeContext() != null
@@ -200,7 +201,8 @@ public class AgentRunner implements AgentHarness {
                 // Partial results are ordinary messages too; wait for the remaining results
                 // before sending the next model request.
                 Map<String, ToolCall> unanswered =
-                        ConversationHistory.pendingTools(sessionStore.findMessages(sessionId));
+                        ConversationHistory.pendingTools(
+                                sessionStore.findExecutionMessages(sessionId));
                 if (!unanswered.isEmpty()) {
                     pendingClientCalls.addAll(unanswered.values());
                     publish(
@@ -233,6 +235,26 @@ public class AgentRunner implements AgentHarness {
                                         parentMessageId);
                         publishRunInputsApplied(sessionId, runId, completedTurnId, pendingInputs);
                     }
+                }
+                RepeatedToolFailureDetector.Decision progress =
+                        new RepeatedToolFailureDetector(objectMapper)
+                                .inspect(
+                                        sessionStore.findRecentMessages(
+                                                sessionId,
+                                                RepeatedToolFailureDetector.WINDOW_SIZE));
+                if (progress == RepeatedToolFailureDetector.Decision.STOP)
+                    throw new NoProgressException();
+                if (progress == RepeatedToolFailureDetector.Decision.REMIND) {
+                    parentMessageId =
+                            appendInputMessages(
+                                    sessionId,
+                                    runId,
+                                    turnId,
+                                    Collections.singletonList(
+                                            AgentMessage.runtimeContext(
+                                                    sessionId,
+                                                    RepeatedToolFailureDetector.REMINDER)),
+                                    parentMessageId);
                 }
                 publish(
                         sessionId,
@@ -443,12 +465,13 @@ public class AgentRunner implements AgentHarness {
             if (!currentTurnEnded) {
                 AgentMessage failure =
                         FailedTurn.receipt(
-                                sessionStore.findMessages(sessionId),
+                                sessionStore.findExecutionMessages(sessionId),
                                 sessionId,
                                 runId,
                                 currentTurnId,
                                 e.getMessage());
-                failure.setParentMessageId(lastMessageId(sessionStore.findMessages(sessionId)));
+                failure.setParentMessageId(
+                        lastMessageId(sessionStore.findExecutionMessages(sessionId)));
                 sessionStore.appendMessage(failure);
                 publish(
                         sessionId,
@@ -499,7 +522,7 @@ public class AgentRunner implements AgentHarness {
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("toolCallId", message.getToolCallId());
                 payload.put("toolName", message.getToolName());
-                payload.put("result", message.getContent());
+                payload.put("result", toolEventResult(message.getContent()));
                 publish(
                         sessionId,
                         runId,
@@ -515,6 +538,15 @@ public class AgentRunner implements AgentHarness {
                     eventPayload("message", message));
         }
         return parentMessageId;
+    }
+
+    private Object toolEventResult(String content) {
+        try {
+            Object parsed = objectMapper.readValue(content, Object.class);
+            return parsed instanceof Map || parsed instanceof List ? parsed : content;
+        } catch (java.io.IOException | IllegalArgumentException ignored) {
+            return content;
+        }
     }
 
     private String executeToolCalls(
@@ -563,6 +595,7 @@ public class AgentRunner implements AgentHarness {
             AgentMessage toolMessage =
                     AgentMessage.tool(
                             sessionId, call.getToolCallId(), call.getName(), result.getContent());
+            ToolOutcome.record(toolMessage, result.status);
             toolMessage.setRunId(runId);
             toolMessage.setTurnId(turnId);
             toolMessage.setParentMessageId(parentMessageId);
@@ -916,6 +949,7 @@ public class AgentRunner implements AgentHarness {
         payload.put("failedTurnId", turnId);
         payload.put("turnCount", turnCount);
         payload.put("error", error == null ? "" : error.getMessage());
+        if (error instanceof NoProgressException) payload.put("code", NoProgressException.CODE);
         if (!turnEnded && turnId != null) {
             publish(sessionId, runId, turnId, AgentEvent.TURN_END, payload);
         }
@@ -982,7 +1016,7 @@ public class AgentRunner implements AgentHarness {
         message.setReasoningContent(reasoningContent == null ? "" : reasoningContent);
         message.setRunId(runId);
         message.setTurnId(turnId);
-        message.setParentMessageId(lastMessageId(sessionStore.findMessages(sessionId)));
+        message.setParentMessageId(lastMessageId(sessionStore.findExecutionMessages(sessionId)));
         message.setStopReason(AgentMessage.STOP_REASON_ABORTED);
         sessionStore.appendMessage(message);
         publish(sessionId, runId, turnId, AgentEvent.MESSAGE_END, eventPayload("message", message));

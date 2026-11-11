@@ -614,6 +614,9 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
         body: JSON.stringify({ content, images: requestImages, inputId }),
         signal: controller.signal
       })
+      if (receipt.status === 'REJECTED' || receipt.status === 'CANCELLED') {
+        throw new Error('This run no longer accepts messages. Your message has been restored; send it as a new turn.')
+      }
       if (state.runtimeInputController !== controller || state.activeRunId !== runId) return
       const pending = state.pendingInputs.find((item) => item.inputId === inputId)
       if (pending) {

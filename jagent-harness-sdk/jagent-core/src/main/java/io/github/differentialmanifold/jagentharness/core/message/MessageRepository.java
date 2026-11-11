@@ -16,6 +16,15 @@ public interface MessageRepository {
 
     List<AgentMessage> findBySessionId(String sessionId);
 
+    default List<AgentMessage> findExecutionBySessionId(String sessionId) {
+        return ConversationHistory.executionTail(findBySessionId(sessionId));
+    }
+
+    /** Recent messages in chronological order, independent of the model compaction cursor. */
+    default List<AgentMessage> findRecentBySessionId(String sessionId, int limit) {
+        return ConversationHistory.recent(findBySessionId(sessionId), limit);
+    }
+
     /**
      * Literal, case-insensitive phrase search, scoped by the caller. Stores may index this query.
      */

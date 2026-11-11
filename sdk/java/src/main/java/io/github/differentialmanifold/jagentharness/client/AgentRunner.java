@@ -92,11 +92,15 @@ public final class AgentRunner implements AutoCloseable {
     public void serve() throws Exception {
         begin();
         try {
-            http.management("POST", "/api/v1/runners", info, closing);
-            report("Runner " + info.name + " online: " + info.runnerId);
+            boolean registered = false;
             int failures = 0;
             while (!closing.isAborted()) {
                 try {
+                    if (!registered) {
+                        http.management("POST", "/api/v1/runners", info, closing);
+                        registered = true;
+                        report("Runner " + info.name + " online: " + info.runnerId);
+                    }
                     Set<String> current = new HashSet<>(active.keySet());
                     RunnerPoll poll =
                             RunnerFiles.JSON.treeToValue(

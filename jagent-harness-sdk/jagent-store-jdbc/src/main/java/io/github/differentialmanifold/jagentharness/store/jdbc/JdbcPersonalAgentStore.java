@@ -116,9 +116,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         long revision = profile.revision;
         try {
             return Boolean.TRUE.equals(
-                    new org.springframework.transaction.support.TransactionTemplate(
-                                    new org.springframework.jdbc.datasource
-                                            .DataSourceTransactionManager(db.getDataSource()))
+                    JdbcTransactions.write(db)
                             .execute(
                                     status -> {
                                         if (!save(profile)) return false;
@@ -251,9 +249,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
     }
 
     private void transaction(Runnable operation) {
-        new org.springframework.transaction.support.TransactionTemplate(
-                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(
-                                db.getDataSource()))
+        JdbcTransactions.write(db)
                 .execute(
                         status -> {
                             operation.run();
@@ -340,10 +336,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
     }
 
     public boolean scheduleCheck(Card card, Inbox notification) {
-        org.springframework.transaction.support.TransactionTemplate tx =
-                new org.springframework.transaction.support.TransactionTemplate(
-                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(
-                                db.getDataSource()));
+        org.springframework.transaction.support.TransactionTemplate tx = JdbcTransactions.write(db);
         return Boolean.TRUE.equals(
                 tx.execute(
                         status -> {

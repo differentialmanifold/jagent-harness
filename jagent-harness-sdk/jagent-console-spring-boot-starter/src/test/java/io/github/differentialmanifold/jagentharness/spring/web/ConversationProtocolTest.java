@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
+import io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore;
 import io.github.differentialmanifold.jagentharness.core.execution.ConversationService;
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.message.*;
@@ -44,6 +45,7 @@ class ConversationProtocolTest {
     @Autowired Scripted model;
     @Autowired RunInputCoordinator inputs;
     @Autowired JdbcTemplate db;
+    @Autowired CompactionStore compaction;
     @LocalServerPort int port;
 
     ChatRequest user(String text) {
@@ -66,6 +68,106 @@ class ConversationProtocolTest {
             request.messages.add(
                     ChatMessage.tool(call.toolCallId, "SUCCEEDED", call.name + " result"));
         return request;
+    }
+
+    @Test
+    void repeatedClientFailuresStopAcrossRequestsAfterOneRecoveryReminder() {
+        ChatRequest initial = user("repeat-client-errors");
+        ChatResponse pending = service.chat(initial, null);
+        List<StreamEvent> events = new ArrayList<>();
+        for (int attempt = 1; attempt <= 4; attempt++) {
+            ChatRequest reply = results(pending);
+            reply.clientTools.addAll(initial.clientTools);
+            reply.messages.forEach(
+                    message -> {
+                        message.status = "FAILED";
+                        message.content = Collections.singletonMap("error", "Permission denied");
+                    });
+            if (attempt < 4) {
+                pending = service.chat(reply, events::add);
+                assertEquals("REQUIRES_ACTION", pending.status);
+                if (attempt == 2) {
+                    List<AgentMessage> completed = sessions.findMessages(initial.sessionId);
+                    AgentMessage cursor =
+                            completed.stream()
+                                    .filter(m -> "tool".equals(m.getRole()))
+                                    .reduce((a, b) -> b)
+                                    .get();
+                    compaction.save(
+                            initial.sessionId,
+                            "Two identical tool failures",
+                            cursor.getMessageId());
+                }
+            } else {
+                ProtocolException error =
+                        assertThrows(
+                                ProtocolException.class, () -> service.chat(reply, events::add));
+                assertEquals("NO_PROGRESS", error.code);
+            }
+        }
+        List<AgentMessage> history = sessions.findMessages(initial.sessionId);
+        assertEquals(4, history.stream().filter(m -> "tool".equals(m.getRole())).count());
+        assertEquals(1, history.stream().filter(AgentMessage::isRuntimeContext).count());
+        assertEquals("failed", history.get(history.size() - 1).getStopReason());
+        assertTrue(
+                events.stream()
+                        .anyMatch(
+                                e ->
+                                        "agent_error".equals(e.type)
+                                                && "NO_PROGRESS".equals(e.payload.get("code"))));
+        assertEquals("INTERRUPTED", service.state(initial.sessionId).status);
+    }
+
+    @Test
+    void failedClientResultsExposeStatusWithoutSerializingTransportMessages() {
+        ChatResponse pending = service.chat(user("mixed"), null);
+        ChatRequest reply = results(pending);
+        reply.messages.get(0).status = "UNKNOWN";
+        reply.messages.get(0).content = "Execution interrupted";
+        reply.messages.get(1).status = "FAILED";
+        reply.messages.get(1).content = "Permission denied";
+        service.chat(reply, null);
+        List<AgentMessage> history = sessions.findMessages(pending.sessionId);
+        assertTrue(
+                history.stream()
+                        .anyMatch(
+                                m ->
+                                        "Tool execution UNKNOWN: Execution interrupted"
+                                                .equals(m.getContent())));
+        assertTrue(
+                history.stream()
+                        .anyMatch(
+                                m ->
+                                        "Tool execution FAILED: Permission denied"
+                                                .equals(m.getContent())));
+        assertFalse(
+                history.stream()
+                        .anyMatch(
+                                m ->
+                                        m.getContent() != null
+                                                && m.getContent().contains("\"role\":\"tool\"")));
+    }
+
+    @Test
+    void acceptedClientResultsEmitOneStructuredEndEventPerCall() {
+        ChatResponse pending = service.chat(user("mixed"), null);
+        ChatRequest reply = results(pending);
+        for (ChatMessage message : reply.messages)
+            message.content = Collections.singletonMap("stdout", "ok");
+        List<StreamEvent> events = new ArrayList<>();
+        service.chat(reply, events::add);
+        for (ToolInvocation call : pending.toolCalls) {
+            List<StreamEvent> ended =
+                    events.stream()
+                            .filter(
+                                    e ->
+                                            "tool_execution_end".equals(e.type)
+                                                    && call.toolCallId.equals(
+                                                            e.payload.get("toolCallId")))
+                            .collect(java.util.stream.Collectors.toList());
+            assertEquals(1, ended.size());
+            assertEquals("ok", ((Map<?, ?>) ended.get(0).payload.get("result")).get("stdout"));
+        }
     }
 
     @Test
@@ -385,11 +487,17 @@ class ConversationProtocolTest {
                     request.getMessages().stream()
                             .filter(m -> "user".equals(m.getRole()))
                             .findFirst()
-                            .get()
-                            .getContent();
+                            .map(AgentMessage::getContent)
+                            .orElse("");
             long results =
                     request.getMessages().stream().filter(m -> "tool".equals(m.getRole())).count();
-            if (results == 0 && Arrays.asList("mixed", "server-only").contains(user)) {
+            if ("repeat-client-errors".equals(user)
+                    || request.getSystemPrompt().contains("Two identical tool failures")) {
+                assertTrue(results < 5, "Test fuse: repeated failure was not stopped");
+                response.setToolCalls(
+                        Collections.singletonList(
+                                new ToolCall("repeat-" + UUID.randomUUID(), "client_a", "{}")));
+            } else if (results == 0 && Arrays.asList("mixed", "server-only").contains(user)) {
                 List<ToolCall> tools = new ArrayList<>();
                 tools.add(new ToolCall("server", "server_fixture", "{}"));
                 if ("mixed".equals(user)) {

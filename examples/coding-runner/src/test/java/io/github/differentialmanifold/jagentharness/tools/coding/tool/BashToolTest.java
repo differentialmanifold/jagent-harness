@@ -40,6 +40,48 @@ class BashToolTest {
     @TempDir Path tempDir;
 
     @Test
+    void deniedRedirectionsNeverModifyTargetsIncludingSymlinks() throws Exception {
+        Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
+        Path workspace = Files.createDirectory(tempDir.resolve("workspace"));
+        Path outside = tempDir.resolve("outside.txt");
+        Files.write(outside, "original".getBytes(StandardCharsets.UTF_8));
+        Path link = workspace.resolve("link");
+        Files.createSymbolicLink(link, outside);
+        ObjectMapper json = new ObjectMapper();
+        BashTool tool = new BashTool(json, new WorkspacePathResolver());
+        for (String command :
+                Arrays.asList(
+                        "echo x>" + shellQuote(outside),
+                        "echo x >>" + shellQuote(outside),
+                        "echo x 2>" + shellQuote(outside),
+                        "echo x >|" + shellQuote(outside),
+                        "echo x >" + shellQuote(link),
+                        "bash -c \"echo x >" + outside + "\"",
+                        "cat <<EOF >" + shellQuote(outside) + "\ntext\nEOF")) {
+            ToolContext context =
+                    new ToolContext(
+                            null,
+                            null,
+                            null,
+                            null,
+                            workspace,
+                            null,
+                            Collections.emptyMap(),
+                            StopSignal.none(),
+                            ToolApprovalMode.ASK_FOR_APPROVAL,
+                            (request, signal) -> ToolApprovalDecision.denied("denied"),
+                            "call",
+                            "bash");
+            assertThrows(
+                    ToolApprovalRejectedException.class,
+                    () -> tool.execute(context, json.createObjectNode().put("command", command)),
+                    command);
+            assertEquals(
+                    "original", new String(Files.readAllBytes(outside), StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
     void nonzeroExitIsAnExplicitFailureWithoutAnAdapter() throws Exception {
         Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
         ObjectMapper json = new ObjectMapper();
@@ -157,7 +199,7 @@ class BashToolTest {
     }
 
     @Test
-    void doesNotAnalyzeOutputRedirection() throws Exception {
+    void approvedRedirectionCanExecute() throws Exception {
         Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
         ObjectMapper objectMapper = new ObjectMapper();
         AtomicReference<ToolApprovalRequest> approval = new AtomicReference<ToolApprovalRequest>();
@@ -169,7 +211,7 @@ class BashToolTest {
 
         tool.execute(approvalContext(approval, ToolApprovalDecision.approved()), arguments);
 
-        assertNull(approval.get());
+        assertTrue(approval.get() != null);
         assertEquals("hello", new String(Files.readAllBytes(outside), StandardCharsets.UTF_8));
     }
 

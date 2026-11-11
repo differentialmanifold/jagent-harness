@@ -41,3 +41,11 @@ test('legacy state stays with its server while another server gets an independen
   writeFileSync(resolve(scoped, 'config.json'), JSON.stringify({ server: first, runnerId: 'runner_scoped' }))
   assert.equal(runnerStateDirectory(first, root), scoped)
 })
+
+
+test('launcher rejects origins rejected by the Java runner', () => {
+  for (const server of ['http://user:pw@127.0.0.1:18181', 'http://localhost?q=1',
+    'http://localhost?', 'http://localhost#', 'http://localhost/path', 'http://localhost/path/..', 'ftp://localhost']) {
+    assert.throws(() => runnerStateDirectory(server, tmpdir()), /plain http/)
+  }
+})

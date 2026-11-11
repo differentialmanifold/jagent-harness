@@ -346,6 +346,10 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             }
         }
         consumeSseData(event, data, accumulator, deltaConsumer);
+        if (!accumulator.doneSeen && !accumulator.finishSeen) {
+            throw new ModelProviderException(
+                    "Model stream ended without a completion marker", null, true);
+        }
         return accumulator.toResponse(objectMapper);
     }
 
@@ -370,6 +374,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
         }
         String value = data.toString();
         if ("[DONE]".equals(value)) {
+            accumulator.doneSeen = true;
             return;
         }
         accumulator.rawChunks.add(value);
@@ -380,6 +385,7 @@ public class OpenAiCompatibleProvider implements ModelProvider {
             accumulator.usage = usage;
         }
         JsonNode choice = root.path("choices").path(0);
+        if (choice.hasNonNull("finish_reason")) accumulator.finishSeen = true;
         JsonNode delta = choice.path("delta");
         JsonNode reasoningNode = delta.path("reasoning_content");
         if (!reasoningNode.isMissingNode() && !reasoningNode.isNull()) {
@@ -554,6 +560,8 @@ public class OpenAiCompatibleProvider implements ModelProvider {
     }
 
     private static class StreamAccumulator {
+        private boolean doneSeen;
+        private boolean finishSeen;
         private final StringBuilder content = new StringBuilder();
         private final StringBuilder reasoningContent = new StringBuilder();
         private final Map<Integer, ToolCallAccumulator> toolCalls =

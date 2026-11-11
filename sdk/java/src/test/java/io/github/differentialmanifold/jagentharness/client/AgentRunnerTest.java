@@ -21,6 +21,48 @@ class AgentRunnerTest {
     final ObjectMapper json = new ObjectMapper();
 
     @Test
+    void registrationRetriesTransientFailuresButAuthenticationIsFatal() throws Exception {
+        for (int failure : new int[] {500, 401, 403}) {
+            try (Server server = new Server()) {
+                server.registrationFailure = failure;
+                server.registrationFailures.set(failure == 500 ? 2 : 10);
+                try (AgentRunner runner =
+                        AgentRunner.builder(server.url(), home.resolve("status-" + failure))
+                                .tools(
+                                        Collections.singletonList(
+                                                tool(
+                                                        (context, args) ->
+                                                                ToolExecutionResult.success("ok"))))
+                                .build()) {
+                    Future<?> serving =
+                            server.threads.submit(
+                                    () -> {
+                                        runner.serve();
+                                        return null;
+                                    });
+                    if (failure == 500) {
+                        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+                        while (server.registration.get() == null && System.nanoTime() < deadline)
+                            Thread.sleep(20);
+                        assertNotNull(server.registration.get());
+                        assertEquals(3, server.registrationCalls.get());
+                        runner.close();
+                        serving.get(5, TimeUnit.SECONDS);
+                    } else {
+                        ExecutionException error =
+                                assertThrows(
+                                        ExecutionException.class,
+                                        () -> serving.get(5, TimeUnit.SECONDS));
+                        assertTrue(error.getCause() instanceof AgentHttpException);
+                        assertEquals(failure, ((AgentHttpException) error.getCause()).status);
+                        assertEquals(1, server.registrationCalls.get());
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void customToolsWorkWithoutWorkspaceAndIdentitySurvivesRestart() throws Exception {
         Object device = new Object();
         AtomicInteger effects = new AtomicInteger();
@@ -499,6 +541,9 @@ class AgentRunnerTest {
         final AtomicReference<RunnerInfo> registration = new AtomicReference<>();
         final AtomicBoolean cancelled = new AtomicBoolean();
         RunnerJob job;
+        int registrationFailure;
+        final AtomicInteger registrationFailures = new AtomicInteger();
+        final AtomicInteger registrationCalls = new AtomicInteger();
 
         Server() throws IOException {
             server.setExecutor(threads);
@@ -508,11 +553,17 @@ class AgentRunnerTest {
                         try {
                             String path = exchange.getRequestURI().getPath();
                             Object result = Collections.emptyMap();
-                            if (path.equals("/api/v1/runners"))
+                            if (path.equals("/api/v1/runners")) {
+                                registrationCalls.incrementAndGet();
+                                if (registrationFailures.getAndDecrement() > 0) {
+                                    exchange.sendResponseHeaders(registrationFailure, -1);
+                                    exchange.close();
+                                    return;
+                                }
                                 registration.set(
                                         json.readValue(
                                                 exchange.getRequestBody(), RunnerInfo.class));
-                            else if (path.endsWith("/poll")) {
+                            } else if (path.endsWith("/poll")) {
                                 RunnerPoll poll = new RunnerPoll();
                                 poll.job = jobs.poll(50, TimeUnit.MILLISECONDS);
                                 if (cancelled.get()) poll.cancelledRuns.add("r");

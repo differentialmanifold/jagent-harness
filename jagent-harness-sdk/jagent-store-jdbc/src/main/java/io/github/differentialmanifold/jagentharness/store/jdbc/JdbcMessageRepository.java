@@ -30,9 +30,7 @@ public class JdbcMessageRepository implements MessageRepository {
 
     @Override
     public void appendAll(List<AgentMessage> messages) {
-        new org.springframework.transaction.support.TransactionTemplate(
-                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(
-                                jdbcTemplate.getDataSource()))
+        JdbcTransactions.write(jdbcTemplate)
                 .execute(
                         status -> {
                             for (AgentMessage message : messages) append(message);
@@ -78,12 +76,55 @@ public class JdbcMessageRepository implements MessageRepository {
     }
 
     @Override
+    public List<AgentMessage> findExecutionBySessionId(String sessionId) {
+        return jdbcTemplate.query(
+                "select * from messages where application_id = ? and session_id = ? and id >= coalesce("
+                        + "(select max(id) from messages where application_id = ? and session_id = ? "
+                        + "and role = 'assistant' and (stop_reason is null or stop_reason not in ('failed', 'aborted'))), 0) order by id asc",
+                mapper(),
+                applicationId,
+                sessionId,
+                applicationId,
+                sessionId);
+    }
+
+    @Override
+    public List<AgentMessage> findRecentBySessionId(String sessionId, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Message limit must be positive");
+        List<AgentMessage> messages =
+                jdbcTemplate.query(
+                        "select * from messages where application_id = ? and session_id = ? order by id desc limit ?",
+                        mapper(),
+                        applicationId,
+                        sessionId,
+                        limit);
+        java.util.Collections.reverse(messages);
+        return messages;
+    }
+
+    @Override
     public List<AgentMessage> findContextBySessionId(String sessionId) {
-        List<AgentMessage> history = findBySessionId(sessionId);
+        Long cursor =
+                jdbcTemplate.queryForObject(
+                        "select coalesce(max(m.id), 0) from messages m join compaction_states c "
+                                + "on m.application_id = c.application_id and m.session_id = c.session_id and m.message_id = c.cursor_message_id "
+                                + "where c.application_id = ? and c.session_id = ?",
+                        Long.class,
+                        applicationId,
+                        sessionId);
+        List<AgentMessage> history =
+                jdbcTemplate.query(
+                        "select * from messages where application_id = ? and session_id = ? and id > ? order by id asc",
+                        mapper(),
+                        applicationId,
+                        sessionId,
+                        cursor);
         List<AgentMessage> receipts = new ArrayList<>();
         // Older versions stored failures only in the timeline. Recover those boundaries too.
         jdbcTemplate.query(
-                "select run_id, turn_id, payload_json from timeline_events where application_id = ? and session_id = ? and type = 'turn_end'",
+                "select e.run_id, e.turn_id, e.payload_json from timeline_events e where e.application_id = ? and e.session_id = ? and e.type = 'turn_end' "
+                        + "and exists (select 1 from messages m where m.application_id = e.application_id and m.session_id = e.session_id "
+                        + "and m.run_id = e.run_id and m.turn_id = e.turn_id and m.id > ?)",
                 (org.springframework.jdbc.core.RowCallbackHandler)
                         rs -> {
                             try {
@@ -102,7 +143,8 @@ public class JdbcMessageRepository implements MessageRepository {
                                         FailedTurn.receipt(history, sessionId, runId, turnId, ""));
                         },
                 applicationId,
-                sessionId);
+                sessionId,
+                cursor);
         history.addAll(receipts);
         return FailedTurn.context(history);
     }

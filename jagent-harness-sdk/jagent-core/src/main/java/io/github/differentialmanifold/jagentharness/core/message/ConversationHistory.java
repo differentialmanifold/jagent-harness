@@ -6,6 +6,29 @@ import java.util.*;
 public final class ConversationHistory {
     private ConversationHistory() {}
 
+    /**
+     * The last model response and its inputs/results are sufficient to validate the active batch.
+     */
+    public static List<AgentMessage> executionTail(List<AgentMessage> messages) {
+        int start = 0;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            AgentMessage message = messages.get(i);
+            if ("assistant".equals(message.getRole())
+                    && !"failed".equals(message.getStopReason())
+                    && !AgentMessage.STOP_REASON_ABORTED.equals(message.getStopReason())) {
+                start = i;
+                break;
+            }
+        }
+        return new ArrayList<>(messages.subList(start, messages.size()));
+    }
+
+    public static List<AgentMessage> recent(List<AgentMessage> messages, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Message limit must be positive");
+        return new ArrayList<>(
+                messages.subList(Math.max(0, messages.size() - limit), messages.size()));
+    }
+
     public static Map<String, ToolCall> pendingTools(List<AgentMessage> messages) {
         Map<String, ToolCall> pending = new LinkedHashMap<>();
         for (AgentMessage message : messages) {
