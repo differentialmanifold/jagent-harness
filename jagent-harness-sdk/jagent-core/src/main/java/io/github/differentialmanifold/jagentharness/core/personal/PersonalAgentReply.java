@@ -8,8 +8,8 @@ final class PersonalAgentReply {
     private static final ObjectMapper JSON = new ObjectMapper();
     static final String INSTRUCTIONS =
             "After all tool calls, return your user-facing reply as ordinary text or Markdown. "
-                    + "Direct user messages require a non-empty reply. "
-                    + "For a background [PROJECT], [CHECK], [CONTINUE] or [RECOVERY] event, report only meaningful progress, completion, failure, or a question requiring user input. "
+                    + "Direct user or [AGENT] messages require a non-empty reply. Replies go to the originating sender, which may be another Agent. "
+                    + "For a background [PROJECT], [CHECK], [CONTINUE], [AGENT_REPLY] or [RECOVERY] event, report only meaningful progress, completion, failure, or a question requiring user input. "
                     + "If nothing needs the user's attention, use {\"userReply\":null}. Still perform needed work and schedule the next check before finishing. "
                     + "Use the null object only as an explicit silent-completion signal, without a code fence. "
                     + "The program stores this reply in the web chat and delivers it to the original external channel, if any. No notification tool is needed.\n";

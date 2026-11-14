@@ -99,6 +99,13 @@ public class RunnerService implements AutoCloseable {
                 || info.tools.size() > 128
                 || info.instructions == null
                 || info.instructions.length() > 32000
+                || info.description == null
+                || info.description.length() > 4000
+                || info.platform == null
+                || info.platform.length() > 256
+                || info.capabilities == null
+                || info.capabilities.size() > 64
+                || info.capabilities.stream().anyMatch(c -> c == null || c.length() > 128)
                 || (info.workspaceRoot != null && info.workspaceRoot.length() > 2048))
             throw new ProtocolException(
                     400, "INVALID_RUNNER", "Runner identity and tools are required");
@@ -297,8 +304,6 @@ public class RunnerService implements AutoCloseable {
         if (runner == null)
             throw new ProtocolException(400, "NO_RUNNER", "Session has no remote runner");
         RunnerInfo info = require(runner);
-        if (System.currentTimeMillis() - info.lastSeen > 65000)
-            throw new ProtocolException(409, "RUNNER_OFFLINE", "Runner is offline");
         try {
             if ("REQUIRES_ACTION".equals(chat.state(request.sessionId).status))
                 throw new ProtocolException(
@@ -421,6 +426,7 @@ public class RunnerService implements AutoCloseable {
         // Freeze the advertised catalog to the version accepted for this job.
         request.clientTools = job.request.clientTools;
         request.clientInstructions = job.request.clientInstructions;
+        request.modelId = job.request.modelId;
     }
 
     public CompletableFuture<RunnerPoll> poll(String runner, String activeRun) {

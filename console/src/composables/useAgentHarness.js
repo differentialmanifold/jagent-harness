@@ -57,6 +57,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
       currentRuntimeState.value.draft = value
     }
   })
+  const modelId = computed({ get: () => currentRuntimeState.value.modelId, set: value => { currentRuntimeState.value.modelId = value } })
   const draftImages = computed(() => currentRuntimeState.value.draftImages)
   const addingImages = computed(() => currentRuntimeState.value.addingImages)
   const imageError = computed(() => currentRuntimeState.value.imageError)
@@ -546,6 +547,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
         {
           sessionId,
           runId: `run_${crypto.randomUUID()}`,
+          modelId: state.modelId || null,
           messages: [{ role: 'user', content, images: toImageRequest(images) }]
         },
         state,
@@ -1614,6 +1616,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
       sessionId,
       messages: [],
       draft: '',
+      modelId: '',
       draftImages: [],
       addingImages: false,
       imageError: '',
@@ -1685,6 +1688,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
     provider,
     draft,
     draftImages,
+    modelId,
     addingImages,
     imageError,
     runners,
@@ -1713,6 +1717,7 @@ export function useAgentHarness({ autoStart = true, onSessionMissing = () => {} 
     renameDialogLabel,
     projectGroups,
     loadAgentContext,
+    loadProvider,
     loadSessions,
     bootstrap,
     openProjectDialog,

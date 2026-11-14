@@ -52,20 +52,48 @@ final class PersonalAgentProjects {
         return projects.runners();
     }
 
-    public SessionRecord create(String agent, CreateSessionRequest request) {
+    public SessionRecord open(String agent, CreateSessionRequest request, boolean newSession) {
         Profile p = require(agent);
-        if (request.getProjectId() != null && !request.getProjectId().isEmpty()) {
-            SessionRecord existing =
-                    list(agent).stream()
-                            .filter(s -> request.getProjectId().equals(s.getProjectId()))
-                            .findFirst()
-                            .orElseThrow(() -> new IllegalArgumentException("Project not found"));
-            request.setProjectName(existing.getProjectName());
-            request.setWorkspacePath(existing.getWorkspacePath());
-        } else {
-            request.setRunnerId(p.runnerId);
+        List<SessionRecord> owned = list(agent);
+        String path = request.getWorkspacePath();
+        if (request.getProjectId() != null && request.getProjectId().isEmpty())
+            request.setProjectId(null);
+        if (path != null && path.trim().isEmpty()) path = null;
+        if (path != null && p.runnerId != null)
+            path = projects.canonicalWorkspace(p.runnerId, path);
+        SessionRecord match = null;
+        for (SessionRecord existing : owned) {
+            boolean byId =
+                    request.getProjectId() != null
+                            && request.getProjectId().equals(existing.getProjectId());
+            boolean byPath =
+                    request.getProjectId() == null
+                            && path != null
+                            && path.equals(existing.getWorkspacePath());
+            if (byId || byPath) {
+                if (!Objects.equals(p.runnerId, existing.getRunnerId()))
+                    throw new IllegalArgumentException("Project belongs to another Runner");
+                if (path != null && !path.equals(existing.getWorkspacePath()))
+                    throw new IllegalArgumentException(
+                            "Project and workspace do not match; open the requested directory as its own project");
+                match = existing;
+                break;
+            }
         }
+        if (request.getProjectId() != null && !request.getProjectId().isEmpty() && match == null)
+            throw new IllegalArgumentException("Owned project not found");
+        if (match != null) {
+            if (!newSession) return match;
+            request.setProjectId(match.getProjectId());
+            request.setProjectName(match.getProjectName());
+            request.setWorkspacePath(match.getWorkspacePath());
+        } else request.setWorkspacePath(path);
+        request.setRunnerId(p.runnerId);
         return projects.createSession(agent, request);
+    }
+
+    public SessionRecord create(String agent, CreateSessionRequest request) {
+        return open(agent, request, true);
     }
 
     public SessionRecord requireProject(String agent, String session) {
@@ -102,7 +130,8 @@ final class PersonalAgentProjects {
             String text,
             ReplyTarget replyTo,
             String taskId,
-            boolean readOnly) {
+            boolean readOnly,
+            String modelId) {
         conversation(agent, conversation);
         SessionRecord project = requireProject(agent, session);
         Card task = taskId == null ? null : plans.require(agent, taskId);
@@ -110,6 +139,9 @@ final class PersonalAgentProjects {
             if (PersonalTaskPlan.terminal(task))
                 throw new IllegalArgumentException("Reopen this task before submitting more work");
             plans.ready(task);
+            if (plans.delegationPending(task))
+                throw new IllegalArgumentException(
+                        "Wait for the delegated Agent before starting another execution of this task");
             if (task.acceptance.trim().isEmpty())
                 throw new IllegalArgumentException("Set task acceptance criteria before dispatch");
             if (task.conversationId != null && !conversation.equals(task.conversationId))
@@ -142,6 +174,8 @@ final class PersonalAgentProjects {
         watch.readOnly = readOnly;
         watch.taskRequirements = task == null ? null : plans.requirements(task);
         watch.replyTo = replyTo;
+        watch.modelId = task == null ? agents.requestedModel(agent, conversation) : task.modelId;
+        watch.projectModelId = modelId;
         watch.status = "WAITING";
         watch.text = text(text, "text", 32000);
         watch.createdAt = System.currentTimeMillis();
@@ -151,6 +185,10 @@ final class PersonalAgentProjects {
             task.projectId = project.getProjectId();
             task.conversationId = conversation;
             task.lastRunId = watch.projectRunId;
+            task.delegateAgentId = null;
+            task.delegateSessionId = null;
+            task.delegateMessageId = null;
+            task.delegateRequirements = null;
             task.status = "DOING";
             if (!store.submitTask(task, watch)) throw conflict();
         }
@@ -175,6 +213,7 @@ final class PersonalAgentProjects {
                                 : "");
         try {
             ChatSubmission request = new ChatSubmission();
+            request.modelId = watch.projectModelId;
             request.sessionId = watch.projectSessionId;
             request.runId = watch.projectRunId;
             request.messages = Collections.singletonList(ChatMessage.user(input));

@@ -805,8 +805,13 @@ class RunnerProtocolTest {
     void credentialsAndSessionAssignmentAreEnforced() throws Exception {
         RunnerInfo owner = register(), other = register();
         ChatRequest request = request(owner);
+        request.modelId = "default";
         runners.submit(request);
         http(owner.runnerId).management("GET", "/api/v1/runners/" + owner.runnerId + "/poll", null);
+        ChatRequest tampered = json.convertValue(request, ChatRequest.class);
+        tampered.modelId = "runner-picked-another-model";
+        runners.authorizeChat(tampered, owner.runnerId, secret);
+        assertEquals("default", tampered.modelId);
         AgentHttpException error =
                 assertThrows(
                         AgentHttpException.class, () -> http(other.runnerId).chat(request, null));
@@ -823,7 +828,9 @@ class RunnerProtocolTest {
         altered.workspaces = false;
         assertThrows(ProtocolException.class, () -> runners.register(altered, secret));
         store.heartbeat(other.runnerId, 0);
-        assertThrows(ProtocolException.class, () -> runners.submit(request(other)));
+        ChatRequest offline = request(other);
+        runners.submit(offline);
+        assertEquals("QUEUED", runners.job(offline.runId).status);
     }
 
     @Test

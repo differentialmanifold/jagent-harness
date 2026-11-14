@@ -87,6 +87,13 @@
             "number",
             "boolean"
           ]
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/definitions/Image"
+          }
         }
       },
       "required": [
@@ -142,6 +149,14 @@
         },
         "stream": {
           "type": "boolean"
+        },
+        "modelId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "description": "Optional explicit model; omitted uses the system default. Server-owned for a claimed Runner job."
         }
       },
       "required": [
@@ -337,6 +352,22 @@
           ],
           "maxLength": 2048,
           "description": "Optional absolute root on the Runner for automatic user/<projectId> and agents/<agentId>/<projectId> directories. The Runner creates managed directories on first execution."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "platform": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
         }
       },
       "required": [
@@ -542,6 +573,14 @@
         },
         "stream": {
           "type": "boolean"
+        },
+        "modelId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "description": "Optional explicit model; omitted uses the system default. Server-owned for a claimed Runner job."
         }
       },
       "required": [
@@ -550,6 +589,111 @@
       ],
       "additionalProperties": false,
       "description": "One user message submitted to a project. Execution target, tools and instructions come from server-side project configuration."
+    },
+    "ModelProfile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "apiKey": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "credentialsConfigured": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "contextWindowTokens": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 10000000
+        },
+        "temperature": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "default": 120
+        },
+        "streamEnabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "includeUsage": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "model"
+      ]
+    },
+    "ModelConfiguration": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer"
+        },
+        "defaultModelId": {
+          "type": "string"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ModelProfile"
+          }
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "environment",
+            "saved"
+          ],
+          "readOnly": true
+        }
+      },
+      "required": [
+        "revision",
+        "defaultModelId",
+        "models"
+      ]
     }
   }
 }

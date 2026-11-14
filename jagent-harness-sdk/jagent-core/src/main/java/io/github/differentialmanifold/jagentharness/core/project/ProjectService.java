@@ -24,6 +24,26 @@ public class ProjectService {
         return runners == null ? Collections.emptyList() : runners.list();
     }
 
+    public String canonicalWorkspace(String runnerId, String path) {
+        if (path == null || path.trim().isEmpty()) return null;
+        if (runners == null) throw new IllegalArgumentException("Runner execution is disabled");
+        try {
+            io.github.differentialmanifold.jagentharness.protocol.WorkspaceListing result =
+                    runners.browse(runnerId, path).get(30, java.util.concurrent.TimeUnit.SECONDS);
+            if (result.error != null && !result.error.isEmpty())
+                throw new IllegalArgumentException(result.error);
+            if (result.path == null || result.path.isEmpty())
+                throw new IllegalArgumentException("Runner did not resolve the workspace");
+            return result.path;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Workspace lookup interrupted", e);
+        } catch (java.util.concurrent.ExecutionException
+                | java.util.concurrent.TimeoutException e) {
+            throw new IllegalArgumentException("Could not resolve workspace on Runner: " + path, e);
+        }
+    }
+
     public String runnerId(String sessionId) {
         return runners == null ? null : runners.binding(sessionId);
     }

@@ -40,7 +40,7 @@ Omit `runnerId` for a server-tools-only project. Use the returned `sessionId` wi
 }
 ```
 
-The public request contains only `sessionId`, `messages`, optional `runId`, and `stream`. Exactly one `role=user` message is accepted. Do not send `clientTools`, `clientInstructions`, or `role=tool` results: these are rejected for both Runner-bound and server-only projects. The frontend does not implement a tool-execution loop.
+The public request contains only `sessionId`, `messages`, optional `runId`, `modelId`, and `stream`. Exactly one `role=user` message is accepted. Do not send `clientTools`, `clientInstructions`, or `role=tool` results: these are rejected for both Runner-bound and server-only projects. The frontend does not implement a tool-execution loop.
 
 The server obtains native tools and instructions from the registered Runner and the project's enabled tool selection. With no Runner, the Harness uses server tools only. A separate frontend can submit messages without embedding any tool SDK.
 
@@ -139,3 +139,11 @@ Inspect dispatch at `GET /api/v1/runners/runs/{runId}`. Subscribe to future SSE 
 CLAIMED jobs remain assigned across disconnects. Receiving the same runId is not permission to execute it again: a runner must retain its local acceptance and result journal. Completion reports can be retried. An interrupted dispatch with pending tool results can be explicitly reopened at `POST /api/v1/runners/{id}/runs/{runId}/recover`; only after inspecting local effects should the runner submit saved results through the normal chat API. This reopens dispatch ownership, not the Agent Harness loop.
 
 Tools are built into each runner. The Harness has no tool download or installation API. Java tools implement `ToolDefinition` and the client SDK's `AgentRunner` handles dispatch; another runtime implements equivalent native interfaces and the same wire messages without MCP. Skills and other server tools execute on the Harness.
+
+## Model selection and image results
+
+`GET /api/v1/models` returns model configuration with credentials masked; `POST /api/v1/models` saves it using its `revision`. `POST /api/v1/models/{id}/test` checks a saved connection. Connection fields match `harness.model.*`, including temperature, timeout and streaming options. The catalog includes `defaultModelId` and read-only `source` (`environment` or `saved`). Saved configuration takes priority over the environment. Capability metadata describes accepted inputs, strengths and limitations; see [schema.json](schema.json).
+
+A public chat can set `modelId`; omitting it selects the current default. Neither Project nor personal Agent conversations have a model-selection tool. The caller selects a model before submission; personal Agents can pass along a user-requested model when delegating work. The selected configuration stays fixed for the run. Runners preserve the assigned request and cannot override it. Tool messages may contain an `images` array in the same format as user attachments. Preserve it when journaling and returning results. The server retains originals and adapts unsupported input types for the selected provider.
+
+Runner registration optionally includes `description`, `platform` and string `capabilities`. These support environment discovery and do not grant permissions or install tools. A Runner with `workspaces=false` can expose device APIs without filesystem paths. Offline jobs remain queued until the Runner reconnects; native mobile clients must handle OS permissions and lifecycle separately.

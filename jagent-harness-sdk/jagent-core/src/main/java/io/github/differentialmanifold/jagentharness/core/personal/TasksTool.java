@@ -65,7 +65,7 @@ public final class TasksTool extends PersonalTool {
                                                 text("Owned project session."),
                                                 "messageId",
                                                 text(
-                                                        "Tool output or assistant evidence message ID from projects inspect."),
+                                                        "Tool output or assistant evidence message ID from projects inspect, or a reply ID from agents inspect for this task delegation."),
                                                 "note",
                                                 text(
                                                         "What this output verifies; at most 2000 characters.")),

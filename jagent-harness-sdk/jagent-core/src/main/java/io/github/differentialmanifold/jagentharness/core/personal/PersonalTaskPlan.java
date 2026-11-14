@@ -97,9 +97,16 @@ final class PersonalTaskPlan {
             if (e == null) throw new IllegalArgumentException("Evidence reference is required");
             e.note = PersonalAgentSupport.text(e.note, "evidence note", 2000);
             SessionRecord s = sessions.findBySessionId(e.sessionId);
-            if (s == null || s.isStandalone() || !c.ownerId.equals(s.getOwnerAgentId()))
+            Conversation delegated = store.conversation(e.sessionId);
+            boolean peerEvidence =
+                    delegated != null
+                            && c.ownerId.equals(delegated.requesterAgentId)
+                            && Objects.equals(c.delegateSessionId, e.sessionId);
+            if (s == null
+                    || (!peerEvidence
+                            && (s.isStandalone() || !c.ownerId.equals(s.getOwnerAgentId()))))
                 throw new IllegalArgumentException(
-                        "Evidence must come from an owned project session");
+                        "Evidence must come from an owned project or this task's delegated conversation");
             AgentMessage message =
                     history.findMessages(e.sessionId).stream()
                             .filter(m -> Objects.equals(e.messageId, m.getMessageId()))
@@ -108,11 +115,46 @@ final class PersonalTaskPlan {
                                     () ->
                                             new IllegalArgumentException(
                                                     "Evidence message not found"));
+            if (peerEvidence
+                    && (!"assistant".equals(message.getRole())
+                            || !message.getToolCalls().isEmpty()))
+                throw new IllegalArgumentException("Delegation evidence must be a visible reply");
             if (!"tool".equals(message.getRole()) && !"assistant".equals(message.getRole()))
                 throw new IllegalArgumentException(
                         "Evidence must reference execution output, not a request");
         }
         if ("DONE".equals(c.status)) {
+            if (c.delegateMessageId != null) {
+                Inbox delegated = store.message(c.delegateMessageId);
+                if (delegated == null
+                        || store.messages(c.delegateSessionId).stream()
+                                .anyMatch(
+                                        m ->
+                                                Arrays.asList("PENDING", "RUNNING", "WAITING")
+                                                        .contains(m.status)))
+                    throw new IllegalArgumentException(
+                            "Wait for delegated work before marking DONE");
+                if (!Objects.equals(c.delegateRequirements, requirements(c)))
+                    throw new IllegalArgumentException(
+                            "Requirements changed; ask the delegated Agent to verify them");
+                if (c.evidence.stream()
+                        .noneMatch(
+                                e ->
+                                        c.delegateSessionId.equals(e.sessionId)
+                                                && history.findMessages(e.sessionId).stream()
+                                                        .anyMatch(
+                                                                m ->
+                                                                        e.messageId.equals(
+                                                                                        m
+                                                                                                .getMessageId())
+                                                                                && m.getCreatedAt()
+                                                                                        != null
+                                                                                && m.getCreatedAt()
+                                                                                                .toEpochMilli()
+                                                                                        >= delegated
+                                                                                                .createdAt)))
+                    throw new IllegalArgumentException("Cite a reply from the latest delegation");
+            }
             ready(c);
             for (Card row : all.values())
                 if (Objects.equals(c.id, row.parentId) && !terminal(row))
@@ -171,6 +213,15 @@ final class PersonalTaskPlan {
                 throw new IllegalArgumentException("Dependency is not complete: " + dependency);
     }
 
+    boolean delegationPending(Card task) {
+        return task.delegateSessionId != null
+                && store.messages(task.delegateSessionId).stream()
+                        .anyMatch(
+                                m ->
+                                        Arrays.asList("PENDING", "RUNNING", "WAITING")
+                                                .contains(m.status));
+    }
+
     List<Inbox> executions(String agent, String task) {
         require(agent, task);
         List<Inbox> out = new ArrayList<>();
@@ -223,6 +274,8 @@ final class PersonalTaskPlan {
             row.put("progress", PersonalAgentSupport.bounded(c.progress, 500));
             row.put("sessionId", c.sessionId);
             row.put("lastRunId", c.lastRunId);
+            row.put("delegateAgentId", c.delegateAgentId);
+            row.put("delegateSessionId", c.delegateSessionId);
             row.put("nextCheckAt", c.nextCheckAt);
             rows.add(row);
         }

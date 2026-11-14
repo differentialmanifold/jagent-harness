@@ -13,6 +13,11 @@ export function renderMarkdown(content) {
   return renderer.render(String(content || ''))
 }
 
+// Keep YAML metadata in Code view instead of rendering it as Markdown headings.
+export function skillBody(content) {
+  return String(content || '').replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '')
+}
+
 export function markdownBlocks(content) {
   const blocks = []
   const lines = String(content || '').split(/\r?\n/)

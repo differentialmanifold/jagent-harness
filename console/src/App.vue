@@ -9,8 +9,8 @@
       </div>
 
       <el-radio-group :model-value="activeView" class="app-tabs" aria-label="Primary" @change="changeActiveView">
-        <el-radio-button value="chat">Projects</el-radio-button>
         <el-radio-button v-if="personalAvailable" value="personal">Agents</el-radio-button>
+        <el-radio-button value="chat">Projects</el-radio-button>
         <el-radio-button value="configuration">System Settings</el-radio-button>
       </el-radio-group>
     </header>
@@ -46,6 +46,7 @@
         <ChatPanel v-show="projectView === 'chat'"
           :active="projectView === 'chat'"
           v-model:draft="draft"
+          v-model:model-id="modelId"
           :current-session="currentSession"
           :messages="messages"
           :provider="provider"
@@ -126,7 +127,7 @@ import Sidebar from './components/Sidebar.vue'
 import { useAgentHarness } from './composables/useAgentHarness'
 import { request } from './api/http'
 
-const activeView = ref('chat')
+const activeView = ref('personal')
 const projectConfigurationVisited = ref(false)
 const projectView = ref('chat'), projectConfigurationRef = ref(null), personalPanelRef = ref(null)
 async function changeProjectView(view) {
@@ -144,6 +145,7 @@ const configurationPanelRef = ref(null)
 
 onMounted(async () => {
   await loadPersonalAgents()
+  if (!personalAvailable.value && activeView.value === 'personal') activeView.value = 'chat'
   try {
     await request('/api/v1/mcp/config')
     mcpAvailable.value = true
@@ -162,6 +164,7 @@ const {
   provider,
   draft,
   draftImages,
+  modelId,
   addingImages,
   imageError,
   runners,
@@ -190,6 +193,7 @@ const {
   renameDialogLabel,
   projectGroups,
   loadAgentContext,
+  loadProvider,
   loadSessions,
   openProjectDialog,
   closeProjectDialog,
@@ -245,7 +249,7 @@ async function openAgentProject(sessionId, ownerAgentId) {
 }
 
 async function refreshAgentContext() {
-  await loadAgentContext(currentSession.value ? currentSession.value.sessionId : null)
+  await Promise.all([loadProvider(), loadAgentContext(currentSession.value ? currentSession.value.sessionId : null)])
 }
 </script>
 

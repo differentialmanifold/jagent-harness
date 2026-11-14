@@ -93,6 +93,11 @@ public class ConversationService {
                                                     + message.status
                                                     + ": "
                                                     + content(message.content));
+                    List<MessageImage> attachments = new ArrayList<>();
+                    if (message.images != null)
+                        for (Map<String, Object> image : message.images)
+                            attachments.add(json.convertValue(image, MessageImage.class));
+                    result.setImages(ImageInputValidator.normalize(attachments));
                     ToolOutcome.record(result, message.status);
                     result.setTurnId(calling.getTurnId());
                     incoming.add(result);
@@ -131,6 +136,7 @@ public class ConversationService {
                                 request.sessionId,
                                 incoming,
                                 AgentRunOptions.builder()
+                                        .modelId(request.modelId)
                                         .runId(running.runId)
                                         .clientCapabilities(capabilities)
                                         .eventConsumer(sink)
@@ -291,7 +297,7 @@ public class ConversationService {
                         400,
                         "INVALID_TOOL_RESULT",
                         "Tool results need a call ID, status and content");
-            if ("user".equals(role) && message.images != null) {
+            if (message.images != null) {
                 try {
                     List<MessageImage> images = new ArrayList<>();
                     for (Map<String, Object> image : message.images)

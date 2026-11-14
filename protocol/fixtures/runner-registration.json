@@ -24,5 +24,10 @@
   "toolDiagnostics": {
     "read": "Native filesystem"
   },
-  "workspaceRoot": "/home/demo/.jagent/workspaces"
+  "workspaceRoot": "/home/demo/.jagent/workspaces",
+  "description": "Linux development terminal",
+  "platform": "Linux x86_64",
+  "capabilities": [
+    "coding"
+  ]
 }

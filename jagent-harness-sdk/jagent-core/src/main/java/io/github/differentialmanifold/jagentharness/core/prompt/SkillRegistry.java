@@ -73,6 +73,19 @@ public class SkillRegistry {
         return result;
     }
 
+    /** Provider resources are a fallback after private/project/global knowledge files. */
+    public String readResource(AgentContext context, String path) {
+        List<SkillProvider> snapshot;
+        synchronized (this) {
+            snapshot = new ArrayList<>(providers);
+        }
+        for (int i = snapshot.size() - 1; i >= 0; i--) {
+            String content = snapshot.get(i).readResource(context, path);
+            if (content != null) return content;
+        }
+        return null;
+    }
+
     private String skillKey(SkillDescriptor skill, int sequence) {
         String name = skill.getName();
         if (name == null || name.trim().isEmpty()) {
@@ -86,6 +99,8 @@ public class SkillRegistry {
         if (filePath == null || filePath.trim().isEmpty()) {
             return 0;
         }
+        // Bundled defaults must not hide an explicitly configured method of the same name.
+        if ("builtin".equals(skill.getSource())) return -1;
         Path rawPath = parsePath(filePath);
         if (rawPath == null) {
             return 0;

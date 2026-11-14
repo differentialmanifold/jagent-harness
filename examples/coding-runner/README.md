@@ -14,16 +14,16 @@ This is a ready-to-run distribution of the [Java client SDK](../../sdk/java/READ
 
 For local development, run `RunnerMain.main()` in your IDE or run the JAR without arguments. It starts immediately and connects to `http://127.0.0.1:18181` by default. `JAGENT_SERVER_URL` or `--server` selects another server. `--help` displays usage; `recover` is only for interrupted operations, not a second startup step.
 
-Build from the repository root, or use a release containing the coding runner:
+Build from the repository root, or use a prepared offline Coding Runner package:
 
 ```sh
 mvn -pl examples/coding-runner -am package
 ```
 
-Copy `examples/coding-runner/target/jagent-coding-runner-2.2.0.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
+Copy `examples/coding-runner/target/jagent-coding-runner-2.2.1.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
 
 ```sh
-java -jar jagent-coding-runner-2.2.0.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.2.1.jar --server https://agent.example.com --name linux-dev
 ```
 
 Open the web frontend wherever it is hosted, add a project, and choose **linux-dev**. Leave the workspace empty for a new directory under `~/.jagent/workspaces/user/`, or browse an existing directory on that terminal. One runner can execute work for multiple projects with different directories.
@@ -34,6 +34,48 @@ Tools run with the OS account's file and process permissions; the workspace is a
 
 No model key is needed on this machine. The runner listens on no port. HTTPS is recommended; plain HTTP to a non-loopback server is accepted with a warning at startup. A process supervisor can run `serve` unattended; Ctrl+C stops it.
 
+## Distribute inside your network
+
+Prepare the package once. `mvn -pl examples/coding-runner -am package` produces:
+
+```text
+target/runners/coding/runner.jar
+target/runners/coding/manifest.json
+target/jagent-coding-runner-2.2.1-offline.zip
+```
+
+The manifest records the version, SHA-256 and Java requirement. The ZIP contains the `coding/` directory. Copy that directory to `data/runners/` relative to the Harness process working directory, or set `harness.console.runner-distribution-directory` (`JAGENT_RUNNER_DISTRIBUTION_DIR` in server-demo). Copy both files together. For example, from the repository root:
+
+```sh
+mkdir -p data/runners
+cp -R examples/coding-runner/target/runners/coding data/runners/
+```
+
+The development launchers build this package and point the server directly at `examples/coding-runner/target/runners`, so no copy is needed when using them. Manual or IDE startup uses `data/runners` unless configured otherwise.
+
+The Harness serves the installed files, using the same API token authentication as its other APIs:
+
+```text
+GET /api/v1/distributions/runners/coding/manifest.json
+GET /api/v1/distributions/runners/coding/runner.jar
+```
+
+Download with the configured Bearer token when required, verify the SHA-256 from the manifest, then run `java -jar runner.jar --server <reachable-harness-url>`. Files missing from the server return 404; a corrupt or mismatched package returns 503. Downloads are local to this deployment: adding machines needs neither GitHub, Maven nor a source checkout. The target still needs Java 8+; prepare a runtime in the isolated network if it is not installed.
+
+If the target cannot download directly, an existing Runner can fetch and SCP the two files. The built-in `runner-setup` Skill guides a personal Agent through that process without adding a deployment tool.
+
+### When the Harness is only reachable locally
+
+The current Runner's `--server`, `JAGENT_SERVER_URL`, or the `server` field in its state `config.json` identifies its current connection. Do not expose the full state file: it also contains the Runner secret. Test the address from the target before reusing it.
+
+If the current machine can reach the Harness and SSH into the target, an SSH remote forward can expose a loopback-only port on the target. For a Harness on the initiating machine's `127.0.0.1:18181`, for example:
+
+```sh
+ssh -NT -o ExitOnForwardFailure=yes -R 127.0.0.1:18182:127.0.0.1:18181 user@target
+```
+
+The target Runner then uses `--server http://127.0.0.1:18182`. Choose an unused port and verify the API through it. Keep the SSH connection running and reconnect it on the **initiating machine**; supervise the Runner separately on the **target**. Use the appropriate OS service manager for reboot recovery. `nohup` alone does not provide that. Preserve normal TLS hostname validation when forwarding HTTPS. If no direct route or SSH route exists, network access must be established first.
+
 ## Local tools and other runners
 
 The built-in implementations live in [tools/coding](src/main/java/io/github/differentialmanifold/jagentharness/tools/coding), with registration in [CodingTools](src/main/java/io/github/differentialmanifold/jagentharness/tools/coding/CodingTools.java). Java tools implement `ToolDefinition`; the [Java SDK](../../sdk/java/README.md) hosts the tools and handles their complete execution lifecycle. Coding tools directly use the shared `ToolDefinition`, `ToolContext`, and cancellation APIs. To add a tool, implement it in the runner and register it there, then rebuild and distribute the runner executable. Finish outstanding jobs before updating.
@@ -41,6 +83,12 @@ The built-in implementations live in [tools/coding](src/main/java/io/github/diff
 For another Java scenario, depend on `jagent-client-java`, implement `ToolDefinition`, and register your tools with `AgentRunner`. You do not need to copy this CLI or write registration, polling, or recovery code. A workspace is optional in the SDK; it is required only by these coding tools. Another language can implement its own tool interfaces and the same [HTTP/JSON protocol](../../protocol/README.md#remote-runners), without MCP. The server receives names, descriptions, argument schemas, and execution results—not tool code. Server-side capabilities such as skills remain server tools.
 
 The current frontend is web-based. A desktop or other frontend can use the same server APIs; it does not need a local gateway or to load the runner's tools.
+
+## Temporary environments
+
+For a Runner deployed solely for one task, record its host, Runner ID, state root and service start/stop commands on the controlling machine. After the whole task is verified, check that no unfinished work or other Agent/Project still needs it, then stop its service through the existing SSH connection. Stop only tunnels dedicated to that deployment. Existing shared Runners keep running.
+
+Preserve the Agent, Runner identity and project files. To reuse the environment, restore any tunnel and start the same service with the same Harness URL and state root. A stopped Runner needs an independent SSH/local startup path; it cannot wake itself through chat. The built-in `runner-setup` Skill guides this workflow using existing Project tools.
 
 ## State, cancellation and recovery
 
@@ -53,9 +101,11 @@ Jobs can be delivered again after a disconnect. The runner journals acceptance b
 To recover pending results after interruption, stop `serve`, inspect the conversation and local effects, and explicitly submit the saved results:
 
 ```sh
-java -jar jagent-coding-runner-2.2.0.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.2.1.jar recover --server https://agent.example.com --session ses_example
 ```
 
 Use the same home and executable version. The saved job supplies its project workspace and tool selection. Missing or unfinished results are reported as `UNKNOWN`; the model may issue new calls after receiving them. Restart `serve` afterwards.
 
 Each Runner executes independent conversations concurrently without a fixed conversation limit, including chats in the same project. Each individual conversation remains sequential. Stopping one conversation does not stop the others. Live frontend streaming uses one server instance. Jobs and histories survive a server restart; streams must reconnect. Multi-instance live-event distribution and multi-tenant credentials are not implemented. The shared API token is an operator credential.
+
+Use `--description "Linux development machine with Java and Docker"` or `JAGENT_RUNNER_DESCRIPTION` to describe this terminal. Its platform, `coding` capability and registered tools appear in **System Settings → Runners** and Agent discovery. Projects verify installed software before relying on these hints.

@@ -49,6 +49,7 @@ public class RunService implements AutoCloseable {
                     "INVALID_MESSAGES",
                     "Submit exactly one user message; tool results require the Runner protocol");
         ChatRequest request = new ChatRequest();
+        request.modelId = submission.modelId;
         request.sessionId = submission.sessionId;
         request.runId = submission.runId;
         request.messages = submission.messages;

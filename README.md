@@ -113,6 +113,6 @@ See [Quick start](QUICK_START.md) for independent startup, manual commands, remo
 - [Server integration](jagent-harness-sdk/README.md), [Java client SDK](sdk/java/README.md), [Console hosting](console/README.md) and [HTTP/JSON protocol](protocol/README.md): extend or deploy the parts you need.
 - [Development guide](CONTRIBUTING.md): source layout, checks and where documentation belongs when adding a feature.
 
-This source tree targets `2.2.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
+This source tree targets `2.2.1`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
 
 [MIT License](LICENSE).

@@ -361,6 +361,8 @@ class DefaultConversationContextManagerTest {
         usageStore.latest = new ModelCallUsage();
         usageStore.latest.setMessageId("m2");
         usageStore.latest.setActualContextTokens(40);
+        usageStore.latest.setProvider(settings.getProvider());
+        usageStore.latest.setModel(settings.getModel());
         DefaultConversationContextManager manager =
                 new DefaultConversationContextManager(
                         settings,
@@ -391,6 +393,8 @@ class DefaultConversationContextManagerTest {
         usageStore.latest = new ModelCallUsage();
         usageStore.latest.setMessageId("missing");
         usageStore.latest.setActualContextTokens(40);
+        usageStore.latest.setProvider(settings.getProvider());
+        usageStore.latest.setModel(settings.getModel());
         DefaultConversationContextManager manager =
                 new DefaultConversationContextManager(
                         settings,

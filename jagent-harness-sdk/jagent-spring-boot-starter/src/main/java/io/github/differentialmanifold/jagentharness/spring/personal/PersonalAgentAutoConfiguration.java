@@ -6,6 +6,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.execution.RunService;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
 import io.github.differentialmanifold.jagentharness.core.personal.*;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore;
 import io.github.differentialmanifold.jagentharness.core.project.ProjectService;
@@ -42,9 +43,12 @@ public class PersonalAgentAutoConfiguration {
             ProjectService projects,
             RunService runs,
             PersonalAgentKnowledge knowledge,
-            PersonalAgentLearning learning) {
+            PersonalAgentLearning learning,
+            ObjectProvider<ModelCatalog> models) {
         return new PersonalAgentService(
-                store, records, sessions, history, harness, projects, runs, knowledge, learning);
+                        store, records, sessions, history, harness, projects, runs, knowledge,
+                        learning)
+                .withModels(models.getIfAvailable());
     }
 
     @Bean
@@ -59,12 +63,19 @@ public class PersonalAgentAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public PersonalAgentSkills personalAgentSkills(PersonalAgentStore store) {
+        return new PersonalAgentSkills(store);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public PersonalAgentKnowledge personalAgentKnowledge(
             PersonalAgentStore store,
             KnowledgeFileStore files,
             MessageRepository messages,
-            SessionRepository sessions) {
-        return new PersonalAgentKnowledge(store, files, messages, sessions);
+            SessionRepository sessions,
+            PersonalAgentSkills skills) {
+        return new PersonalAgentKnowledge(store, files, messages, sessions, skills);
     }
 
     @Bean
@@ -79,18 +90,20 @@ public class PersonalAgentAutoConfiguration {
             ObjectMapper json,
             io.github.differentialmanifold.jagentharness.core.conversation.CompactionStore
                     compactions,
+            org.springframework.beans.factory.ObjectProvider<ModelCatalog> models,
             @Value("${harness.personal.learning.enabled:true}") boolean enabled,
             @Value("${harness.personal.learning.timeout-ms:30000}") long timeout) {
         return new PersonalAgentLearning(
-                store,
-                knowledge,
-                history,
-                files,
-                providers,
-                settings,
-                json,
-                enabled,
-                timeout,
-                compactions);
+                        store,
+                        knowledge,
+                        history,
+                        files,
+                        providers,
+                        settings,
+                        json,
+                        enabled,
+                        timeout,
+                        compactions)
+                .withModels(models.getIfAvailable());
     }
 }

@@ -6,7 +6,7 @@ import java.util.*;
 public interface PersonalAgentStore {
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     class Profile {
-        public String id, name, instructions = "", memory = "";
+        public String id, name, description = "", instructions = "", memory = "";
         public String runnerId, workspacePath;
         public boolean enabled = true;
         public List<String> disabledTools = new ArrayList<>();
@@ -17,6 +17,9 @@ public interface PersonalAgentStore {
         public String sessionId, agentId, title;
         public long createdAt;
         public boolean running;
+        public String requesterAgentId, requesterSessionId, requesterTaskId, requesterModelId;
+        public ReplyTarget requesterReplyTo;
+        public List<String> delegationChain = new ArrayList<>();
     }
 
     /** Original external destination, persisted across project results and scheduled checks. */
@@ -35,9 +38,11 @@ public interface PersonalAgentStore {
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     class Inbox {
         public String id, agentId, sessionId, source, senderId, text;
-        public String runId;
+        public String runId, modelId;
+        public List<io.github.differentialmanifold.jagentharness.core.message.MessageImage> images =
+                new ArrayList<>();
         public String status = "PENDING", answer = "", error = "";
-        public String projectSessionId, projectRunId;
+        public String projectSessionId, projectRunId, projectModelId;
         public String taskId, taskRequirements, executionScope;
         public boolean readOnly, dispatchStarted;
         public long createdAt;
@@ -53,6 +58,11 @@ public interface PersonalAgentStore {
     class Card {
         public String id, title, ownerId, status = "TODO", progress = "";
         public String projectId, sessionId, conversationId;
+        public String modelId,
+                delegateAgentId,
+                delegateSessionId,
+                delegateMessageId,
+                delegateRequirements;
         public String parentId, description = "", acceptance = "", lastRunId;
         public List<String> dependsOn = new ArrayList<>();
         public List<Evidence> evidence = new ArrayList<>();
@@ -87,6 +97,12 @@ public interface PersonalAgentStore {
     LearningChange change(String agentId, String changeId);
 
     LearningChange latestChange(String agentId, String path);
+
+    /** The default user-facing Agent; its bound Runner is also the default Runner. */
+    String primaryAgentId();
+
+    /** Compare-and-set the default; null expectedId initializes it once. */
+    boolean setPrimaryAgentId(String agentId, String expectedId);
 
     List<Profile> profiles();
 

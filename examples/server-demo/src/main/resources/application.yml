@@ -46,6 +46,7 @@ harness:
     config-root: ${JAGENT_CONFIG_ROOT:./data/server-config}
     skills-dir: ${JAGENT_SKILLS_DIR:skills}
   console:
+    runner-distribution-directory: ${JAGENT_RUNNER_DISTRIBUTION_DIR:./data/runners}
     max-chat-request-body-size: ${JAGENT_MAX_CHAT_REQUEST_BODY_SIZE:32MB}
     allowed-origins:
       - ${JAGENT_CORS_ORIGIN:http://localhost:5175}

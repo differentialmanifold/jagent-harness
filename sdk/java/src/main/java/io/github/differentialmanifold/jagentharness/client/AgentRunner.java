@@ -65,6 +65,9 @@ public final class AgentRunner implements AutoCloseable {
             Map<String, Object> config = identity(home, server);
             info.runnerId = (String) config.get("runnerId");
             info.name = b.name;
+            info.description = b.description;
+            info.platform = b.platform;
+            info.capabilities.addAll(b.capabilities);
             info.workspaces = workspaces != null;
             info.workspaceRoot = workspaces == null ? null : workspaces.defaultRoot();
             info.instructions = b.instructions;
@@ -404,6 +407,9 @@ public final class AgentRunner implements AutoCloseable {
         private final Path home;
         private String token = "";
         private String name = "Java runner";
+        private String description = "",
+                platform = System.getProperty("os.name") + " " + System.getProperty("os.arch");
+        private List<String> capabilities = new ArrayList<>();
         private RunnerWorkspaces workspaces;
         private String instructions = "";
         private final List<ToolDefinition> tools = new ArrayList<>();
@@ -419,6 +425,21 @@ public final class AgentRunner implements AutoCloseable {
 
         public Builder token(String token) {
             this.token = token;
+            return this;
+        }
+
+        public Builder description(String value) {
+            description = Objects.requireNonNull(value);
+            return this;
+        }
+
+        public Builder platform(String value) {
+            platform = Objects.requireNonNull(value);
+            return this;
+        }
+
+        public Builder capabilities(Collection<String> value) {
+            capabilities = new ArrayList<>(value);
             return this;
         }
 

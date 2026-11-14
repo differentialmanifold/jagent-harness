@@ -31,6 +31,6 @@ For local publication, configure the `central` server in Maven settings and prov
 
 Keep the API version, JSON Schema, OpenAPI, and protocol fixtures consistent when changing the public contract.
 
-Tagged releases also attach the self-contained coding runner JAR, the web frontend archive, and SHA256SUMS. The runner already includes its coding tools. The executable and frontend are release assets, not Central libraries.
+Tagged releases attach the Coding Runner offline ZIP (JAR plus version/checksum manifest), the web frontend archive, and SHA256SUMS. Operators can install the offline package on their Harness once and distribute it inside an isolated network. Runner deployment does not depend on reaching GitHub. The executable includes its coding tools and is not a Central library. See [local distribution](../examples/coding-runner/README.md#distribute-inside-your-network).
 
 Release assets also include `jagent-skill-<version>.zip`, containing the complete standalone `jagent/` skill and its dependency-free Node.js client.

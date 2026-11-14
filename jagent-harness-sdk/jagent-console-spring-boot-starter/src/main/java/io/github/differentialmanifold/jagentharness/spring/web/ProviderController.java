@@ -1,5 +1,7 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
+import io.github.differentialmanifold.jagentharness.core.model.ModelProfile;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.spring.HarnessProperties;
@@ -18,6 +20,12 @@ public class ProviderController {
     private final ModelProviderRegistry providerRegistry;
     private final HarnessProperties properties;
     private final ModelAccessTokenProvider accessTokenProvider;
+    private ModelCatalog models;
+
+    public ProviderController withModels(ModelCatalog models) {
+        this.models = models;
+        return this;
+    }
 
     public ProviderController(
             ModelProviderRegistry providerRegistry,
@@ -41,6 +49,16 @@ public class ProviderController {
         result.setBaseUrl(properties.getModel().getBaseUrl());
         result.setContextWindowTokens(properties.getModel().getContextWindowTokens());
         result.setApiKeyConfigured(isAccessTokenConfigured());
+        if (models != null) {
+            ModelProfile p = models.require(null);
+            result.setActiveProvider(p.provider);
+            result.setModel(p.model);
+            result.setContextWindowTokens(p.contextWindowTokens);
+            if (!p.baseUrl.isEmpty()) {
+                result.setBaseUrl(p.baseUrl);
+                result.setApiKeyConfigured(p.apiKey != null && !p.apiKey.isEmpty());
+            }
+        }
         return result;
     }
 

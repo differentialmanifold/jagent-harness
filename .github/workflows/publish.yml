@@ -54,9 +54,9 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir -p release-assets
-          cp "examples/coding-runner/target/jagent-coding-runner-$version.jar" release-assets/
+          cp "examples/coding-runner/target/jagent-coding-runner-$version-offline.zip" release-assets/
           (cd console/dist && zip -qr "../../release-assets/jagent-console-$version.zip" .)
           (cd skills && zip -qr "../release-assets/jagent-skill-$version.zip" jagent)
-          (cd release-assets && sha256sum *.jar *.zip > SHA256SUMS)
+          (cd release-assets && sha256sum *.zip > SHA256SUMS)
           gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
           gh release upload "$GITHUB_REF_NAME" release-assets/*

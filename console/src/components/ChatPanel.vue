@@ -98,6 +98,7 @@
         </div>
         <div class="composer-right">
           <ContextUsageIndicator :usage="contextUsage" />
+          <ModelSelector :model-value="modelId" :disabled="running || disabled" @update:model-value="$emit('update:modelId', $event)" />
           <el-button
             v-if="showStopAction"
             class="composer-stop"
@@ -132,6 +133,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Close, Picture, Top } from '@element-plus/icons-vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
+import ModelSelector from './ModelSelector.vue'
 import MessageItem from './MessageItem.vue'
 import CompletedReply from './CompletedReply.vue'
 import { groupCompletedReplies } from '../utils/chatTimeline'
@@ -139,6 +141,7 @@ import ComposerInput from './ComposerInput.vue'
 import { IMAGE_FILE_ACCEPT, imageCountLabel } from '../utils/images'
 
 const props = defineProps({
+  modelId: { type: String, default: '' },
   retryEnabled: { type: Boolean, default: false },
   active: { type: Boolean, default: true },
   composerRows: { type: Number, default: 3 },
@@ -168,6 +171,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:draft',
+  'update:modelId',
   'addImages',
   'removeImage',
   'send',

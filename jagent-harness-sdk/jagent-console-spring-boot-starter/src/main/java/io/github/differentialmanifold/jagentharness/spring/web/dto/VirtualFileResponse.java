@@ -13,6 +13,8 @@ public class VirtualFileResponse {
     private int bytes;
     private String createdAt;
     private String updatedAt;
+    private boolean readOnly;
+    private String source = "custom";
 
     public VirtualFileResponse() {}
 
@@ -25,6 +27,20 @@ public class VirtualFileResponse {
         this.bytes = file.getBytes();
         this.createdAt = file.getCreatedAt() == null ? null : file.getCreatedAt().toString();
         this.updatedAt = file.getUpdatedAt() == null ? null : file.getUpdatedAt().toString();
+    }
+
+    public VirtualFileResponse(KnowledgeFile file, String source, boolean readOnly) {
+        this(file);
+        this.source = source;
+        this.readOnly = readOnly;
+    }
+
+    public boolean isReadOnly() {
+        return readOnly;
+    }
+
+    public String getSource() {
+        return source;
     }
 
     public String getPath() {

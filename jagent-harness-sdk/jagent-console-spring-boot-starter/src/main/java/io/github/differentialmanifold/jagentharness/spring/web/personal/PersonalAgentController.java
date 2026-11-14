@@ -34,7 +34,20 @@ public class PersonalAgentController {
 
     @PostMapping("/agents")
     public Profile save(@RequestBody Profile profile) {
+        if (profile.id == null && (profile.runnerId == null || profile.runnerId.trim().isEmpty()))
+            profile.runnerId = service.defaults().get("primaryRunnerId");
         return service.save(profile);
+    }
+
+    @GetMapping("/defaults")
+    public Map<String, String> defaults() {
+        return service.defaults();
+    }
+
+    @PostMapping("/defaults")
+    public Map<String, String> defaults(@RequestBody Map<String, String> body) {
+        return service.selectPrimaryAgent(
+                body.get("primaryAgentId"), body.get("expectedPrimaryAgentId"));
     }
 
     @GetMapping("/agents/{agent}/conversations")
@@ -70,8 +83,14 @@ public class PersonalAgentController {
     public Inbox send(
             @PathVariable String agent,
             @PathVariable String session,
-            @RequestBody Map<String, String> body) {
-        return service.send(agent, session, body.get("text"), body.get("messageId"));
+            @RequestBody AgentInput body) {
+        return service.send(agent, session, body.text, body.messageId, body.modelId, body.images);
+    }
+
+    public static class AgentInput {
+        public String text, messageId, modelId;
+        public List<io.github.differentialmanifold.jagentharness.core.message.MessageImage> images =
+                new ArrayList<>();
     }
 
     @GetMapping("/agents/{agent}/conversations/{session}/status")
@@ -184,12 +203,12 @@ public class PersonalAgentController {
 
     @GetMapping("/agents/{agent}/skills")
     public List<Map<String, Object>> skills(@PathVariable String agent) {
-        return knowledge.skills(agent);
+        return knowledge.availableSkills(agent);
     }
 
     @GetMapping("/agents/{agent}/skill")
     public Map<String, Object> skill(@PathVariable String agent, @RequestParam String path) {
-        return knowledge.skill(agent, path);
+        return knowledge.availableSkill(agent, path);
     }
 
     @PostMapping("/agents/{agent}/knowledge")

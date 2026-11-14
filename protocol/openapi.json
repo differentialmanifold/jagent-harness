@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "JAgent conversation API",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "description": "Conversation and Runner SDK contract. Personal Agent delegation is documented separately in skills/jagent/references/api.md."
   },
   "servers": [
@@ -418,6 +418,9 @@
           "401": {
             "description": "Invalid bearer token"
           },
+          "403": {
+            "description": "Missing or invalid Runner credentials, or session not assigned to a Runner"
+          },
           "409": {
             "description": "Runner does not own a claimed job for this session, or the session is busy"
           },
@@ -426,9 +429,6 @@
           },
           "503": {
             "description": "Capacity exhausted"
-          },
-          "403": {
-            "description": "Missing or invalid Runner credentials, or session not assigned to a Runner"
           }
         },
         "requestBody": {
@@ -838,6 +838,64 @@
         "responses": {
           "200": {
             "description": "Lookup result accepted"
+          }
+        }
+      }
+    },
+    "/models": {
+      "get": {
+        "summary": "Read configured models and their capabilities; API keys are masked",
+        "responses": {
+          "200": {
+            "description": "Model catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/ModelConfiguration"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save model settings with the current revision; blank keys retain saved credentials",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schema.json#/definitions/ModelConfiguration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved, masked catalog"
+          },
+          "400": {
+            "description": "Invalid configuration or revision conflict"
+          }
+        }
+      }
+    },
+    "/models/{id}/test": {
+      "post": {
+        "summary": "Check a saved model connection without verifying its declared capabilities",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connection response"
           }
         }
       }

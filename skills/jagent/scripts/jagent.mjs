@@ -13,7 +13,7 @@ const integer = (value, name, min, max) => {
   return number
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
-const agentSummary = ({ id, name, enabled, instructions, runnerId }) => ({ id, name, enabled, instructions, runnerId: runnerId ?? null })
+const agentSummary = ({ id, name, description, enabled, instructions, runnerId }) => ({ id, name, ...(description ? { description } : {}), enabled, instructions, runnerId: runnerId ?? null })
 
 export class JAgentError extends Error {
   constructor(message, { status, code, messageId } = {}) {
@@ -83,19 +83,25 @@ export class JAgentClient {
 
   async runners() {
     const runners = await this.request('GET', '/runners', undefined, this.timeoutMs, value => isList(value) && value.every(runner => hasText(runner, 'runnerId') && (runner.tools === undefined || isList(runner.tools))))
-    return runners.map(({ runnerId, name, online, runtime, workspaces, workspaceRoot, tools = [] }) => ({
-      runnerId, name, online, runtime, workspaces, workspaceRoot,
+    return runners.map(({ runnerId, name, online, runtime, workspaces, workspaceRoot, description, platform, capabilities, tools = [] }) => ({
+      runnerId, name, online, runtime, workspaces, workspaceRoot, description, platform, capabilities,
       tools: tools.map(({ name, description }) => ({ name, description }))
     }))
   }
 
-  async createAgent({ name, runnerId, instructions = '' } = {}) {
+  async createAgent({ name, runnerId, description = '', instructions = '' } = {}) {
     if (typeof name !== 'string' || !name.trim() || name.length > 128) throw new Error('name must contain 1–128 characters')
-    if (runnerId != null) id(runnerId)
+    id(runnerId)
+    if (typeof description !== 'string' || description.length > 4000) throw new Error('description must contain at most 4000 characters')
     if (typeof instructions !== 'string' || instructions.length > 16000) throw new Error('instructions must be a string of at most 16000 characters')
     // Omit identity/revision fields: this always creates, never updates an existing Agent.
-    const agent = await this.request('POST', '/personal/agents', { name: name.trim(), runnerId: runnerId ?? null, instructions }, this.timeoutMs, value => hasText(value, 'id'))
+    const agent = await this.request('POST', '/personal/agents', { name: name.trim(), runnerId, instructions, ...(description ? { description } : {}) }, this.timeoutMs, value => hasText(value, 'id'))
     return agentSummary(agent)
+  }
+
+  async models() {
+    const catalog = await this.request('GET', '/models', undefined, this.timeoutMs, value => hasText(value, 'defaultModelId') && isList(value.models))
+    return { defaultModelId: catalog.defaultModelId, models: catalog.models.filter(m => m.enabled).map(({ id, name, description, inputTypes, capabilities, contextWindowTokens }) => ({ id, name, description, inputTypes, capabilities, contextWindowTokens })) }
   }
 
   conversations(agentId) { return this.request('GET', `/personal/agents/${id(agentId)}/conversations`, undefined, this.timeoutMs, isList) }
@@ -105,11 +111,13 @@ export class JAgentClient {
     return this.request('POST', `/personal/agents/${id(agentId)}/conversations`, { title }, this.timeoutMs, value => hasText(value, 'sessionId'))
   }
 
-  async send(agentId, sessionId, text, { messageId = `msg_${randomUUID()}` } = {}) {
-    if (typeof text !== 'string' || !text.trim() || text.length > 32000) throw new Error('text must contain 1–32000 characters')
+  async send(agentId, sessionId, text, { messageId = `msg_${randomUUID()}`, modelId, images = [] } = {}) {
+    if (typeof text !== 'string' || (!text.trim() && !images.length) || text.length > 32000) throw new Error('Provide text (up to 32000 characters) or images')
+    if (!Array.isArray(images) || images.length > 4) throw new Error('images must be an array of at most four images')
+    if (modelId != null) id(modelId)
     id(messageId)
     try {
-      const message = await this.request('POST', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}`, { text, messageId }, this.timeoutMs, value => hasText(value, 'id') && hasText(value, 'sessionId') && hasText(value, 'agentId') && hasText(value, 'status'))
+      const message = await this.request('POST', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}`, { text, messageId, ...(modelId ? { modelId } : {}), ...(images.length ? { images } : {}) }, this.timeoutMs, value => hasText(value, 'id') && hasText(value, 'sessionId') && hasText(value, 'agentId') && hasText(value, 'status'))
       return { messageId: message.id, agentId: message.agentId, sessionId: message.sessionId, status: message.status }
     } catch (error) {
       error.messageId = messageId
@@ -168,17 +176,18 @@ Environment: JAGENT_SERVER_URL (default http://127.0.0.1:18181), JAGENT_CLIENT_T
 
   agents
   runners
-  create-agent --name <name> [--runner <runnerId>] [--instructions <text> | --instructions-file <path>]
+  models
+  create-agent --name <name> --runner <runnerId> [--description <text>] [--instructions <text> | --instructions-file <path>]
   conversations --agent <id>
   new --agent <id> --title <title>
-  send --agent <id> --session <id> (--text <text> | --file <path|->) [--message <id>]
+  send --agent <id> --session <id> (--text <text> | --file <path|->) [--message <id>] [--model <modelId>]
   status --agent <id> --session <id> [--message <id>]
   history --agent <id> --session <id> [--after <messageId>] [--limit <1-100>]
   tasks --agent <id> --session <id>
   wait --agent <id> --session <id> --message <id> [--timeout <seconds>] [--interval <seconds>]
 
 All output is JSON. A send receipt confirms acceptance, not task completion.
-create-agent creates an enabled Agent; omit --runner only for work using server tools.
+create-agent creates an enabled Agent bound to an existing Runner.
 wait observes one decision turn; status and tasks show ongoing background work.
 Send follow-up requirements, including requests to stop, in the same conversation.
 `
@@ -187,9 +196,9 @@ async function main(argv) {
   if (!argv.length || argv.includes('--help')) { process.stdout.write(help); return }
   const [command, ...args] = argv
   const allowed = {
-    agents: [], runners: [], 'create-agent': ['name', 'runner', 'instructions', 'instructions-file'],
+    agents: [], runners: [], models: [], 'create-agent': ['name', 'runner', 'description', 'instructions', 'instructions-file'],
     conversations: ['agent'], new: ['agent', 'title'],
-    send: ['agent', 'session', 'text', 'file', 'message'], status: ['agent', 'session', 'message'],
+    send: ['agent', 'session', 'text', 'file', 'message', 'model'], status: ['agent', 'session', 'message'],
     history: ['agent', 'session', 'after', 'limit'], tasks: ['agent', 'session'],
     wait: ['agent', 'session', 'message', 'timeout', 'interval']
   }
@@ -205,10 +214,11 @@ async function main(argv) {
   switch (command) {
     case 'agents': result = await client.agents(); break
     case 'runners': result = await client.runners(); break
+    case 'models': result = await client.models(); break
     case 'create-agent': {
       if (options.instructions !== undefined && options['instructions-file'] !== undefined) throw new Error('Provide only one of --instructions or --instructions-file')
       const instructions = options['instructions-file'] === undefined ? options.instructions : await readFile(options['instructions-file'], 'utf8')
-      result = await client.createAgent({ name: options.name, runnerId: options.runner, instructions })
+      result = await client.createAgent({ name: options.name, runnerId: options.runner, description: options.description, instructions })
       break
     }
     case 'conversations': result = await client.conversations(options.agent); break
@@ -221,7 +231,7 @@ async function main(argv) {
         for await (const chunk of process.stdin) chunks.push(chunk)
         content = Buffer.concat(chunks).toString('utf8')
       } else if (options.file !== undefined) content = await readFile(options.file, 'utf8')
-      result = await client.send(options.agent, options.session, content, { messageId: options.message })
+      result = await client.send(options.agent, options.session, content, { messageId: options.message, modelId: options.model })
       break
     }
     case 'status': result = await client.status(options.agent, options.session, options.message); break

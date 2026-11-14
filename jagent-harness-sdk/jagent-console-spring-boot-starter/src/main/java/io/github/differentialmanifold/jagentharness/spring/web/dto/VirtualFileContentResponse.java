@@ -16,4 +16,9 @@ public class VirtualFileContentResponse extends VirtualFileResponse {
     public String getContent() {
         return content;
     }
+
+    public VirtualFileContentResponse(KnowledgeFile file, String source, boolean readOnly) {
+        super(file, source, readOnly);
+        this.content = file.getContent();
+    }
 }

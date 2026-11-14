@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptContext;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
@@ -24,6 +25,9 @@ public class PromptPreviewController {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore personal;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ModelCatalog models;
 
     private final PromptProvider promptProvider;
     private final ToolRegistry toolRegistry;
@@ -60,6 +64,7 @@ public class PromptPreviewController {
         String prompt =
                 promptProvider.buildSystemPrompt(
                         new PromptContext(toolRegistry.all(context), context));
+        if (models != null) prompt = models.prompt(prompt, models.require(null));
         return new PromptPreviewResponse(
                 prompt,
                 remote

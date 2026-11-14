@@ -1347,14 +1347,23 @@ textarea {
 }
 
 .message.status {
-  align-self: center;
-  max-width: 640px;
   border-color: #d7dde6;
   background: #f7f9fc;
   color: #475467;
 }
 
-.message.status .message-meta {
+.message.status .personal-event-details > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.personal-event-details[open] > summary {
+  margin-bottom: 12px;
+}
+
+.message-meta {
   margin-bottom: 4px;
 }
 
@@ -3025,3 +3034,19 @@ dd {
 .chat-markdown th, .chat-markdown td { padding: 6px 12px; border: 1px solid #d7dde6; text-align: left; }
 .chat-markdown th { background: #f4f6f9; }
 .chat-markdown a { color: #2563b5; text-decoration: underline; }
+
+.primary-agent-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 16px 0;
+  max-width: 800px;
+}
+.primary-agent-setting > div { flex: 1; min-width: 220px; }
+.primary-agent-setting p { margin-bottom: 0; }
+.primary-agent-link { margin: 0 12px 12px; }

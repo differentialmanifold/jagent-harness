@@ -3,6 +3,8 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
+import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentSkills;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
@@ -43,6 +45,18 @@ import org.springframework.web.servlet.DispatcherServlet;
 @EnableConfigurationProperties(ConsoleProperties.class)
 @Import(WebConfiguration.class)
 public class AgentConsoleAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    public RunnerDistributionController runnerDistributionController(
+            ConsoleProperties properties, ObjectMapper json) {
+        return new RunnerDistributionController(properties, json);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ModelController modelController(ModelCatalog catalog) {
+        return new ModelController(catalog);
+    }
 
     @Bean
     @ConditionalOnMissingBean(name = "chatRequestBodyLimitFilterRegistration")
@@ -109,8 +123,10 @@ public class AgentConsoleAutoConfiguration {
     public ProviderController providerController(
             ModelProviderRegistry providerRegistry,
             HarnessProperties properties,
-            ModelAccessTokenProvider accessTokenProvider) {
-        return new ProviderController(providerRegistry, properties, accessTokenProvider);
+            ModelAccessTokenProvider accessTokenProvider,
+            ModelCatalog models) {
+        return new ProviderController(providerRegistry, properties, accessTokenProvider)
+                .withModels(models);
     }
 
     @Bean
@@ -141,8 +157,11 @@ public class AgentConsoleAutoConfiguration {
     @ConditionalOnBean(KnowledgeFileStore.class)
     @ConditionalOnMissingBean
     public VirtualFileController virtualFileController(
-            KnowledgeFileStore knowledgeFileStore, SessionManager sessionManager) {
-        return new VirtualFileController(knowledgeFileStore, sessionManager);
+            KnowledgeFileStore knowledgeFileStore,
+            SessionManager sessionManager,
+            ObjectProvider<PersonalAgentSkills> agentSkills) {
+        return new VirtualFileController(
+                knowledgeFileStore, sessionManager, agentSkills.getIfAvailable());
     }
 
     @Configuration(proxyBeanMethods = false)
