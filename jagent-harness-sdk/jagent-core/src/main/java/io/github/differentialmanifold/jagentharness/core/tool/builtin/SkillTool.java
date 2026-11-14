@@ -8,6 +8,7 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
+import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.skill.SkillActivationService;
 import io.github.differentialmanifold.jagentharness.core.skill.SkillToolBinding;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
@@ -23,6 +24,7 @@ public class SkillTool implements ToolDefinition {
     private final ObjectMapper objectMapper;
     private final KnowledgeFileStore knowledgeFileStore;
     private final SkillActivationService activationService;
+    private final SkillRegistry skillRegistry;
 
     public SkillTool(ObjectMapper objectMapper) {
         this(objectMapper, null);
@@ -36,6 +38,15 @@ public class SkillTool implements ToolDefinition {
             ObjectMapper objectMapper,
             KnowledgeFileStore knowledgeFileStore,
             SkillActivationService activationService) {
+        this(objectMapper, knowledgeFileStore, activationService, null);
+    }
+
+    public SkillTool(
+            ObjectMapper objectMapper,
+            KnowledgeFileStore knowledgeFileStore,
+            SkillActivationService activationService,
+            SkillRegistry skillRegistry) {
+        this.skillRegistry = skillRegistry;
         this.objectMapper = objectMapper;
         this.knowledgeFileStore = knowledgeFileStore;
         this.activationService = activationService;
@@ -70,6 +81,12 @@ public class SkillTool implements ToolDefinition {
         ToolExecutionResult databaseResult = readKnowledgeFileIfExists(context, logicalPath);
         if (databaseResult != null) {
             return databaseResult;
+        }
+        String content =
+                skillRegistry == null ? null : skillRegistry.readResource(context, logicalPath);
+        if (content != null) {
+            return skillResult(
+                    logicalPath, content, activate(context, logicalPath, "builtin", content));
         }
         throw new IllegalArgumentException("Skill resource not found: " + input);
     }
@@ -114,21 +131,27 @@ public class SkillTool implements ToolDefinition {
         if (file == null) {
             return null;
         }
-        List<SkillToolBinding> bindings = Collections.emptyList();
-        if (file.getPath().matches("skills/[^/]+/SKILL\\.md")) {
-            if (activationService != null) {
-                bindings =
-                        activationService.activate(
-                                context,
-                                file.getPath(),
-                                source.getType() + ":" + source.getId(),
-                                file.getContent());
-            } else if (!SkillFileParser.readToolDependencies(file.getContent()).isEmpty()) {
+        return skillResult(
+                file.getPath(),
+                file.getContent(),
+                activate(
+                        context,
+                        file.getPath(),
+                        source.getType() + ":" + source.getId(),
+                        file.getContent()));
+    }
+
+    private List<SkillToolBinding> activate(
+            ToolContext context, String path, String source, String content) {
+        if (path.matches("skills/[^/]+/SKILL\\.md")) {
+            if (activationService != null)
+                return activationService.activate(context, path, source, content);
+            if (!SkillFileParser.readToolDependencies(content).isEmpty()) {
                 throw new IllegalStateException(
                         "Skill tool dependencies require a SkillActivationService");
             }
         }
-        return skillResult(file.getPath(), file.getContent(), bindings);
+        return Collections.emptyList();
     }
 
     private ToolExecutionResult skillResult(

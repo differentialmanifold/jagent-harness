@@ -38,6 +38,7 @@
                 <Document v-else />
               </el-icon>
               <span class="vfs-tree-label">{{ data.label }}</span>
+              <el-tag v-if="data.path !== 'skills' && isReadOnlyPath(data.path)" size="small" effect="plain">Built-in</el-tag>
             </span>
           </template>
         </el-tree>
@@ -149,7 +150,7 @@
           v-if="!isEditing && (selectedKind === 'dir' || selectedFile)"
           class="github-commit-row"
         >
-          <div class="github-commit-avatar">DB</div>
+          <div class="github-commit-avatar">{{ selectedFile?.readOnly ? 'SDK' : 'DB' }}</div>
           <strong>{{ commitTitle }}</strong>
           <span>{{ commitSubtitle }}</span>
           <span v-if="currentUpdatedAt" class="github-commit-date">updated {{ formatDate(currentUpdatedAt) }}</span>
@@ -235,6 +236,7 @@
                       <Document v-else />
                     </el-icon>
                     <span>{{ row.name }}</span>
+                    <el-tag v-if="row.name !== '..' && isReadOnlyPath(row.path)" size="small" effect="plain">Built-in · read-only</el-tag>
                   </button>
                 </td>
                 <td>{{ row.type === 'dir' ? 'Directory' : 'File' }}</td>
@@ -303,7 +305,7 @@ import {
 } from '@element-plus/icons-vue'
 import { request } from '../api/http'
 import { formatDate } from '../utils/format'
-import { countLines, markdownBlocks } from '../utils/markdown'
+import { countLines, markdownBlocks, skillBody } from '../utils/markdown'
 
 const props = defineProps({
   mode: {
@@ -416,12 +418,19 @@ const displayPath = computed(() => {
 })
 const breadcrumbs = computed(() => createBreadcrumbs(displayPath.value, selectedKind.value))
 const selectedDirectory = computed(() => selectedKind.value === 'dir' ? selectedPath.value : parentPath(selectedPath.value))
-const showEditButton = computed(() => !isEditing.value && selectedKind.value === 'file' && Boolean(selectedFile.value))
+const showEditButton = computed(() => !isEditing.value && selectedKind.value === 'file' && Boolean(selectedFile.value) && !selectedFile.value.readOnly)
 const canDeleteCurrent = computed(() => {
   if (isEditing.value || deleting.value) return false
-  if (selectedKind.value === 'file') return Boolean(selectedFile.value)
-  return isSkillsMode.value && selectedPath.value !== 'skills' && filesUnderDirectory(selectedPath.value).length > 0
+  if (selectedKind.value === 'file') return Boolean(selectedFile.value) && !selectedFile.value.readOnly
+  const children = filesUnderDirectory(selectedPath.value)
+  return isSkillsMode.value && selectedPath.value !== 'skills' && children.length > 0 && children.every(file => !file.readOnly)
 })
+function isReadOnlyPath(path) {
+  const file = fileByPath.value.get(path)
+  if (file) return Boolean(file.readOnly)
+  const children = filesUnderDirectory(path)
+  return children.length > 0 && children.every(file => file.readOnly)
+}
 const deleteConfirmTitle = computed(() => {
   return selectedKind.value === 'dir'
     ? `Delete ${selectedPath.value} and all files under it?`
@@ -432,7 +441,7 @@ const currentUpdatedAt = computed(() => {
   const rows = directoryRows.value.filter((row) => row.updatedAt)
   return rows.length ? rows[0].updatedAt : ''
 })
-const commitTitle = computed(() => selectedKind.value === 'dir' ? 'Directory snapshot' : `${scopeLabel.value} file`)
+const commitTitle = computed(() => selectedFile.value?.readOnly ? 'Built-in Skill · read-only' : selectedKind.value === 'dir' ? 'Directory snapshot' : `${scopeLabel.value} file`)
 const commitSubtitle = computed(() => {
   return selectedKind.value === 'dir'
     ? selectedPath.value
@@ -441,7 +450,7 @@ const commitSubtitle = computed(() => {
 const isMarkdownFile = computed(() => isMarkdownPath(selectedPath.value))
 const fileLineCount = computed(() => countLines(fileContent.value))
 const editLineCount = computed(() => countLines(editDraftContent.value))
-const filePreviewBlocks = computed(() => markdownBlocks(fileContent.value))
+const filePreviewBlocks = computed(() => markdownBlocks(selectedPath.value.endsWith('/SKILL.md') ? skillBody(fileContent.value) : fileContent.value))
 const editPreviewBlocks = computed(() => markdownBlocks(editDraftContent.value))
 const editPathValidationMessage = computed(() => validationMessage(normalizeDraftPath(editDraftPath.value)))
 const canSave = computed(() => {
@@ -567,6 +576,7 @@ async function loadContent(path) {
 }
 
 function beginEditFile() {
+  if (selectedFile.value?.readOnly) return
   editMode.value = selectedFile.value ? 'edit' : 'create'
   editOriginalPath.value = selectedPath.value
   editDraftPath.value = selectedPath.value

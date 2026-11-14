@@ -7,10 +7,24 @@ import java.util.Collections;
 public final class ToolExecutionResult {
     public final String status;
     public final Object content;
+    public final java.util.List<java.util.Map<String, Object>> images;
+
+    public ToolExecutionResult withImages(java.util.List<java.util.Map<String, Object>> value) {
+        return new ToolExecutionResult(status, content, value);
+    }
 
     private ToolExecutionResult(String status, Object content) {
+        this(status, content, java.util.Collections.emptyList());
+    }
+
+    private ToolExecutionResult(
+            String status, Object content, java.util.List<java.util.Map<String, Object>> images) {
         this.status = status;
         this.content = content;
+        this.images =
+                images == null
+                        ? java.util.Collections.emptyList()
+                        : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(images));
     }
 
     public static ToolExecutionResult of(String content) {

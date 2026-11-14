@@ -11,6 +11,10 @@ import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublish
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.message.MessageRepository;
+import io.github.differentialmanifold.jagentharness.core.model.InMemoryModelCatalogStore;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalogStore;
+import io.github.differentialmanifold.jagentharness.core.model.ModelProfile;
 import io.github.differentialmanifold.jagentharness.core.prompt.DatabaseSkillProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptService;
@@ -61,6 +65,79 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(HarnessProperties.class)
 @org.springframework.context.annotation.Import(ClientToolsConfiguration.class)
 public class AgentHarnessAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(ModelCatalogStore.class)
+    public ModelCatalogStore inMemoryModelCatalogStore() {
+        return new InMemoryModelCatalogStore();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ModelCatalog modelCatalog(
+            ModelCatalogStore store,
+            HarnessProperties properties,
+            ModelProviderRegistry providers,
+            ObjectMapper json) {
+        ModelProfile initial = new ModelProfile();
+        initial.id = "default";
+        initial.name = properties.getModel().getModel();
+        initial.model = properties.getModel().getModel();
+        initial.provider = properties.getModel().getProvider();
+        initial.baseUrl =
+                properties.getModel().getBaseUrl() == null
+                        ? ""
+                        : properties.getModel().getBaseUrl();
+        initial.apiKey =
+                properties.getModel().getApiKey() == null ? "" : properties.getModel().getApiKey();
+        initial.temperature = properties.getModel().getTemperature();
+        initial.timeoutSeconds = properties.getModel().getTimeoutSeconds();
+        initial.streamEnabled = properties.getModel().isStreamEnabled();
+        initial.includeUsage = properties.getModel().isIncludeUsage();
+        initial.contextWindowTokens = properties.getModel().getContextWindowTokens();
+        initial.description = "";
+        initial.credentialsConfigured =
+                properties.getModel().getApiKey() != null
+                        && !properties.getModel().getApiKey().isEmpty();
+        java.util.Map<String, ModelProvider> cache = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.Map<String, String> versions = new java.util.concurrent.ConcurrentHashMap<>();
+        return new ModelCatalog(
+                store,
+                initial,
+                profile -> {
+                    if (profile.baseUrl.isEmpty()
+                            || (profile.provider.equals(initial.provider)
+                                    && profile.baseUrl.equals(initial.baseUrl)
+                                    && profile.apiKey.equals(initial.apiKey)
+                                    && profile.timeoutSeconds == initial.timeoutSeconds
+                                    && profile.streamEnabled == initial.streamEnabled
+                                    && profile.includeUsage == initial.includeUsage))
+                        return providers.get(profile.provider);
+                    String version =
+                            profile.baseUrl
+                                    + "\n"
+                                    + profile.apiKey
+                                    + "\n"
+                                    + profile.timeoutSeconds
+                                    + "\n"
+                                    + profile.streamEnabled
+                                    + "\n"
+                                    + profile.includeUsage;
+                    synchronized (cache) {
+                        if (!version.equals(versions.get(profile.id))) {
+                            OpenAiCompatibleProviderConfig config =
+                                    new OpenAiCompatibleProviderConfig();
+                            config.setBaseUrl(profile.baseUrl);
+                            config.setApiKey(profile.apiKey);
+                            config.setTimeoutSeconds(profile.timeoutSeconds);
+                            config.setStreamEnabled(profile.streamEnabled);
+                            config.setIncludeUsage(profile.includeUsage);
+                            cache.put(profile.id, new OpenAiCompatibleProvider(config, json));
+                            versions.put(profile.id, version);
+                        }
+                        return cache.get(profile.id);
+                    }
+                });
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -101,8 +178,13 @@ public class AgentHarnessAutoConfiguration {
     public SkillTool skillTool(
             ObjectMapper objectMapper,
             ObjectProvider<KnowledgeFileStore> knowledgeFileStore,
-            SkillActivationService activationService) {
-        return new SkillTool(objectMapper, knowledgeFileStore.getIfAvailable(), activationService);
+            SkillActivationService activationService,
+            SkillRegistry skillRegistry) {
+        return new SkillTool(
+                objectMapper,
+                knowledgeFileStore.getIfAvailable(),
+                activationService,
+                skillRegistry);
     }
 
     @Bean
@@ -254,19 +336,21 @@ public class AgentHarnessAutoConfiguration {
             ObjectProvider<ToolContextFactory> toolContextFactory,
             ConversationContextManager conversationContextManager,
             ModelCallUsageStore modelCallUsageStore,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ModelCatalog modelCatalog) {
         ToolContextFactory effectiveToolContextFactory =
                 toolContextFactory.getIfAvailable(DefaultToolContextFactory::new);
         return new AgentRunner(
-                settings,
-                sessionStore,
-                eventPublisher,
-                promptProvider,
-                toolRegistry,
-                providerRegistry,
-                effectiveToolContextFactory,
-                conversationContextManager,
-                modelCallUsageStore,
-                objectMapper);
+                        settings,
+                        sessionStore,
+                        eventPublisher,
+                        promptProvider,
+                        toolRegistry,
+                        providerRegistry,
+                        effectiveToolContextFactory,
+                        conversationContextManager,
+                        modelCallUsageStore,
+                        objectMapper)
+                .withModelCatalog(modelCatalog);
     }
 }

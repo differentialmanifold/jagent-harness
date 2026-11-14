@@ -6,6 +6,7 @@ import java.util.List;
 
 /** Public user input. Execution tools and instructions come from the project configuration. */
 public class ChatSubmission {
+    public String modelId;
     public String sessionId;
     public String runId;
     public List<ChatMessage> messages = new ArrayList<>();

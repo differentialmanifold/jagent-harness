@@ -9,12 +9,23 @@ import org.springframework.util.unit.DataSize;
 public class ConsoleProperties {
 
     private boolean enabled = true;
+    private String runnerDistributionDirectory = "./data/runners";
     private List<String> allowedOrigins = new ArrayList<String>();
     private DataSize maxChatRequestBodySize = DataSize.ofMegabytes(32);
 
     public ConsoleProperties() {
         allowedOrigins.add("http://localhost:5175");
         allowedOrigins.add("http://127.0.0.1:5175");
+    }
+
+    public String getRunnerDistributionDirectory() {
+        return runnerDistributionDirectory;
+    }
+
+    public void setRunnerDistributionDirectory(String directory) {
+        if (directory == null || directory.trim().isEmpty())
+            throw new IllegalArgumentException("runnerDistributionDirectory must not be empty");
+        runnerDistributionDirectory = directory;
     }
 
     public boolean isEnabled() {

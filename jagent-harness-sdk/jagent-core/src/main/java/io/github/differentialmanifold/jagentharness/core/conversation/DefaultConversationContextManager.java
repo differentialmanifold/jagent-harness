@@ -76,6 +76,12 @@ public class DefaultConversationContextManager implements ConversationContextMan
     }
 
     @Override
+    public ConversationContextManager forSettings(AgentSettings selected) {
+        return new DefaultConversationContextManager(
+                selected, compactionStore, eventPublisher, objectMapper, modelCallUsageStore);
+    }
+
+    @Override
     public ConversationContext prepare(ConversationContextRequest request) {
         request.getStopSignal().throwIfAborted();
         List<AgentMessage> messages =
@@ -240,7 +246,10 @@ public class DefaultConversationContextManager implements ConversationContextMan
     }
 
     private boolean isUsageBaselineUsable(ModelCallUsage usage, Instant usageBaselineNotBefore) {
-        if (usage == null || usage.getActualContextTokens() == null) {
+        if (usage == null
+                || usage.getActualContextTokens() == null
+                || !java.util.Objects.equals(settings.getProvider(), usage.getProvider())
+                || !java.util.Objects.equals(settings.getModel(), usage.getModel())) {
             return false;
         }
         if (usageBaselineNotBefore == null) {

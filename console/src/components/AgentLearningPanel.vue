@@ -2,28 +2,33 @@
   <section class="learning-panel">
     <p v-if="error" role="alert" class="learning-error">{{ error }}</p>
     <div class="learning-heading">
-      <p>
+      <p v-if="skillsOnly">
+        Available methods, loaded by the Agent when needed. Built-in Skills are
+        read-only; shared Skills are managed in System Settings → Agent defaults
+        → Skills.
+      </p>
+      <p v-else>
         Keep useful methods, find past evidence, and review what your Agent
         learned.
       </p>
       <el-button :loading="busy" @click="refresh">Refresh</el-button>
     </div>
-    <el-tabs v-model="view">
+    <el-tabs v-model="view" :class="{ 'skills-only': skillsOnly }">
       <el-tab-pane label="Skills" name="skills">
         <div class="learning-heading">
-          <p>
-            Private to this Agent. Memory can be edited in Knowledge → Memory.
-          </p>
+          <p>New and learned Skills are private to this Agent.</p>
           <el-button @click="newSkill">New skill</el-button>
         </div>
         <div class="learning-files">
           <button
             v-for="file in skills"
             :key="file.path"
+            :class="{ selected: editor?.path === file.path }"
+            :aria-pressed="editor?.path === file.path"
             @click="openSkill(file)"
           >
             {{ file.path }}
-            <small v-if="file.readOnly">Built-in · read-only</small>
+            <small>{{ skillSource(file) }}</small>
           </button>
         </div>
         <el-form v-if="editor" label-position="top" @submit.prevent="saveSkill">
@@ -34,7 +39,22 @@
               placeholder="skills/my-method/SKILL.md"
             />
           </el-form-item>
-          <el-form-item label="Content">
+          <template v-if="editor.readOnly">
+            <div class="learning-heading">
+              <span class="learning-muted">{{ skillSource(editor) }}</span>
+              <el-radio-group v-model="readTab" size="small">
+                <el-radio-button value="preview">Preview</el-radio-button>
+                <el-radio-button value="code">Code</el-radio-button>
+              </el-radio-group>
+            </div>
+            <MarkdownContent
+              v-if="readTab === 'preview'"
+              class="skill-preview"
+              :content="editor.path.endsWith('/SKILL.md') ? skillBody(editor.content) : editor.content"
+            />
+            <pre v-else>{{ editor.content }}</pre>
+          </template>
+          <el-form-item v-else label="Content">
             <el-input
               v-model="editor.content"
               type="textarea"
@@ -45,7 +65,7 @@
           <el-form-item v-if="!editor.readOnly" label="Reason for this change">
             <el-input v-model="editor.reason" maxlength="512" />
           </el-form-item>
-          <p>
+          <p v-if="!editor.readOnly">
             {{ editor.content.length.toLocaleString() }} / 40,000 characters
           </p>
           <el-button
@@ -68,7 +88,7 @@
           <el-button @click="closeEditor">Close</el-button>
         </el-form>
       </el-tab-pane>
-      <el-tab-pane label="Learning history" name="changes">
+      <el-tab-pane v-if="!skillsOnly" label="Learning history" name="changes">
         <div class="learning-heading">
           <p>
             Every edit keeps its previous content and source. Undo is available
@@ -130,7 +150,7 @@
           </p>
         </details>
       </el-tab-pane>
-      <el-tab-pane label="Search history" name="search">
+      <el-tab-pane v-if="!skillsOnly" label="Search history" name="search">
         <form class="learning-heading" @submit.prevent="search">
           <el-input
             v-model="query"
@@ -215,14 +235,24 @@
 
 <script setup>
 import { ref, watch, onBeforeUnmount, onMounted } from "vue";
-import { ElMessageBox, ElMessage } from "element-plus";
+import { ElMessageBox, ElMessage, ElRadioGroup, ElRadioButton } from "element-plus";
 import { request } from "../api/http";
+import MarkdownContent from "./MarkdownContent.vue";
+import { skillBody } from "../utils/markdown";
 const props = defineProps({
   agentId: String,
   conversationId: String,
   enabled: Boolean,
   revision: Number,
+  skillsOnly: Boolean,
 });
+const readTab = ref("preview");
+const skillSource = (file) =>
+  file.source === "builtin"
+    ? "Built-in · read-only"
+    : file.source === "agent-global"
+      ? "Agent defaults · read-only here"
+      : "Private to this Agent";
 const emit = defineEmits(["saved", "open-project", "open-conversation"]);
 const view = ref("skills"),
   skills = ref([]),
@@ -276,6 +306,7 @@ const post = (url, body) =>
 let alive = true,
   timer;
 onMounted(() => {
+  if (props.skillsOnly) return;
   timer = setInterval(async () => {
     if (busy.value || !props.agentId) return;
     const id = props.agentId;
@@ -307,8 +338,8 @@ async function load() {
   const id = props.agentId;
   const [s, c, r] = await Promise.all([
     request(path() + "/skills"),
-    request(path() + "/learning"),
-    request(path() + "/reviews"),
+    props.skillsOnly ? [] : request(path() + "/learning"),
+    props.skillsOnly ? [] : request(path() + "/reviews"),
   ]);
   if (!alive || id !== props.agentId) return;
   skills.value = s;
@@ -360,12 +391,13 @@ async function openSkill(file) {
       content: data.content || "",
       reason: "",
       isNew: false,
-      readOnly: file.readOnly,
     };
+    readTab.value = "preview";
     savedEditor = editorValue();
   });
 }
 async function saveSkill() {
+  if (!editor.value || editor.value.readOnly) return;
   await act(async () => {
     const data = await post(path() + "/knowledge", {
       ...editor.value,
@@ -380,6 +412,7 @@ async function saveSkill() {
   });
 }
 async function removeSkill() {
+  if (!editor.value || editor.value.readOnly) return;
   await act(async () => {
     const data = await post(path() + "/knowledge", {
       ...editor.value,
@@ -467,6 +500,21 @@ function openSource() {
 <style scoped>
 .learning-panel {
   min-width: 0;
+}
+.skills-only :deep(.el-tabs__header) {
+  display: none;
+}
+.skill-preview {
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.learning-files button.selected {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 .learning-heading {
   display: flex;

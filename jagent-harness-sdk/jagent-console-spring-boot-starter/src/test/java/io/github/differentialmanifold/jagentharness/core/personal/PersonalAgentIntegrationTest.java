@@ -65,6 +65,401 @@ class PersonalAgentIntegrationTest {
     @Autowired PromptPreviewController promptController;
     @org.springframework.boot.web.server.LocalServerPort int port;
 
+    @Autowired io.github.differentialmanifold.jagentharness.core.model.ModelCatalog modelCatalog;
+
+    @Autowired
+    io.github.differentialmanifold.jagentharness.spring.web.personal.PersonalAgentController
+            personalController;
+
+    @Test
+    void primaryDefaultsPersistWhilePeerCreationKeepsItsOwnEnvironment() throws Exception {
+        String original = store.primaryAgentId();
+        List<Profile> created = new ArrayList<>();
+        for (String name : Arrays.asList("Primary machine", "Other machine")) {
+            RunnerInfo runner = new RunnerInfo();
+            runner.runnerId = "runner_" + UUID.randomUUID().toString().replace("-", "");
+            runner.name = name;
+            ToolDescriptor tool = new ToolDescriptor();
+            tool.name = "read";
+            tool.parameters.put("type", "object");
+            runner.tools.add(tool);
+            runners.register(runner, "a-test-secret-long-enough-for-registration");
+            Profile p = new Profile();
+            p.name = name;
+            p.runnerId = runner.runnerId;
+            created.add(service.save(p));
+        }
+        Profile primary = created.get(0), other = created.get(1);
+        try {
+            service.selectPrimaryAgent(primary.id, store.primaryAgentId());
+            assertEquals(primary.runnerId, personalController.defaults().get("primaryRunnerId"));
+            Profile humanCreated = new Profile();
+            humanCreated.name = "User's assistant";
+            personalController.save(humanCreated);
+            assertEquals(primary.runnerId, humanCreated.runnerId);
+            Conversation c = service.newConversation(other.id, "Create a colleague");
+            ToolContext context =
+                    new ToolContext(
+                            c.sessionId,
+                            "run",
+                            "turn",
+                            null,
+                            Collections.singletonMap("personalAgentId", other.id));
+            JsonNode peer =
+                    json.readTree(
+                            tools.get("agents", context)
+                                    .execute(
+                                            context,
+                                            json.createObjectNode()
+                                                    .put("action", "create")
+                                                    .put("name", "Local colleague")
+                                                    .put("description", "Same environment"))
+                                    .getContent());
+            assertEquals(other.runnerId, peer.path("runnerId").asText());
+            service.selectPrimaryAgent(other.id, primary.id);
+            assertEquals(other.runnerId, personalController.defaults().get("primaryRunnerId"));
+            assertEquals(primary.runnerId, store.profile(humanCreated.id).runnerId);
+            assertEquals(primary.runnerId, store.profile(primary.id).runnerId);
+            assertThrows(
+                    PersonalAgentException.class,
+                    () -> service.selectPrimaryAgent(primary.id, primary.id));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> service.selectPrimaryAgent(profile("Unbound").id, other.id));
+        } finally {
+            if (original != null) store.setPrimaryAgentId(original, store.primaryAgentId());
+        }
+    }
+
+    @Test
+    void noModelToolsAreExposedAndProjectsUseUserRequestedNamesOrDefault() throws Exception {
+        Profile p = profile("Model planner");
+        Conversation c = service.newConversation(p.id, "Choose execution models");
+        SessionRecord project = service.createProjectSession(p.id, new CreateSessionRequest());
+        ToolContext personal =
+                new ToolContext(
+                        c.sessionId,
+                        "selection-test",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", p.id));
+        ToolContext projectContext =
+                new ToolContext(
+                        project.getSessionId(), "work", "turn", null, Collections.emptyMap());
+        assertNull(tools.get("models", personal));
+        assertNull(tools.get("models", projectContext));
+        assertNull(tools.get("models"));
+        assertTrue(
+                tools.get("projects", personal)
+                        .getParametersSchema()
+                        .path("properties")
+                        .has("modelId"));
+        io.github.differentialmanifold.jagentharness.core.model.ModelCatalogStore.Configuration
+                config = modelCatalog.publicConfiguration();
+        io.github.differentialmanifold.jagentharness.core.model.ModelProfile worker =
+                config.models.get(0).copy();
+        worker.id = "project-selection-test";
+        worker.name = "worker";
+        worker.model = "worker-model";
+        worker.temperature = 0.2;
+        config.models.add(worker);
+        modelCatalog.save(config);
+        p.enabled = false;
+        service.save(p);
+        Card task = new Card();
+        task.title = "Check chosen model";
+        task.acceptance = "Report evidence";
+        task.conversationId = c.sessionId;
+        service.saveCard(task, p.id);
+        task.modelId = "planner-model";
+        store.save(task);
+        Inbox watch =
+                service.submitProject(
+                        p.id,
+                        c.sessionId,
+                        project.getSessionId(),
+                        "selected-model-probe",
+                        null,
+                        task.id,
+                        true,
+                        worker.model);
+        assertEquals(worker.id, watch.projectModelId);
+        assertEquals("planner-model", watch.modelId);
+        await(
+                () ->
+                        model.requests.stream()
+                                .anyMatch(
+                                        request ->
+                                                "worker-model".equals(request.getModel())
+                                                        && request.getMessages().stream()
+                                                                .anyMatch(
+                                                                        m ->
+                                                                                m.getContent()
+                                                                                                != null
+                                                                                        && m.getContent()
+                                                                                                .contains(
+                                                                                                        "selected-model-probe"))));
+        ModelRequest chosen =
+                model.requests.stream()
+                        .filter(request -> "worker-model".equals(request.getModel()))
+                        .findFirst()
+                        .get();
+        assertEquals(0.2, chosen.getTemperature());
+        assertTrue(chosen.getTools().stream().noneMatch(t -> "models".equals(t.getName())));
+        assertFalse(chosen.getSystemPrompt().contains("Use models"));
+        SessionRecord another = service.createProjectSession(p.id, new CreateSessionRequest());
+        Inbox defaults =
+                service.submitProject(
+                        p.id,
+                        c.sessionId,
+                        another.getSessionId(),
+                        "default-model-probe",
+                        null,
+                        null,
+                        true,
+                        null);
+        assertNull(defaults.projectModelId);
+        await(
+                () ->
+                        model.requests.stream()
+                                .anyMatch(
+                                        request ->
+                                                "test".equals(request.getModel())
+                                                        && request.getMessages().stream()
+                                                                .anyMatch(
+                                                                        m ->
+                                                                                m.getContent()
+                                                                                                != null
+                                                                                        && m.getContent()
+                                                                                                .contains(
+                                                                                                        "default-model-probe"))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        service.submitProject(
+                                p.id,
+                                c.sessionId,
+                                another.getSessionId(),
+                                "bad model",
+                                null,
+                                null,
+                                true,
+                                "missing-model"));
+    }
+
+    @Test
+    void delegationReturnsToOriginKeepsPrivacyAndRejectsCycles() throws Exception {
+        Profile owner = profile("Coordinator"),
+                peer = profile("Mac specialist"),
+                outsider = profile("Other");
+        owner.enabled = false;
+        service.save(owner);
+        Conversation origin = service.newConversation(owner.id, "Feature"),
+                unrelated = service.newConversation(peer.id, "Private");
+        AgentMessage secret = AgentMessage.user(unrelated.sessionId, "private fact");
+        secret.setRunId("private");
+        secret.setTurnId("turn-private");
+        history.appendMessage(secret);
+        Card task = new Card();
+        task.title = "Verify feature";
+        task.acceptance = "Verified result";
+        task.conversationId = origin.sessionId;
+        service.saveCard(task, owner.id);
+        ReplyTarget feishu = new ReplyTarget("feishu", "account", "chat");
+        Map<String, Object> receipt =
+                service.sendToAgent(
+                        owner.id,
+                        origin.sessionId,
+                        peer.id,
+                        null,
+                        "Check the requested feature",
+                        task.id,
+                        feishu);
+        String delegated = (String) receipt.get("sessionId"),
+                message = (String) receipt.get("messageId");
+        assertEquals("ACCEPTED", receipt.get("status"));
+        assertEquals("WAITING", store.card(task.id).status);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.sendToAgent(peer.id, delegated, owner.id, null, "Cycle", null, null));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.inspectDelegation(outsider.id, peer.id, delegated));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.inspectDelegation(owner.id, peer.id, unrelated.sessionId));
+        await(() -> store.message("reply_" + message) != null);
+        Inbox returned = store.message("reply_" + message);
+        assertEquals("AGENT_REPLY", returned.source);
+        assertEquals(origin.sessionId, returned.sessionId);
+        assertEquals("feishu", returned.replyTo.channel);
+        assertEquals("chat", returned.replyTo.recipientId);
+        assertEquals(task.id, returned.taskId);
+        service.deliverAgentReplies();
+        assertEquals(
+                1,
+                store.messages(origin.sessionId).stream()
+                        .filter(m -> m.id.equals(returned.id))
+                        .count());
+        Map<String, Object> inspection = service.inspectDelegation(owner.id, peer.id, delegated);
+        assertFalse(json.writeValueAsString(inspection).contains("private fact"));
+        List<AgentMessage> replies = (List<AgentMessage>) inspection.get("replies");
+        assertFalse(replies.isEmpty());
+        AgentMessage inbound =
+                history.findMessages(delegated).stream()
+                        .filter(
+                                m ->
+                                        m.getMetadataJson() != null
+                                                && m.getMetadataJson().contains("agent_message"))
+                        .findFirst()
+                        .orElseThrow(AssertionError::new);
+        assertTrue(inbound.getMetadataJson().contains("Coordinator"));
+        assertEquals("user", inbound.getRole());
+        assertEquals("AGENT", json.readTree(inbound.getMetadataJson()).path("source").asText());
+        Card done = store.card(task.id);
+        done.status = "DONE";
+        Evidence evidence = new Evidence();
+        evidence.sessionId = delegated;
+        evidence.messageId = replies.get(replies.size() - 1).getMessageId();
+        evidence.note = "Inspected the returned verification";
+        done.evidence.add(evidence);
+        service.saveCard(done, owner.id);
+        assertEquals("DONE", store.card(task.id).status);
+    }
+
+    @Test
+    void projectsOpenMatchesDirectoryAndAgentRunnerCannotChange() {
+        Profile owner = profile("Project routing");
+        CreateSessionRequest one = new CreateSessionRequest();
+        one.setWorkspacePath("/repo/one");
+        SessionRecord first = service.openProjectSession(owner.id, one, false);
+        CreateSessionRequest two = new CreateSessionRequest();
+        two.setWorkspacePath("/repo/two");
+        SessionRecord second = service.openProjectSession(owner.id, two, false);
+        assertNotEquals(first.getProjectId(), second.getProjectId());
+        CreateSessionRequest back = new CreateSessionRequest();
+        back.setWorkspacePath("/repo/one");
+        assertEquals(
+                first.getSessionId(),
+                service.openProjectSession(owner.id, back, false).getSessionId());
+        CreateSessionRequest mismatch = new CreateSessionRequest();
+        mismatch.setProjectId(first.getProjectId());
+        mismatch.setWorkspacePath("/repo/two");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.openProjectSession(owner.id, mismatch, false));
+        assertThrows(IllegalArgumentException.class, () -> service.save(new Profile()));
+        owner.runnerId = "fixed-runner";
+        store.save(owner);
+        Profile changed = service.require(owner.id);
+        changed.runnerId = "another-runner";
+        assertThrows(IllegalArgumentException.class, () -> service.save(changed));
+    }
+
+    @Test
+    void
+            internalAgentCanReuseItsRunnerOrBindANewlyRegisteredMachineWithoutSharingProjectDirectories()
+                    throws Exception {
+        RunnerInfo local = new RunnerInfo();
+        local.runnerId = "test_" + UUID.randomUUID().toString().replace("-", "");
+        local.name = "Controller terminal";
+        local.workspaces = true;
+        local.workspaceRoot = "/test/agent-workspaces";
+        ToolDescriptor read = new ToolDescriptor();
+        read.name = "read";
+        read.parameters.put("type", "object");
+        local.tools.add(read);
+        runners.register(local, "test-secret-that-is-long-enough-for-registration");
+        Profile coordinator = new Profile();
+        coordinator.name = "Coordinator";
+        coordinator.runnerId = local.runnerId;
+        service.save(coordinator);
+        Conversation conversation = service.newConversation(coordinator.id, "Prepare environment");
+        ToolContext context =
+                new ToolContext(
+                        conversation.sessionId,
+                        "provision",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", coordinator.id));
+        ToolDefinition agents = tools.get("agents", context);
+        JsonNode discovered =
+                json.readTree(
+                        agents.execute(context, json.createObjectNode().put("action", "discover"))
+                                .getContent());
+        assertEquals(local.runnerId, discovered.path("currentRunnerId").asText());
+        assertTrue(
+                discovered
+                        .path("runners")
+                        .findValuesAsText("workspaceRoot")
+                        .contains(local.workspaceRoot));
+        JsonNode created =
+                json.readTree(
+                        agents.execute(
+                                        context,
+                                        json.createObjectNode()
+                                                .put("action", "create")
+                                                .put("name", "Developer")
+                                                .put(
+                                                        "description",
+                                                        "Separate role on the same terminal"))
+                                .getContent());
+        String colleague = created.path("agentId").asText();
+        assertNotEquals(coordinator.id, colleague);
+        assertEquals(local.runnerId, created.path("runnerId").asText());
+        SessionRecord ownProject =
+                service.createProjectSession(coordinator.id, new CreateSessionRequest());
+        SessionRecord colleagueProject =
+                service.createProjectSession(colleague, new CreateSessionRequest());
+        assertNotEquals(ownProject.getWorkspacePath(), colleagueProject.getWorkspacePath());
+        assertTrue(
+                colleagueProject
+                        .getWorkspacePath()
+                        .startsWith(local.workspaceRoot + "/agents/" + colleague + "/"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        agents.execute(
+                                context,
+                                json.createObjectNode()
+                                        .put("action", "create")
+                                        .put("name", "Remote builder")
+                                        .put("description", "Not registered yet")
+                                        .put("runnerId", "deploy@example.test")));
+        // Registration happens after deployment by the process on the target machine.
+        RunnerInfo remote = new RunnerInfo();
+        remote.runnerId = "test_" + UUID.randomUUID().toString().replace("-", "");
+        remote.name = "SSH build machine";
+        remote.description = "Linux build environment";
+        remote.platform = "Linux";
+        remote.tools.add(read);
+        runners.register(remote, "another-test-secret-long-enough-for-registration");
+        discovered =
+                json.readTree(
+                        agents.execute(
+                                        context,
+                                        json.createObjectNode()
+                                                .put("action", "discover")
+                                                .put("query", "SSH build machine"))
+                                .getContent());
+        assertEquals(local.runnerId, discovered.path("currentRunnerId").asText());
+        assertEquals(remote.runnerId, discovered.path("runners").get(0).path("runnerId").asText());
+        assertTrue(discovered.path("runners").get(0).path("online").asBoolean());
+        JsonNode remoteAgent =
+                json.readTree(
+                        agents.execute(
+                                        context,
+                                        json.createObjectNode()
+                                                .put("action", "create")
+                                                .put("name", "Remote builder")
+                                                .put("description", "Build on Linux")
+                                                .put("runnerId", remote.runnerId))
+                                .getContent());
+        assertEquals(
+                remote.runnerId, service.require(remoteAgent.path("agentId").asText()).runnerId);
+        assertEquals(local.runnerId, service.require(coordinator.id).runnerId);
+    }
+
     @Test
     void externalAgentCanCreateThenSubmitReadProgressAndPageHistory() throws Exception {
         io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient api =
@@ -159,13 +554,82 @@ class PersonalAgentIntegrationTest {
         Profile p = new Profile();
         p.name = name;
         p.memory = "Prefer reproducible evidence.";
-        return service.save(p);
+        p.id = "agent_" + java.util.UUID.randomUUID().toString().replace("-", "");
+        store.save(p);
+        return p;
     }
 
     void await(BooleanSupplier condition) throws Exception {
         long end = System.currentTimeMillis() + 8000;
         while (!condition.getAsBoolean() && System.currentTimeMillis() < end) Thread.sleep(25);
         assertTrue(condition.getAsBoolean());
+    }
+
+    @Test
+    void bundledRunnerSkillIsDiscoveredWithoutInjectingItsProcedureAndLoadsOnDemand()
+            throws Exception {
+        Profile p = profile("Optional workflows");
+        Conversation c = service.newConversation(p.id, "Setup");
+        SessionRecord project = service.createProjectSession(p.id, new CreateSessionRequest());
+        String path = "skills/runner-setup/SKILL.md";
+        io.github.differentialmanifold.jagentharness.spring.web.dto.AgentContextRequest request =
+                new io.github.differentialmanifold.jagentharness.spring.web.dto
+                        .AgentContextRequest();
+        request.setSessionId(c.sessionId);
+        String prompt = promptController.preview(request).getSystemPrompt();
+        assertTrue(prompt.contains(path));
+        assertFalse(prompt.contains("--home"));
+        assertTrue(
+                contextController.current(request).getSkills().stream()
+                        .anyMatch(skill -> path.equals(skill.getFilePath())));
+        ToolContext context =
+                new ToolContext(
+                        c.sessionId,
+                        "run",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", p.id));
+        JsonNode args = json.createObjectNode().put("path", path);
+        JsonNode loaded =
+                json.readTree(tools.get("skill", context).execute(context, args).getContent());
+        assertEquals(path, loaded.path("path").asText());
+        assertTrue(loaded.path("content").asText().contains("--home"));
+        assertNull(files.readFile(KnowledgeScope.agent(p.id), path));
+        assertNull(files.readFile(KnowledgeScope.agentGlobal(), path));
+        // Reuse the existing activation receipts, without putting the full procedure in the prompt.
+        String after = promptController.preview(request).getSystemPrompt();
+        assertTrue(after.contains("Skills previously loaded"));
+        assertFalse(after.contains("--home"));
+        request.setSessionId(project.getSessionId());
+        assertFalse(promptController.preview(request).getSystemPrompt().contains(path));
+        ToolContext projectContext =
+                new ToolContext(
+                        project.getSessionId(),
+                        "run",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", p.id));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> tools.get("skill", projectContext).execute(projectContext, args));
+        // A private method may intentionally override a bundled default; no database seeding.
+        files.writeFile(
+                KnowledgeScope.agent(p.id),
+                path,
+                "---\nname: runner-setup\ndescription: Custom setup\n---\nUse our managed fleet",
+                "text/markdown");
+        assertTrue(
+                tools.get("skill", context)
+                        .execute(context, args)
+                        .getContent()
+                        .contains("managed fleet"));
+        request.setSessionId(c.sessionId);
+        assertEquals(
+                1,
+                contextController.current(request).getSkills().stream()
+                        .filter(skill -> "runner-setup".equals(skill.getName()))
+                        .count());
+        assertTrue(promptController.preview(request).getSystemPrompt().contains("Custom setup"));
     }
 
     @Test
@@ -304,12 +768,10 @@ class PersonalAgentIntegrationTest {
                         .path("action")
                         .path("enum")
                         .toString()
-                        .contains("create"));
+                        .contains("open"));
         assertThrows(
                 IllegalArgumentException.class,
-                () ->
-                        grouped.execute(
-                                toolContext, json.createObjectNode().put("action", "create")));
+                () -> grouped.execute(toolContext, json.createObjectNode().put("action", "open")));
         SessionRecord project = service.createProjectSession(p.id, new CreateSessionRequest());
         request.setSessionId(project.getSessionId());
         assertFalse(
@@ -731,7 +1193,7 @@ class PersonalAgentIntegrationTest {
     }
 
     @Test
-    void defaultDirectoriesSeparateUsersAgentsAndProjects() {
+    void defaultDirectoriesSeparateUsersAgentsAndProjects() throws Exception {
         RunnerInfo runner = new RunnerInfo();
         runner.runnerId = "test_" + UUID.randomUUID().toString().replace("-", "");
         runner.name = "Directories";
@@ -755,9 +1217,15 @@ class PersonalAgentIntegrationTest {
         assertTrue(userSession.getWorkspacePath().contains("/user/project_"));
         CreateSessionRequest explicit = new CreateSessionRequest();
         explicit.setWorkspacePath("/existing/repository");
-        assertEquals(
-                "/existing/repository",
-                service.createProjectSession(agent.id, explicit).getWorkspacePath());
+        CompletableFuture<SessionRecord> opened =
+                CompletableFuture.supplyAsync(
+                        () -> service.createProjectSession(agent.id, explicit));
+        RunnerPoll lookup = runners.poll(runner.runnerId, null).get(2, TimeUnit.SECONDS);
+        WorkspaceListing listing = new WorkspaceListing();
+        listing.requestId = lookup.workspaceRequest.requestId;
+        listing.path = "/existing/repository";
+        runners.workspaceResult(runner.runnerId, listing);
+        assertEquals("/existing/repository", opened.get(2, TimeUnit.SECONDS).getWorkspacePath());
         CreateSessionRequest extra = new CreateSessionRequest();
         extra.setProjectId(first.getProjectId());
         assertEquals(
@@ -915,7 +1383,7 @@ class PersonalAgentIntegrationTest {
                         projects.execute(
                                 context,
                                 json.createObjectNode()
-                                        .put("action", "create")
+                                        .put("action", "open")
                                         .put("runnerId", "different-runner")));
         assertThrows(
                 IllegalArgumentException.class,
@@ -1553,7 +2021,7 @@ class PersonalAgentIntegrationTest {
                                 new ToolCall(
                                         "independent-create",
                                         "projects",
-                                        "{\"action\":\"create\",\"projectName\":\"Release checklist\",\"title\":\"Implementation\"}")));
+                                        "{\"action\":\"open\",\"projectName\":\"Release checklist\",\"title\":\"Implementation\"}")));
                 return response;
             }
             if (personal

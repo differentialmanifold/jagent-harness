@@ -81,7 +81,7 @@ Set your model name, API endpoint, and API key, then start the server:
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-java -jar examples/server-demo/target/server-demo-2.2.0.jar
+java -jar examples/server-demo/target/server-demo-2.2.1.jar
 ```
 
 Omit the API key if your model endpoint does not require one. Wait for the server to report that it has started. SQLite storage is created automatically as `agent-server.db` in the working directory.
@@ -89,7 +89,7 @@ Omit the API key if your model endpoint does not require one. Wait for the serve
 ### 3. Terminal 2: runner
 
 ```sh
-java -jar examples/coding-runner/target/jagent-coding-runner-2.2.0.jar
+java -jar examples/coding-runner/target/jagent-coding-runner-2.2.1.jar
 ```
 
 No arguments or environment variables are needed. Wait for `Runner <machine-name> online`. The runner registers all coding tools and keeps receiving work. Choose project directories in the frontend after startup.
@@ -116,7 +116,7 @@ Open **Projects → Configuration → Tools** to configure a project’s Runner 
 
 ## Try personal Agents
 
-Open **Agents** and follow the [hands-on Agent guide](docs/guides/agents.md) ([简体中文](docs/guides/agents.zh-CN.md)). Create an Agent, choose an online Runner, and send the guide's short TODO request. No workspace setup is needed. Memory, Skills, and follow-up tasks are optional next steps. Use the same running services; no extra packages or browser tests are needed. Feishu is optional.
+Open **Agents** and follow the [hands-on Agent guide](docs/guides/agents.md) ([简体中文](docs/guides/agents.zh-CN.md)). Create an Agent, choose an online Runner, and send the guide's short TODO request. The first Agent becomes your primary chat entry point; its Runner is the default for Agents you create. No workspace setup is needed. Memory, Skills, and follow-up tasks are optional next steps. Use the same running services; no extra packages or browser tests are needed. Feishu is optional.
 
 For everyday use, continue with [Projects](docs/guides/projects.md) or [Personal Agents](docs/guides/agents.md). [Configuration and Skills](docs/guides/configuration.md) explains defaults and project/Agent settings. All feature guides and integration references are listed in the [documentation index](docs/README.md).
 
@@ -135,6 +135,7 @@ For everyday use, continue with [Projects](docs/guides/projects.md) or [Personal
 | `AGENT_SERVER_PORT` | Server port; `18181` |
 | `JAGENT_CONSOLE_PORT` | Frontend launcher port; `5175` |
 | `JAGENT_CONSOLE_HOST` | Frontend launcher bind address; `127.0.0.1` |
+| `JAGENT_RUNNER_DISTRIBUTION_DIR` | Server-side offline Runner packages; `./data/runners` directly, build output with launchers. See [local distribution](examples/coding-runner/README.md#distribute-inside-your-network). |
 | `JAGENT_RUNNER_HOME` | Runner identity and journal; `data/coding-runner` in launchers |
 | `JAGENT_RUNNER_NAME` | Display name; machine hostname for direct startup, `coding-local` in launchers |
 | `JAGENT_RG_PATH` | Optional path to ripgrep; search tools also have a Java fallback |
@@ -150,7 +151,7 @@ On the runner machine, set the remote address and token, then use the same start
 ```sh
 export JAGENT_SERVER_URL='https://agent.example.com'
 export JAGENT_CLIENT_TOKEN='your-shared-token'
-java -jar jagent-coding-runner-2.2.0.jar
+java -jar jagent-coding-runner-2.2.1.jar
 ```
 
 The standalone JAR includes the SDK and coding tools. See the [Runner guide](examples/coding-runner/README.md) for distribution and recovery.

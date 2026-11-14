@@ -41,7 +41,7 @@ final class RunnerConversation {
                     if (options.events != null) options.events.accept(event);
                 };
         ChatRequest current = request;
-        for (int exchanges = 0; exchanges < 128; exchanges++) {
+        while (true) {
             // In particular, do not retry an IOException: the server may have accepted the input.
             ChatResponse response = transport.chat(current, events);
             if (!Objects.equals(request.sessionId, response.sessionId))
@@ -55,6 +55,7 @@ final class RunnerConversation {
             if (response.toolCalls == null || response.toolCalls.isEmpty())
                 throw new IOException("Missing tool calls");
             ChatRequest next = new ChatRequest();
+            next.modelId = request.modelId;
             next.sessionId = request.sessionId;
             next.runId = response.runId;
             next.stream = request.stream;
@@ -99,13 +100,14 @@ final class RunnerConversation {
                         value = ToolExecutionResult.unknown(error.toString());
                     }
                 }
-                next.messages.add(ChatMessage.tool(call.toolCallId, value.status, value.content));
+                ChatMessage message =
+                        ChatMessage.tool(call.toolCallId, value.status, value.content);
+                message.images.addAll(value.images);
+                next.messages.add(message);
                 // The server emits the terminal event once it accepts the durable result.
             }
             current = next;
         }
-        throw new IOException(
-                "Maximum conversation exchanges exceeded; inspect session history before continuing");
     }
 
     private void emit(

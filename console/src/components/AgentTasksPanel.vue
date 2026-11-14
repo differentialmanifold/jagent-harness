@@ -42,6 +42,7 @@
             <h3>{{ selected.title }}</h3>
             <div class="task-links">
               <button v-if="selected.conversationId && hasConversation(selected.conversationId)" type="button" class="task-link" @click="$emit('open-chat', selected.conversationId)">Open Agent chat ↗</button>
+              <button v-if="selected.delegateSessionId" type="button" class="task-link" @click="$emit('open-delegation', selected.delegateAgentId, selected.delegateSessionId)">Open delegated chat ↗</button>
               <button v-if="selected.sessionId" type="button" class="task-link" @click="$emit('open-project', selected.sessionId)">Open project ↗</button>
             </div>
           </header>
@@ -94,7 +95,7 @@
             <section v-for="(evidence, index) in selected.evidence" :key="`${evidence.messageId}:${index}`" class="task-evidence">
               <h4>Evidence {{ index + 1 }}</h4>
               <MarkdownContent :content="evidence.note || 'No verification note recorded.'" />
-              <button v-if="evidence.sessionId" type="button" class="task-link" @click="$emit('open-project', evidence.sessionId)">{{ projectTitle(evidence.sessionId) }} ↗</button>
+              <button v-if="evidence.sessionId" type="button" class="task-link" @click="evidence.sessionId === selected.delegateSessionId ? $emit('open-delegation', selected.delegateAgentId, evidence.sessionId) : $emit('open-project', evidence.sessionId)">{{ evidence.sessionId === selected.delegateSessionId ? 'Delegated Agent reply' : projectTitle(evidence.sessionId) }} ↗</button>
               <details><summary>Reference</summary><code>Message: {{ evidence.messageId }}</code></details>
             </section>
           </div>
@@ -134,7 +135,7 @@ const props = defineProps({
   conversations: { type: Array, default: () => [] },
   active: Boolean,
 })
-defineEmits(['open-project', 'open-chat'])
+defineEmits(['open-project', 'open-chat', 'open-delegation'])
 const filters = [{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'done', label: 'Done' }, { value: 'cancelled', label: 'Cancelled' }]
 const detailSections = [{ value: 'overview', label: 'Overview' }, { value: 'evidence', label: 'Evidence' }, { value: 'runs', label: 'Executions' }]
 const query = ref(''), filter = ref('all'), collapsed = ref(new Set()), selectedId = ref(''), detailTab = ref('overview')

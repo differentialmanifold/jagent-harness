@@ -26,7 +26,7 @@ node "<skill-dir>/scripts/jagent.mjs" runners
 node "<skill-dir>/scripts/jagent.mjs" create-agent --name "Developer" --runner <runnerId>
 ```
 
-`runners` lists terminal names, online state, workspace support and tools. Select the online terminal appropriate for the user's goal; if several are equally suitable, ask which to use. If none is online and local tools are needed, report that a Runner must be started on the intended machine. Omit `--runner` only for work that can use server tools alone. Creation returns the new Agent's `id`; no Console setup is required.
+`runners` lists terminal names, descriptions, platforms, capabilities, online state, workspace support and tools. Select the online terminal appropriate for the user's goal; if several are equally suitable, ask which to use. If none is online and local tools are needed, report that a Runner must be started on the intended machine. New Agents require a Runner and remain bound to it. Creation returns the new Agent's `id`; no Console setup is required.
 
 Optional `--instructions` or `--instructions-file /absolute/path/instructions.txt` supplies enduring guidance for the new Agent. Put the immediate goal in a conversation. Default instructions and workspace allocation are handled by JAgent; do not copy prompts or global settings into the profile.
 
@@ -65,3 +65,7 @@ node "<skill-dir>/scripts/jagent.mjs" history --agent <agentId> --session <sessi
 An HTTP timeout or connection failure does not prove a write was rejected. The CLI reports the chosen `messageId` on a failed send. Inspect it with `status --message <messageId>` and check history before deciding to retry. If resending the same message, preserve its ID with `send --message <messageId>` and keep the same content; never automatically resend a goal with a new ID. If Agent or conversation creation is uncertain, list Agents or conversations before creating another; creation is not deduplicated by name.
 
 For direct JavaScript use or exact API contracts, read [references/api.md](references/api.md). The SDK returns data; it does not itself keep an external Agent running or schedule future checks.
+
+## Explicit model selection
+
+Use the system default unless the user explicitly requests a model. `node "<skill-dir>/scripts/jagent.mjs" models` lets you resolve that request to a configured ID, then use `send ... --model <id>`. Ask for clarification if the requested name is unavailable or ambiguous; do not substitute a model based on your own capability assessment. The receiving Agent does not switch its model. A model is selected per run, not attached to an Agent identity.

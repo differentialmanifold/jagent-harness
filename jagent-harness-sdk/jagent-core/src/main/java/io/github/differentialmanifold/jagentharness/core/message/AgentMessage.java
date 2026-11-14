@@ -72,6 +72,26 @@ public class AgentMessage {
         return message;
     }
 
+    public AgentMessage copy() {
+        AgentMessage m = new AgentMessage();
+        m.messageId = messageId;
+        m.sessionId = sessionId;
+        m.runId = runId;
+        m.turnId = turnId;
+        m.parentMessageId = parentMessageId;
+        m.role = role;
+        m.content = content;
+        m.reasoningContent = reasoningContent;
+        m.toolCallId = toolCallId;
+        m.toolName = toolName;
+        m.toolCalls = new ArrayList<>(toolCalls);
+        m.images = new ArrayList<>(images);
+        m.stopReason = stopReason;
+        m.metadataJson = metadataJson;
+        m.createdAt = createdAt;
+        return m;
+    }
+
     public String getMessageId() {
         return messageId;
     }

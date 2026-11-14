@@ -3,7 +3,7 @@
   <parent>
     <groupId>io.github.differentialmanifold</groupId>
     <artifactId>jagent-harness</artifactId>
-    <version>2.2.0</version>
+    <version>2.2.1</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <artifactId>jagent-coding-runner</artifactId>
@@ -49,6 +49,27 @@
                   <mainClass>io.github.differentialmanifold.jagentharness.runner.RunnerMain</mainClass>
                 </transformer>
               </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>offline-runner-package</id>
+            <phase>package</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <target>
+                <mkdir dir="${project.build.directory}/runners/coding" />
+                <copy file="${project.build.directory}/${project.build.finalName}.jar" tofile="${project.build.directory}/runners/coding/runner.jar" overwrite="true" />
+                <checksum file="${project.build.directory}/runners/coding/runner.jar" algorithm="SHA-256" property="runner.sha256" />
+                <echo file="${project.build.directory}/runners/coding/manifest.json" encoding="UTF-8">{"kind":"coding","version":"${project.version}","artifact":"runner.jar","sha256":"${runner.sha256}","javaVersion":8}</echo>
+                <zip destfile="${project.build.directory}/jagent-coding-runner-${project.version}-offline.zip" basedir="${project.build.directory}/runners" />
+              </target>
             </configuration>
           </execution>
         </executions>

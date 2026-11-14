@@ -185,6 +185,38 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
+    void placesToolImagesAfterAllToolResults() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        RecordingHttpClient client = new RecordingHttpClient();
+        OpenAiCompatibleProvider provider =
+                new OpenAiCompatibleProvider(config(false), mapper, client);
+        AgentMessage assistant = AgentMessage.assistant("s", "", Collections.emptyList());
+        assistant.setToolCalls(
+                java.util.Arrays.asList(
+                        new io.github.differentialmanifold.jagentharness.core.tool.ToolCall(
+                                "a", "screen", "{}"),
+                        new io.github.differentialmanifold.jagentharness.core.tool.ToolCall(
+                                "b", "status", "{}")));
+        AgentMessage a = AgentMessage.tool("s", "a", "screen", "Captured"),
+                b = AgentMessage.tool("s", "b", "status", "Ready");
+        a.setImages(
+                Collections.singletonList(
+                        new MessageImage(
+                                "screen.png", "image/png", "https://example.com/screen.png")));
+        ModelRequest request = request();
+        request.setMessages(java.util.Arrays.asList(assistant, a, b));
+        provider.chat(request);
+        JsonNode messages = mapper.readTree(client.requestBodies.get(0)).path("messages");
+        assertEquals("assistant", messages.get(0).path("role").asText());
+        assertEquals("tool", messages.get(1).path("role").asText());
+        assertEquals("tool", messages.get(2).path("role").asText());
+        assertEquals("user", messages.get(3).path("role").asText());
+        assertEquals(
+                "https://example.com/screen.png",
+                messages.get(3).path("content").get(1).path("image_url").path("url").asText());
+    }
+
+    @Test
     void supportsImageOnlyUserMessages() throws Exception {
         RecordingHttpClient httpClient = new RecordingHttpClient();
         ObjectMapper objectMapper = new ObjectMapper();

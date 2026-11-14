@@ -100,7 +100,7 @@ test('bootstrap an empty server: discover a Runner, create an Agent and submit a
   assert.equal(state.requests.filter(r => r.method === 'POST').length, 3)
 })
 
-test('CLI creates with multiline instructions; SDK supports server-only Agents and validates before writing', async t => {
+test('CLI creates with multiline instructions; SDK requires a Runner and validates before writing', async t => {
   const state = await server(t, req => ({ id: 'a', enabled: true, ...req.body }))
   const directory = await mkdtemp(join(tmpdir(), 'jagent-skill-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -114,13 +114,14 @@ test('CLI creates with multiline instructions; SDK supports server-only Agents a
   assert.deepEqual(state.requests[0].body, { name: 'Developer', runnerId: 'r', instructions })
   assert.equal(state.requests[0].url.pathname, '/api/v1/personal/agents')
   const client = new JAgentClient({ server: state.url })
-  assert.equal((await client.createAgent({ name: 'Planner' })).runnerId, null)
-  assert.deepEqual(state.requests[1].body, { name: 'Planner', runnerId: null, instructions: '' })
+  await assert.rejects(client.createAgent({ name: 'Planner' }), /valid ID/)
+  assert.equal((await client.createAgent({ name: 'Planner', runnerId: 'r', description: 'Plans implementation' })).runnerId, 'r')
+  assert.deepEqual(state.requests[1].body, { name: 'Planner', runnerId: 'r', instructions: '', description: 'Plans implementation' })
   await assert.rejects(client.createAgent(), /name must/)
   await assert.rejects(client.createAgent({ name: '   ' }), /name must/)
   await assert.rejects(client.createAgent({ name: 'x'.repeat(129) }), /name must/)
   await assert.rejects(client.createAgent({ name: 'A', runnerId: '../other' }), /valid ID/)
-  await assert.rejects(client.createAgent({ name: 'A', instructions: 'x'.repeat(16001) }), /instructions must/)
+  await assert.rejects(client.createAgent({ name: 'A', runnerId: 'r', instructions: 'x'.repeat(16001) }), /instructions must/)
   const failure = await run(process.execPath, [script, 'create-agent', '--name', 'A', '--instructions', 'one', '--instructions-file', path], options).catch(e => e)
   assert.equal(failure.code, 1)
   assert.match(JSON.parse(failure.stderr).error, /only one/)
@@ -208,4 +209,21 @@ test('reject empty or malformed successful responses without reporting a connect
 test('preserve HTTP failures even when the error body is empty', async t => {
   const state = await server(t, (req, res) => { res.statusCode = 503; res.end() })
   await assert.rejects(new JAgentClient({ server: state.url }).agents(), { code: 'HTTP_ERROR', status: 503 })
+})
+
+
+test('capability discovery hides connection details and explicit model/images reach a send', async t => {
+  const state = await server(t, req => {
+    if (req.url.pathname === '/api/v1/models') return { defaultModelId: 'text', models: [{ id: 'visual', name: 'Visual', enabled: true, inputTypes: ['text', 'image'], capabilities: ['visual-analysis'], baseUrl: 'https://private.example', apiKey: 'secret' }] }
+    return { id: req.body.messageId, agentId: 'a', sessionId: 's', status: 'PENDING' }
+  })
+  const client = new JAgentClient({ server: state.url })
+  const models = await client.models()
+  assert.deepEqual(models.models[0].inputTypes, ['text', 'image'])
+  assert.equal(JSON.stringify(models).includes('secret'), false)
+  assert.equal(JSON.stringify(models).includes('private.example'), false)
+  const images = [{ url: 'data:image/png;base64,aGVsbG8=' }]
+  await client.send('a', 's', '', { messageId: 'image', modelId: 'visual', images })
+  assert.equal(state.requests[1].body.modelId, 'visual')
+  assert.deepEqual(state.requests[1].body.images, images)
 })

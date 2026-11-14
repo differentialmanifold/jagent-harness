@@ -14,6 +14,8 @@ import java.util.concurrent.*;
 final class PersonalAgentRuntime {
     private static final java.util.logging.Logger LOG =
             java.util.logging.Logger.getLogger(PersonalAgentRuntime.class.getName());
+    private final com.fasterxml.jackson.databind.ObjectMapper json =
+            new com.fasterxml.jackson.databind.ObjectMapper();
     private final PersonalAgentService agents;
     private final PersonalAgentStore store;
     private final SessionRepository records;
@@ -172,7 +174,47 @@ final class PersonalAgentRuntime {
                 + event.source
                 + "\nPersistent memory:\n"
                 + require(event.agentId).memory
-                + plans.context(event.agentId, event.sessionId, event.taskId);
+                + plans.context(event.agentId, event.sessionId, event.taskId)
+                + "\nRelevant projects (configuration data): "
+                + json.valueToTree(
+                        agents.projectCatalog(event.agentId).stream()
+                                .limit(12)
+                                .map(
+                                        project -> {
+                                            Map<String, Object> summary =
+                                                    new LinkedHashMap<>(project);
+                                            summary.put(
+                                                    "sessions",
+                                                    ((List<?>) project.get("sessions"))
+                                                            .stream()
+                                                                    .limit(3)
+                                                                    .collect(
+                                                                            java.util.stream
+                                                                                    .Collectors
+                                                                                    .toList()));
+                                            return summary;
+                                        })
+                                .collect(java.util.stream.Collectors.toList()))
+                + "\nBound Runner (environment data): "
+                + json.valueToTree(
+                        agents.runners().stream()
+                                .filter(
+                                        r ->
+                                                Objects.equals(
+                                                        r.runnerId,
+                                                        require(event.agentId).runnerId))
+                                .map(
+                                        r -> {
+                                            Map<String, Object> out = new LinkedHashMap<>();
+                                            out.put("name", r.name);
+                                            out.put("platform", r.platform);
+                                            out.put("description", r.description);
+                                            out.put("capabilities", r.capabilities);
+                                            out.put("online", r.online);
+                                            return out;
+                                        })
+                                .findFirst()
+                                .orElse(Collections.emptyMap()));
     }
 
     // One nudge per task revision. Waiting/blocked tasks require an explicit check or new input.
@@ -215,6 +257,7 @@ final class PersonalAgentRuntime {
             next.sessionId = c.conversationId;
             next.source = "CONTINUE";
             next.taskId = c.id;
+            next.modelId = c.modelId;
             next.replyTo = c.replyTo;
             next.createdAt = System.currentTimeMillis();
             next.text =
@@ -233,6 +276,7 @@ final class PersonalAgentRuntime {
                     if (!require(entry.getKey()).enabled) entry.getValue().stop();
                 recoverInterrupted();
                 projects.checkResults();
+                agents.deliverAgentReplies();
                 for (Card c : store.cards())
                     if (c.nextCheckAt > 0
                             && c.nextCheckAt <= System.currentTimeMillis()
@@ -252,6 +296,7 @@ final class PersonalAgentRuntime {
                                         + c.title
                                         + "\n"
                                         + c.progress;
+                        check.modelId = c.modelId;
                         check.createdAt = System.currentTimeMillis();
                         store.scheduleCheck(c, check);
                     }
@@ -262,6 +307,8 @@ final class PersonalAgentRuntime {
                                 !Arrays.asList(
                                                 "USER",
                                                 "FEISHU",
+                                                "AGENT",
+                                                "AGENT_REPLY",
                                                 "PROJECT",
                                                 "CHECK",
                                                 "RECOVERY",
@@ -320,11 +367,23 @@ final class PersonalAgentRuntime {
                             ? m.text
                             : "[" + m.source + "]\n" + m.text;
             String runId = PersonalAgentService.messageRunId(m);
+            AgentMessage inputMessage = AgentMessage.user(m.sessionId, input);
+            inputMessage.setImages(m.images);
+            Map<String, Object> origin = new LinkedHashMap<>();
+            boolean peerMessage = "AGENT".equals(m.source) || "AGENT_REPLY".equals(m.source);
+            origin.put("kind", peerMessage ? "agent_message" : "personal_message");
+            origin.put("source", m.source);
+            if (peerMessage) {
+                origin.put("senderAgentId", m.senderId);
+                origin.put("senderName", require(m.senderId).name);
+            }
+            inputMessage.setMetadataJson(json.writeValueAsString(origin));
             AgentRunResult result =
                     harness.run(
                             m.sessionId,
-                            input,
+                            Collections.singletonList(inputMessage),
                             AgentRunOptions.builder()
+                                    .modelId(m.modelId)
                                     .runId(runId)
                                     .runtimeContext(runtimeContext(m))
                                     .attribute("personalAgentId", m.agentId)
@@ -335,7 +394,8 @@ final class PersonalAgentRuntime {
                                                     PersonalAgentReply.decode(
                                                             raw,
                                                             !"USER".equals(m.source)
-                                                                    && !"FEISHU".equals(m.source)))
+                                                                    && !"FEISHU".equals(m.source)
+                                                                    && !"AGENT".equals(m.source)))
                                     .eventConsumer(
                                             event -> {
                                                 if (io.github.differentialmanifold.jagentharness

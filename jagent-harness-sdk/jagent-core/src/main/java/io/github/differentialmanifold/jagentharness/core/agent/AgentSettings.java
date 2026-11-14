@@ -18,6 +18,24 @@ public class AgentSettings {
     private long modelRetryInitialDelayMillis = 500L;
     private long modelRetryMaxDelayMillis = 3000L;
 
+    public AgentSettings copy() {
+        AgentSettings s = new AgentSettings();
+        s.provider = provider;
+        s.model = model;
+        s.temperature = temperature;
+        s.configRoot = configRoot;
+        s.compactionEnabled = compactionEnabled;
+        s.contextWindowTokens = contextWindowTokens;
+        s.compactionThresholdRatio = compactionThresholdRatio;
+        s.compactionRecentMessages = compactionRecentMessages;
+        s.compactionTargetTokens = compactionTargetTokens;
+        s.modelRetryEnabled = modelRetryEnabled;
+        s.modelRetryMaxAttempts = modelRetryMaxAttempts;
+        s.modelRetryInitialDelayMillis = modelRetryInitialDelayMillis;
+        s.modelRetryMaxDelayMillis = modelRetryMaxDelayMillis;
+        return s;
+    }
+
     public String getProvider() {
         return provider;
     }

@@ -7,6 +7,8 @@ import io.github.differentialmanifold.jagentharness.core.conversation.*;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.fs.*;
 import io.github.differentialmanifold.jagentharness.core.message.*;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
+import io.github.differentialmanifold.jagentharness.core.model.ModelProfile;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.*;
 import io.github.differentialmanifold.jagentharness.core.provider.*;
 import io.github.differentialmanifold.jagentharness.core.session.SessionStore;
@@ -20,6 +22,13 @@ public class PersonalAgentLearning {
     private final SessionStore history;
     private final CompactionStore compactions;
     private final KnowledgeFileStore files;
+    private ModelCatalog models;
+
+    public PersonalAgentLearning withModels(ModelCatalog catalog) {
+        models = catalog;
+        return this;
+    }
+
     private final ModelProviderRegistry providers;
     private final AgentSettings settings;
     private final ObjectMapper json;
@@ -153,7 +162,8 @@ public class PersonalAgentLearning {
             } else row.put("omitted", true);
         }
         ModelRequest request = new ModelRequest();
-        request.setModel(settings.getModel());
+        ModelProfile selected = models == null ? null : models.require(null);
+        request.setModel(selected == null ? settings.getModel() : selected.model);
         request.setTools(Collections.emptyList());
         request.setSystemPrompt(
                 "You review evidence for a personal assistant's durable learning. "
@@ -170,7 +180,10 @@ public class PersonalAgentLearning {
                         + "Reuse already saved knowledge; do not restate it. Limit the answer to 8000 characters.");
         request.setMessages(
                 Collections.singletonList(AgentMessage.user(inbox.sessionId, input.toString())));
-        ModelProvider provider = providers.get(settings.getProvider());
+        ModelProvider provider =
+                selected == null
+                        ? providers.get(settings.getProvider())
+                        : models.provider(selected);
         if (provider == null) throw new IllegalStateException("Model provider is unavailable");
         ModelResponse response = provider.chat(request, (ModelDeltaConsumer) null, stop);
         stop.throwIfAborted();

@@ -264,7 +264,8 @@ class ConversationProtocolTest {
             if ("user".equals(message.getRole())) users.add(message);
         assertEquals(3, users.size());
         assertEquals("Use the existing implementation", users.get(1).getContent());
-        assertEquals("https://example.com/reference.png", users.get(2).getImages().get(0).getUrl());
+        assertTrue(users.get(2).getContent().contains("Attachments retained"));
+        assertTrue(users.get(2).getImages().isEmpty());
         assertEquals(
                 1,
                 events.stream()

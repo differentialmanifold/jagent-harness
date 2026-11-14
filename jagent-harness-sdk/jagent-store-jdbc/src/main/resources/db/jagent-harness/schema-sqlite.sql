@@ -256,6 +256,11 @@ create table if not exists runner_projects (
 );
 
 -- Personal assistants are independent of ordinary projects.
+create table if not exists personal_settings (
+    application_id varchar(128) primary key,
+    primary_agent_id varchar(64) not null
+);
+
 create table if not exists personal_agents (
     application_id varchar(128) not null,
     agent_id varchar(128) not null,
@@ -312,4 +317,18 @@ create table if not exists skill_activations (
     activation_id varchar(64) not null,
     activation_json text not null,
     primary key (application_id, session_id, scope_key, activation_id)
+);
+
+-- Model configuration and per-run selections are private server data.
+create table if not exists model_settings (
+    application_id varchar(128) primary key,
+    revision bigint not null,
+    payload_json text not null
+);
+create table if not exists run_models (
+    application_id varchar(128) not null,
+    session_id varchar(64) not null,
+    run_id varchar(64) not null,
+    payload_json text not null,
+    primary key (application_id, session_id, run_id)
 );

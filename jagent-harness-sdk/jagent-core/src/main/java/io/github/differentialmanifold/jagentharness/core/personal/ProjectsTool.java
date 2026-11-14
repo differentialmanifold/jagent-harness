@@ -17,12 +17,12 @@ public final class ProjectsTool extends PersonalTool {
                 json);
         action(
                 "list",
-                "List owned project sessions; group by projectId.",
+                "List owned projects with their workspace and sessions. Match the requested directory and goal before submitting work.",
                 fields(),
                 new String[] {"projects_list"});
         action(
-                "create",
-                "Create a project and first session, or add a session to an owned project. Runner is automatic; omit workspacePath for a new private directory.",
+                "open",
+                "Open the project for the requested directory or owned projectId; reuse it when found, otherwise create one. A different independent directory needs its own project. Omit both for a new private project. Runner is automatic. Set newSession for an independent conversation in an existing project.",
                 fields(
                         "projectName",
                         text("New project name."),
@@ -31,7 +31,12 @@ public final class ProjectsTool extends PersonalTool {
                         "projectId",
                         text("Existing owned project; omit for a new project."),
                         "workspacePath",
-                        text("Optional explicit directory on your Runner.")),
+                        text(
+                                "Explicit target directory on your Runner; must match projectId when both are supplied."),
+                        "newSession",
+                        io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas
+                                .booleanProperty(
+                                        json, "Create another session instead of reusing one.")),
                 new String[] {"projects_create"});
         action(
                 "inspect",
@@ -53,6 +58,9 @@ public final class ProjectsTool extends PersonalTool {
                         text("Goal, constraints, methods and completion checks."),
                         "taskId",
                         text("Optional owned task ID; acceptance criteria must be set."),
+                        "modelId",
+                        text(
+                                "Exact configured model ID or name explicitly requested by the user for this run. Otherwise omit for the system default. Do not choose a model autonomously."),
                         "readOnly",
                         io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas
                                 .booleanProperty(
@@ -92,12 +100,14 @@ public final class ProjectsTool extends PersonalTool {
         PersonalAgentService s = services.get();
         switch (action) {
             case "list":
-                return s.projectSessions(id);
-            case "create":
+                return s.projectCatalog(id);
+            case "open":
                 ObjectNode body = ((ObjectNode) args).deepCopy();
                 body.remove("action");
-                return s.createProjectSession(
-                        id, json.treeToValue(body, CreateSessionRequest.class));
+                boolean newSession = body.path("newSession").asBoolean(false);
+                body.remove("newSession");
+                return s.openProjectSession(
+                        id, json.treeToValue(body, CreateSessionRequest.class), newSession);
             case "inspect":
                 return s.inspectProject(
                         id, required(args, "sessionId"), args.path("beforeMessageId").asText(null));
@@ -117,7 +127,8 @@ public final class ProjectsTool extends PersonalTool {
                         required(args, "text"),
                         context.getAttribute("personalReplyTo", ReplyTarget.class),
                         args.path("taskId").asText(null),
-                        args.path("readOnly").asBoolean(false));
+                        args.path("readOnly").asBoolean(false),
+                        args.path("modelId").asText(null));
         }
     }
 }

@@ -120,7 +120,7 @@ export async function launch(component) {
     for (const port of ports) await available(port)
     if (startServer) mkdirSync(resolve(root, 'data'), { recursive: true })
     if (!options.includes('--skip-build') && (startServer || startClient)) {
-      const modules = [...(startServer ? ['examples/server-demo'] : []), ...(startClient ? ['examples/coding-runner'] : [])]
+      const modules = [...(startServer ? ['examples/server-demo'] : []), ...((startServer || startClient) ? ['examples/coding-runner'] : [])]
       await command('mvn', ['-q', '-pl', modules.join(','), '-am', '-DskipTests', 'package'])
     }
     if (startFrontend && !existsSync(resolve(root, 'console/node_modules'))) await command('npm', ['ci'], resolve(root, 'console'))
@@ -128,7 +128,8 @@ export async function launch(component) {
       console.log(`Starting Java Agent server at ${localServerUrl}`)
       service('Agent server', 'java', ['-jar', `examples/server-demo/target/server-demo-${serverVersion}.jar`], {
         ...env, AGENT_SERVER_PORT: String(serverPort), JAGENT_DATASOURCE_URL: env.JAGENT_DATASOURCE_URL || 'jdbc:sqlite:data/agent-server.db',
-        JAGENT_CONFIG_ROOT: env.JAGENT_CONFIG_ROOT || resolve(root, 'data/server-config')
+        JAGENT_CONFIG_ROOT: env.JAGENT_CONFIG_ROOT || resolve(root, 'data/server-config'),
+        JAGENT_RUNNER_DISTRIBUTION_DIR: env.JAGENT_RUNNER_DISTRIBUTION_DIR || resolve(root, 'examples/coding-runner/target/runners')
       })
       await ready(localServerUrl)
     }

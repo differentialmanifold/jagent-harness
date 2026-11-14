@@ -15,6 +15,9 @@ import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.DefaultAgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
+import io.github.differentialmanifold.jagentharness.core.model.ModelCatalogStore;
+import io.github.differentialmanifold.jagentharness.core.model.ModelProfile;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelDeltaConsumer;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
@@ -38,6 +41,104 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class AgentRunnerDynamicToolTest {
+
+    @Test
+    void callerSelectedModelRemainsFixedAcrossToolCalls() {
+        ObjectMapper json = new ObjectMapper();
+        FakeSessionStore store = new FakeSessionStore();
+        ModelProfile text = new ModelProfile();
+        text.id = "text";
+        text.name = "Text";
+        text.model = "text";
+        ModelProfile visual = text.copy();
+        visual.id = "visual";
+        visual.name = "Visual";
+        visual.model = "visual";
+        visual.inputTypes.add("image");
+        AtomicInteger count = new AtomicInteger();
+        ModelProvider provider =
+                new ModelProvider() {
+                    public String getName() {
+                        return "test";
+                    }
+
+                    public ModelResponse chat(ModelRequest request) {
+                        ModelResponse response = new ModelResponse();
+                        if (count.getAndIncrement() == 0) {
+                            assertEquals("visual", request.getModel());
+                            assertEquals(1, request.getMessages().get(0).getImages().size());
+                            response.setToolCalls(
+                                    Collections.singletonList(
+                                            new ToolCall("read-evidence", "evidence", "{}")));
+                        } else {
+                            assertEquals("visual", request.getModel());
+                            assertEquals(1, request.getMessages().get(0).getImages().size());
+                            assertEquals("tool", request.getMessages().get(2).getRole());
+                            response.setContent("Verified");
+                        }
+                        return response;
+                    }
+                };
+        ModelCatalog catalog =
+                new ModelCatalog(
+                        new io.github.differentialmanifold.jagentharness.core.model
+                                .InMemoryModelCatalogStore(),
+                        text,
+                        p -> provider);
+        ModelCatalogStore.Configuration config = catalog.configuration();
+        config.models.add(visual);
+        catalog.save(config);
+        ToolRegistry tools =
+                new ToolRegistry(
+                        Collections.singletonList(
+                                new ToolDefinition() {
+                                    public String getName() {
+                                        return "evidence";
+                                    }
+
+                                    public String getDescription() {
+                                        return "Read evidence";
+                                    }
+
+                                    public JsonNode getParametersSchema() {
+                                        return json.createObjectNode().put("type", "object");
+                                    }
+
+                                    public ToolExecutionResult execute(
+                                            ToolContext context, JsonNode args) {
+                                        ModelCatalogStore.Configuration changed =
+                                                catalog.publicConfiguration();
+                                        changed.models.get(1).model = "updated-between-requests";
+                                        catalog.save(changed);
+                                        return ToolExecutionResult.success("Evidence");
+                                    }
+                                }));
+        AgentRunner runner =
+                new AgentRunner(
+                                settings(),
+                                store,
+                                new DefaultAgentEventPublisher(json),
+                                context -> "System",
+                                tools,
+                                new ModelProviderRegistry(),
+                                new DefaultToolContextFactory(),
+                                request ->
+                                        new ConversationContext(
+                                                request.getSystemPrompt(), request.getMessages()),
+                                json)
+                        .withModelCatalog(catalog);
+        AgentRunResult result =
+                runner.run(
+                        "s1",
+                        "Inspect",
+                        Collections.singletonList(
+                                new MessageImage(
+                                        "image.png", "image/png", "https://example.com/image.png")),
+                        AgentRunOptions.builder().runId("run-selected").modelId("visual").build());
+        assertEquals("Verified", result.getAnswer());
+        assertEquals(2, count.get());
+        assertEquals(1, store.messages.get(0).getImages().size());
+    }
 
     @Test
     void executesToolProvidedForCurrentAgentContext() {

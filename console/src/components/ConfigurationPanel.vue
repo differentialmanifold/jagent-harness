@@ -12,7 +12,7 @@
       <header class="configuration-sidebar-header">
         <div>
           <h2>{{ mode === 'global' ? 'System Settings' : 'Configuration' }}</h2>
-          <p>{{ mode === 'global' ? 'Defaults by workspace type' : 'Project settings and runtime' }}</p>
+          <p>{{ mode === 'global' ? 'Models, Runners and shared defaults' : 'Project settings and runtime' }}</p>
         </div>
         <el-button class="configuration-nav-close" text :icon="Close" circle title="Close" @click="mobileNavOpen = false" />
       </header>
@@ -43,6 +43,11 @@
       </div>
 
       <nav class="configuration-navigation" aria-label="Configuration resources">
+        <section v-if="mode === 'global'" class="configuration-nav-group">
+          <h3>System</h3>
+          <button :class="['configuration-nav-item', { active: activeItem === 'system-models' }]" @click="navigate('system-models')">Models</button>
+          <button :class="['configuration-nav-item', { active: activeItem === 'system-runners' }]" @click="navigate('system-runners')">Runners</button>
+        </section>
         <section v-if="mode === 'project'" class="configuration-nav-group">
           <h3>Project</h3>
           <button :class="['configuration-nav-item', { active: activeItem === 'general' }]" @click="navigate('general')">General</button>
@@ -109,7 +114,9 @@
       </header>
 
       <div class="configuration-resource">
-        <section v-if="activeItem === 'general'" class="project-general">
+        <ModelsPanel v-if="activeItem === 'system-models'" ref="activePanelRef" @changed="$emit('changed')" />
+        <RunnersPanel v-else-if="activeItem === 'system-runners'" />
+        <section v-else-if="activeItem === 'general'" class="project-general">
           <template v-if="selectedProject">
             <h3>{{ selectedProject.name }}</h3>
             <p><strong>Runner:</strong> {{ selectedProject.sessions?.[0]?.runnerId || 'Server tools only' }}</p>
@@ -171,6 +178,8 @@ import BuiltInToolsPanel from './BuiltInToolsPanel.vue'
 import RuntimeContextPanel from './RuntimeContextPanel.vue'
 import KnowledgePanel from './KnowledgePanel.vue'
 import McpPanel from './McpPanel.vue'
+import ModelsPanel from './ModelsPanel.vue'
+import RunnersPanel from './RunnersPanel.vue'
 
 const props = defineProps({
   mode: { type: String, default: 'project' },
@@ -182,7 +191,7 @@ const props = defineProps({
 
 defineEmits(['changed', 'rename-project'])
 
-const activeItem = ref(props.mode === 'global' ? 'global-agent-rules' : 'general')
+const activeItem = ref(props.mode === 'global' ? 'system-models' : 'general')
 const globalScopes = [{ scope: 'global', label: 'Project defaults' }, { scope: 'agent-global', label: 'Agent defaults' }]
 const selectedProjectKey = ref('')
 const activePanelRef = ref(null)
@@ -213,11 +222,14 @@ const activeResource = computed(() => {
 const activeSessionId = computed(() => activeScope.value === 'project' ? selectedSessionId.value : '')
 const contentKey = computed(() => `${activeItem.value}:${activeSessionId.value}`)
 const scopeTitle = computed(() => {
+  if (activeItem.value.startsWith('system-')) return 'System Settings'
   if (activeItem.value === 'runtime-final') return 'Runtime'
   if (activeItem.value === 'general') return 'Current project'
   return activeScope.value === 'project' ? 'Current project' : activeScope.value === 'agent-global' ? 'Agent defaults' : 'Project defaults'
 })
 const resourceTitle = computed(() => ({
+  'system-models': 'Models',
+  'system-runners': 'Runners',
   general: 'General',
   'final-prompt': 'Runtime Context',
   'agent-rules': 'Instructions',
@@ -226,6 +238,8 @@ const resourceTitle = computed(() => ({
   mcp: 'MCP Servers'
 })[activeResource.value] || 'Configuration')
 const resourceSubtitle = computed(() => {
+  if (activeItem.value === 'system-models') return 'Default model, available capabilities and connection settings.'
+  if (activeItem.value === 'system-runners') return 'Execution environments, tools and availability.'
   const projectName = selectedProject.value?.name || 'the selected project'
   if (activeItem.value === 'general') return 'Project identity and execution environment.'
   if (activeResource.value === 'final-prompt') return `Model, available tools, Skills and prompt for a chat in ${projectName}.`

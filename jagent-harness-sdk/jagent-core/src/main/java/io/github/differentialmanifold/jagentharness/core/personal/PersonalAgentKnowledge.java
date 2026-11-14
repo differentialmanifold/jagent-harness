@@ -18,16 +18,19 @@ public class PersonalAgentKnowledge {
     private final KnowledgeFileStore files;
     private final MessageRepository messages;
     private final SessionRepository sessions;
+    private final PersonalAgentSkills bundledSkills;
 
     public PersonalAgentKnowledge(
             PersonalAgentStore store,
             KnowledgeFileStore files,
             MessageRepository messages,
-            SessionRepository sessions) {
+            SessionRepository sessions,
+            PersonalAgentSkills bundledSkills) {
         this.store = store;
         this.files = files;
         this.messages = messages;
         this.sessions = sessions;
+        this.bundledSkills = bundledSkills;
     }
 
     public Profile require(String agent) {
@@ -315,6 +318,68 @@ public class PersonalAgentKnowledge {
         out.put("content", content(agent, path));
         out.put("revision", p.revision);
         return out;
+    }
+
+    /** Effective catalog for configuration, including inherited and bundled files. */
+    public List<Map<String, Object>> availableSkills(String agent) {
+        require(agent);
+        Map<String, Map<String, Object>> catalog = new TreeMap<>();
+        addSkillFiles(catalog, bundledSkills.bundledFiles(), "builtin", true);
+        addSkillFiles(
+                catalog,
+                files.listFiles(KnowledgeScope.agentGlobal(), "skills"),
+                "agent-global",
+                true);
+        addSkillFiles(
+                catalog, files.listFiles(KnowledgeScope.agent(agent), "skills"), "agent", false);
+        return new ArrayList<>(catalog.values());
+    }
+
+    private void addSkillFiles(
+            Map<String, Map<String, Object>> catalog,
+            List<KnowledgeFile> resources,
+            String source,
+            boolean readOnly) {
+        for (KnowledgeFile file : resources) {
+            catalog.put(file.getPath(), skillInfo(file, source, readOnly));
+        }
+    }
+
+    private Map<String, Object> skillInfo(KnowledgeFile file, String source, boolean readOnly) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("path", file.getPath());
+        item.put("source", source);
+        item.put("readOnly", readOnly);
+        item.put("updatedAt", file.getUpdatedAt() == null ? null : file.getUpdatedAt().toString());
+        return item;
+    }
+
+    public Map<String, Object> availableSkill(String agent, String path) {
+        Profile profile = require(agent);
+        String normalized = KnowledgeFilePaths.normalize(path);
+        if (!normalized.startsWith("skills/"))
+            throw new IllegalArgumentException("Use a skill path");
+        String source = "agent";
+        KnowledgeFile file = files.readFile(KnowledgeScope.agent(agent), normalized);
+        if (file == null) {
+            source = "agent-global";
+            file = files.readFile(KnowledgeScope.agentGlobal(), normalized);
+        }
+        if (file == null) {
+            source = "builtin";
+            file =
+                    bundledSkills.bundledFiles().stream()
+                            .filter(f -> normalized.equals(f.getPath()))
+                            .findFirst()
+                            .orElse(null);
+        }
+        if (file == null)
+            throw new PersonalAgentException(
+                    PersonalAgentException.Kind.NOT_FOUND, "SKILL_NOT_FOUND", "Skill not found");
+        Map<String, Object> item = skillInfo(file, source, !"agent".equals(source));
+        item.put("content", file.getContent());
+        item.put("revision", profile.revision);
+        return item;
     }
 
     private SessionRecord requireAccessible(String agent, String session) {

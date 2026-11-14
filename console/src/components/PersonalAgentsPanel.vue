@@ -5,15 +5,15 @@
         <h2>Agents</h2>
         <el-button size="small" @click="createOpen = true">New Agent</el-button>
       </div>
-      <label class="personal-agent-select"
-        >Agent
-        <select :value="selectedId" @change="chooseAgent($event.target.value)">
-          <option value="" disabled>Choose an Agent</option>
-          <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-            {{ agent.name }} · {{ agent.enabled ? "Active" : "Paused" }}
-          </option>
-        </select>
-      </label>
+      <div class="personal-agent-select">
+        <el-select :model-value="selectedId" aria-label="Agent" placeholder="Choose an Agent" :disabled="busy" filterable @change="chooseAgent">
+          <el-option v-for="agent in orderedAgents" :key="agent.id" :value="agent.id" :label="agent.name">
+            <span>{{ agent.name }}</span><span class="agent-option-state">{{ agent.id === defaults.primaryAgentId ? 'Primary · ' : '' }}{{ agent.enabled ? 'Active' : 'Paused' }}</span>
+          </el-option>
+        </el-select>
+      </div>
+      <el-button v-if="defaults.primaryAgentId && selectedId !== defaults.primaryAgentId"
+        class="primary-agent-link" text @click="chooseAgent(defaults.primaryAgentId)">Back to primary Agent</el-button>
       <div v-if="selected" class="personal-conversations">
         <el-button :disabled="busy" @click="newChat">New chat</el-button>
         <div
@@ -61,7 +61,7 @@
       <template v-else>
         <div class="personal-heading">
           <div>
-            <h2>{{ selected.name }}</h2>
+            <h2>{{ selected.name }} <el-tag v-if="selectedId === defaults.primaryAgentId" size="small" effect="plain">Primary Agent</el-tag></h2>
           </div>
           <el-button :loading="busy" @click="togglePause">{{
             selected.enabled ? "Pause Agent" : "Resume Agent"
@@ -76,6 +76,12 @@
             <div class="personal-chat-layout">
               <ChatPanel
                 v-model:draft="draft"
+                v-model:model-id="modelId"
+                :draft-images="draftImages"
+                :adding-images="addingImages"
+                :image-error="imageError"
+                @add-images="addImages"
+                @remove-image="id => draftImages = draftImages.filter(image => image.imageId !== id)"
                 :current-session="activeConversation"
                 :messages="displayMessages"
                 :status-text="chatStatus"
@@ -84,7 +90,7 @@
                 :stop-ready="false"
                 :allow-stop="false"
                 :allow-queue="true"
-                :allow-images="false"
+                :allow-images="true"
                 :show-model-status="false"
                 :composer-rows="2"
                 :disabled="!selected.enabled"
@@ -142,6 +148,7 @@
               :active="tab === 'board'"
               @open-project="openProject"
               @open-chat="openTaskConversation"
+              @open-delegation="openDelegation"
             />
           </el-tab-pane>
           <el-tab-pane label="Knowledge" name="learning">
@@ -194,8 +201,14 @@
               Configuration for {{ selected.name }}. Changes affect subsequent
               model calls; existing projects retain their own settings.
             </p>
-            <el-tabs v-model="configTab">
+            <el-tabs v-model="configTab" :before-leave="beforeConfigTabLeave">
               <el-tab-pane label="General & instructions" name="general">
+                <div class="primary-agent-setting">
+                  <div><strong>{{ selectedId === defaults.primaryAgentId ? 'Your primary Agent' : 'Primary Agent' }}</strong>
+                    <p class="personal-muted">The default chat entry point. Its bound Runner is the default for Agents you create. Existing Agents and projects keep their bindings.</p></div>
+                  <el-button v-if="selectedId !== defaults.primaryAgentId" :disabled="!selected.runnerId" :loading="busy" @click="makePrimary">Set as primary</el-button>
+                  <el-tag v-else effect="plain">Selected</el-tag>
+                </div>
                 <el-form
                   v-if="profile"
                   label-position="top"
@@ -205,6 +218,7 @@
                   <el-form-item label="Name"
                     ><el-input v-model="profile.name" maxlength="128"
                   /></el-form-item>
+                  <el-form-item label="Purpose"><el-input v-model="profile.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" maxlength="4000" placeholder="What other Agents should ask this Agent to do" /></el-form-item>
                   <el-form-item label="Instructions"
                     ><el-input
                       v-model="profile.instructions"
@@ -213,9 +227,9 @@
                       placeholder="Role, responsibilities, preferences, and boundaries"
                       maxlength="16000"
                   /></el-form-item>
-                  <el-form-item label="Default project Runner">
-                    <select v-model="profile.runnerId">
-                      <option :value="null">Server tools only</option>
+                  <el-form-item label="Bound Runner">
+                    <select v-model="profile.runnerId" :disabled="!!selected.runnerId">
+
                       <option
                         v-for="runner in runners"
                         :key="runner.runnerId"
@@ -277,17 +291,15 @@
                 </div>
               </el-tab-pane>
               <el-tab-pane label="Skills" name="skills">
-                <p>
-                  Manage this Agent's reusable methods in Knowledge. Skills from
-                  Agent defaults also remain available for discovery.
-                </p>
-                <el-button
-                  @click="
-                    tab = 'learning';
-                    knowledgeTab = 'skills';
-                  "
-                  >Open Skills & learning</el-button
-                >
+                <AgentLearningPanel
+                  v-if="tab === 'settings' && configTab === 'skills'"
+                  ref="configurationSkillsRef"
+                  :key="selectedId"
+                  :agent-id="selectedId"
+                  :revision="selected.revision"
+                  skills-only
+                  @saved="knowledgeSaved"
+                />
               </el-tab-pane>
               <el-tab-pane label="Runtime Context" name="runtime">
                 <p class="personal-muted">
@@ -462,7 +474,7 @@
             v-model="newProfile.name"
             maxlength="128"
             placeholder="Developer" /></el-form-item
-        ><el-form-item label="Default project Runner">
+        ><el-form-item label="Purpose (optional)"><el-input v-model="newProfile.description" type="textarea" :rows="2" maxlength="4000" placeholder="What this Agent helps with; visible to other Agents" /></el-form-item><el-form-item label="Bound Runner">
           <el-select
             v-model="newProfile.runnerId"
             placeholder="Choose a Runner"
@@ -475,13 +487,13 @@
               :label="
                 runner.name + (runner.online ? ' · Online' : ' · Offline')
               "
-              :disabled="!runner.online"
+              :title="runner.description || runner.platform"
             />
           </el-select>
           <p class="personal-muted">
             Choose where this Agent's projects execute tools. Project
-            directories are created automatically. Start the Coding Runner if
-            none is listed.
+            directories are created automatically. Your primary Runner is selected by default.
+            The first Agent with a Runner becomes your primary Agent.
           </p> </el-form-item
         ><el-form-item label="Instructions (optional)"
           ><el-input
@@ -521,9 +533,9 @@ import {
   ElCheckbox,
 } from "element-plus";
 import QRCode from "qrcode";
-import { pendingPersonalMessages } from "../utils/personalMessages";
-import { isRuntimeContextMessage } from "../utils/runtimeContext";
+import { personalChatMessages } from "../utils/personalMessages";
 import ChatPanel from "./ChatPanel.vue";
+import { validateImageFiles, readImageAttachment, toImageRequest } from "../utils/images.js";
 import ChatActions from "./ChatActions.vue";
 import RenameDialog from "./RenameDialog.vue";
 import RuntimeContextPanel from "./RuntimeContextPanel.vue";
@@ -534,11 +546,13 @@ import { request } from "../api/http";
 
 const emit = defineEmits(["open-project"]);
 const learningPanelRef = ref(null);
+const configurationSkillsRef = ref(null);
 async function beforeTabLeave(next, previous) {
-  return (
-    previous !== "learning" ||
-    (await learningPanelRef.value?.beforeLeave?.()) !== false
-  );
+  const panel = previous === "learning" ? learningPanelRef : configurationSkillsRef;
+  return (await panel.value?.beforeLeave?.()) !== false;
+}
+async function beforeConfigTabLeave(next, previous) {
+  return previous !== "skills" || (await configurationSkillsRef.value?.beforeLeave?.()) !== false;
 }
 const configTab = ref("general"),
   knowledgeTab = ref("memory"),
@@ -612,6 +626,7 @@ async function chooseAgent(id) {
 }
 async function beforeLeave() {
   if ((await learningPanelRef.value?.beforeLeave?.()) === false) return false;
+  if ((await configurationSkillsRef.value?.beforeLeave?.()) === false) return false;
   if (!profile.value || JSON.stringify(profile.value) === lastProfile)
     return true;
   try {
@@ -660,41 +675,11 @@ const chatStatus = computed(() =>
       ? "Working on your request…"
       : "Your personal Agent · projects, tools and memory",
 );
-const displayMessages = computed(() => {
-  if (!activeConversation.value) return [];
-  const entries = timeline.value.filter(message => !isRuntimeContextMessage(message)).map((message) => {
-    if (
-      message.role === "user" &&
-      /^\[(PROJECT|CHECK|RECOVERY|CONTINUE)\]/.test(message.content || "")
-    ) {
-      return {
-        ...message,
-        role: "status",
-        content: message.content.startsWith("[PROJECT]")
-          ? "Project result received. Reviewing the evidence…"
-          : message.content.startsWith("[RECOVERY]") ? "Checking interrupted work before continuing…"
-          : message.content.startsWith("[CONTINUE]") ? "Reviewing the next task…" : "Scheduled follow-up",
-      };
-    }
-    return message;
-  });
-  entries.push(...pendingPersonalMessages(messages.value, timeline.value));
-  for (const message of messages.value) {
-    if (message.source === "NOTICE" && message.answer)
-      entries.push({
-        messageId: message.id,
-        role: "assistant",
-        content: message.answer,
-      });
-    if (message.error)
-      entries.push({
-        messageId: message.id + ":error",
-        role: "status",
-        content: message.error,
-      });
-  }
-  return entries;
-});
+const displayMessages = computed(() => activeConversation.value
+  ? personalChatMessages(timeline.value, messages.value, agents.value)
+  : []);
+const defaults = ref({ primaryAgentId: null, primaryRunnerId: null });
+const orderedAgents = computed(() => [...agents.value].sort((a, b) => Number(b.id === defaults.value.primaryAgentId) - Number(a.id === defaults.value.primaryAgentId)));
 const agents = ref([]),
   selectedId = ref(""),
   conversations = ref([]),
@@ -716,6 +701,7 @@ const loading = ref(true),
   tab = ref("chat");
 const profile = ref(null),
   draft = ref(""),
+  modelId = ref(""), draftImages = ref([]), addingImages = ref(false), imageError = ref(""),
   messages = ref([]),
   cards = ref([]),
   projectSessions = ref([]),
@@ -738,11 +724,12 @@ function openProject(id) {
   emit("open-project", id, selectedId.value);
 }
 const createOpen = ref(false),
-  newProfile = ref({ name: "", instructions: "", runnerId: "" });
+  newProfile = ref({ name: "", description: "", instructions: "", runnerId: "" });
 watch(createOpen, (open) => {
-  if (open && !newProfile.value.runnerId)
-    newProfile.value.runnerId =
-      runners.value.find((r) => r.online)?.runnerId || "";
+  if (open) newProfile.value = {
+    name: "", description: "", instructions: "",
+    runnerId: defaults.value.primaryRunnerId || runners.value.find((r) => r.online)?.runnerId || "",
+  };
 });
 const feishu = ref({ available: false }),
   credentials = ref({ appId: "", appSecret: "", brand: "feishu" }),
@@ -772,7 +759,8 @@ async function refresh() {
   if (polling || !active) return;
   polling = true;
   try {
-    const profiles = await request(base + "/agents");
+    const [profiles, preferences] = await Promise.all([request(base + "/agents"), request(base + "/defaults")]);
+    defaults.value = preferences;
     agents.value = profiles;
     if (selectedId.value && !profiles.some((p) => p.id === selectedId.value)) {
       stopObserving();
@@ -783,7 +771,7 @@ async function refresh() {
       profile.value = null;
     }
     runners.value = await request("/api/v1/runners").catch(() => []);
-    if (!selectedId.value && profiles.length) await selectAgent(profiles[0]);
+    if (!selectedId.value && profiles.length) await selectAgent(profiles.find(p => p.id === preferences.primaryAgentId) || profiles[0]);
     else if (
       selected.value &&
       profile.value &&
@@ -820,6 +808,12 @@ function resetProfile() {
   profile.value = clone(selected.value);
   lastProfile = JSON.stringify(profile.value);
 }
+async function openDelegation(agentId, conversationId) {
+  const agent = agents.value.find(a => a.id === agentId);
+  if (!agent) { ElMessage.error('Delegated Agent is unavailable'); return }
+  await selectAgent(agent);
+  if (selectedId.value === agentId) await openAgentConversation(conversationId);
+}
 async function selectAgent(agent, force = false) {
   if (busy.value && !force) return;
   if (!force && !(await beforeLeave())) return;
@@ -829,7 +823,7 @@ async function selectAgent(agent, force = false) {
   cards.value = [];
   projectSessions.value = [];
   messages.value = [];
-  draft.value = "";
+  draft.value = ""; draftImages.value = []; modelId.value = ""; imageError.value = "";
   feishu.value = { available: false };
   resetProfile();
   const path = base + `/agents/${agent.id}`;
@@ -859,14 +853,22 @@ async function loadConversation() {
   if (active && activeConversation.value)
     observeSession(activeConversation.value);
 }
+async function makePrimary() {
+  if (!(await beforeLeave())) return;
+  await action(async () => {
+    defaults.value = await post('/defaults', { primaryAgentId: selectedId.value, expectedPrimaryAgentId: defaults.value.primaryAgentId });
+    ElMessage.success('Primary Agent updated');
+  });
+}
 async function createAgent() {
   await action(async () => {
     const agent = await post("/agents", { ...newProfile.value, enabled: true });
     agents.value.push(agent);
+    defaults.value = await request(base + "/defaults");
     createOpen.value = false;
-    newProfile.value = { name: "", instructions: "", runnerId: "" };
+    newProfile.value = { name: "", description: "", instructions: "", runnerId: "" };
     await selectAgent(agent, true);
-    await createConversation("New conversation");
+    await createConversation("Chat 1");
   });
 }
 async function createConversation(title) {
@@ -881,14 +883,20 @@ async function newChat() {
     createConversation(`Chat ${conversations.value.length + 1}`),
   );
 }
+async function addImages(files) {
+  const result = validateImageFiles(files, draftImages.value); imageError.value = result.errors.join(' '); addingImages.value = true;
+  const current = sessionId.value;
+  try { const images = await Promise.all(result.accepted.map(readImageAttachment)); if (current === sessionId.value) draftImages.value.push(...images) } catch (e) { imageError.value = e.message } finally { addingImages.value = false }
+}
 async function send() {
-  if (!draft.value.trim() || !selected.value?.enabled || busy.value) return;
+  if ((!draft.value.trim() && !draftImages.value.length) || !selected.value?.enabled || busy.value || addingImages.value) return;
   await action(async () => {
     await post(agentPath() + `/conversations/${sessionId.value}`, {
       text: draft.value,
+      modelId: modelId.value || null, images: toImageRequest(draftImages.value),
       messageId: crypto.randomUUID(),
     });
-    draft.value = "";
+    draft.value = ""; draftImages.value = []; imageError.value = "";
     await loadConversation();
   });
 }
@@ -899,7 +907,7 @@ function knowledgeSaved(saved) {
 async function openAgentConversation(id) {
   if (busy.value) return;
   if (sessionId.value !== id) {
-    draft.value = "";
+    draft.value = ""; draftImages.value = []; modelId.value = ""; imageError.value = "";
     stopObserving();
   }
   sessionId.value = id;
@@ -1003,18 +1011,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .personal-agent-select {
-  display: grid;
-  gap: 8px;
   margin-top: 20px;
-  font-size: 13px;
 }
-.personal-agent-select select {
+.personal-agent-select :deep(.el-select) {
   width: 100%;
-  padding: 10px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-bg-color);
-  color: inherit;
+}
+.agent-option-state {
+  margin-left: 16px;
+  float: right;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .personal-tool {
   border-bottom: 1px solid var(--el-border-color);

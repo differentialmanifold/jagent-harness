@@ -14,7 +14,7 @@ Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and prot
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>2.2.0</version>
+  <version>2.2.1</version>
 </dependency>
 ```
 
@@ -87,3 +87,9 @@ With `new LocalWorkspaces()`, projects without an explicit directory use
 `~/.jagent/workspaces/agents/agent_…/project_…` on the Runner. Directories are
 created on first execution. Use `new LocalWorkspaces(path)` to choose another
 root. Workspace-free Runners remain supported.
+
+## Describe an execution environment
+
+Use `.description("Linux training host with a GPU")`, `.capabilities(Arrays.asList("training", "linux"))`, and optionally `.platform("Linux x86_64")` on `AgentRunner.builder(...)`. The SDK otherwise reports the OS name and architecture. Agents use these descriptions to discover a suitable colleague and Runner; actual tools must verify environment details.
+
+A Runner need not expose a filesystem. A mobile application can implement native tools and the same outbound HTTP protocol with `workspaces=false`. The current Java SDK is not a ready-made Android/iOS integration: app lifecycle, background suspension, permissions and tool implementations belong to the host app. Jobs can wait while the terminal is offline. Return screenshot evidence with `ToolExecutionResult.success(content).withImages(...)`; each image map uses `name`, `mediaType`, `url` (a supported image data URL) and optional `detail`. Implementations in other languages use the same JSON fields, without MCP.

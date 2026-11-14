@@ -113,6 +113,6 @@ node scripts/dev.mjs
 - [服务端集成](jagent-harness-sdk/README.md)、[Java 客户端 SDK](sdk/java/README.md)、[Console 部署](console/README.md)、[HTTP/JSON 协议](protocol/README.md)：按需部署与扩展。
 - [开发指南](CONTRIBUTING.md)：源码结构、验证命令，以及新增功能时文档应该放在哪里。
 
-本源码树的目标版本为 `2.2.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
+本源码树的目标版本为 `2.2.1`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
 
 [MIT License](LICENSE)。

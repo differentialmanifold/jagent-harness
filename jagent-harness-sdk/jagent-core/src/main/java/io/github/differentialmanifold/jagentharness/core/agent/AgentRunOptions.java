@@ -17,6 +17,12 @@ public class AgentRunOptions {
         return clientCapabilities;
     }
 
+    private final String modelId;
+
+    public String getModelId() {
+        return modelId;
+    }
+
     private final String runId;
     private final String traceId;
     private final Map<String, Object> attributes;
@@ -29,6 +35,7 @@ public class AgentRunOptions {
     private final String runtimeContext;
 
     private AgentRunOptions(Builder builder) {
+        this.modelId = builder.modelId;
         this.runtimeContext = builder.runtimeContext;
         this.finalAnswerMapper = builder.finalAnswerMapper;
         this.clientCapabilities = builder.clientCapabilities;
@@ -100,6 +107,7 @@ public class AgentRunOptions {
     public Builder toBuilder() {
         return builder()
                 .clientCapabilities(clientCapabilities)
+                .modelId(modelId)
                 .runId(runId)
                 .traceId(traceId)
                 .attributes(attributes)
@@ -117,6 +125,13 @@ public class AgentRunOptions {
 
         public Builder clientCapabilities(ClientCapabilities value) {
             this.clientCapabilities = value == null ? ClientCapabilities.NONE : value;
+            return this;
+        }
+
+        private String modelId;
+
+        public Builder modelId(String id) {
+            modelId = id;
             return this;
         }
 

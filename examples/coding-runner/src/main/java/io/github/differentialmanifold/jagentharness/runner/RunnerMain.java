@@ -26,7 +26,8 @@ public final class RunnerMain {
             if (args[i].startsWith("--")) {
                 String name = args[i].substring(2);
                 if ("help".equals(name)) flags.put(name, "true");
-                else if (Arrays.asList("home", "server", "name", "session").contains(name)
+                else if (Arrays.asList("home", "server", "name", "session", "description")
+                                .contains(name)
                         && i + 1 < args.length) flags.put(name, args[++i]);
                 else throw new IllegalArgumentException("Unknown or incomplete option: --" + name);
             } else words.add(args[i]);
@@ -72,6 +73,14 @@ public final class RunnerMain {
                                                 .getOrDefault(
                                                         "JAGENT_RUNNER_NAME",
                                                         InetAddress.getLocalHost().getHostName())))
+                        .description(
+                                flags.getOrDefault(
+                                        "description",
+                                        System.getenv()
+                                                .getOrDefault(
+                                                        "JAGENT_RUNNER_DESCRIPTION",
+                                                        "Coding environment with local file, search and shell tools. Installed SDKs must be verified before use.")))
+                        .capabilities(Collections.singletonList("coding"))
                         .workspaces(new LocalWorkspaces())
                         .tools(coding.tools())
                         .toolDiagnostics(diagnostics)
@@ -107,7 +116,7 @@ public final class RunnerMain {
         System.out.println(
                 "JAgent Coding Runner (Java 8+)\n"
                         + "Run without arguments to start the runner at http://127.0.0.1:18181.\n"
-                        + "  [serve] [--server <url>] [--name <name>] [--home <path>]\n"
+                        + "  [serve] [--server <url>] [--name <name>] [--description <text>] [--home <path>]\n"
                         + "Optional recovery of an interrupted operation (not a startup step):\n"
                         + "  recover --session <id> [--server <url>] [--home <path>]\n"
                         + "JAGENT_SERVER_URL overrides the default server address. --help prints this help.\n"

@@ -58,6 +58,36 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         return values.isEmpty() ? null : values.get(0);
     }
 
+    public String primaryAgentId() {
+        List<String> ids =
+                db.query(
+                        "select primary_agent_id from personal_settings where application_id=?",
+                        (rs, row) -> rs.getString(1),
+                        application);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    public boolean setPrimaryAgentId(String agentId, String expectedId) {
+        if (agentId == null) throw new IllegalArgumentException("Primary Agent is required");
+        if (expectedId != null)
+            return db.update(
+                            "update personal_settings set primary_agent_id=? where application_id=? and primary_agent_id=?",
+                            agentId,
+                            application,
+                            expectedId)
+                    == 1;
+        try {
+            db.update(
+                    "insert into personal_settings(application_id, primary_agent_id) values(?,?)",
+                    application,
+                    agentId);
+            return true;
+        } catch (DataAccessException error) {
+            if (duplicate(error)) return false;
+            throw error;
+        }
+    }
+
     public List<Profile> profiles() {
         return query(
                 "select body_json from personal_agents where application_id = ? order by agent_id",
