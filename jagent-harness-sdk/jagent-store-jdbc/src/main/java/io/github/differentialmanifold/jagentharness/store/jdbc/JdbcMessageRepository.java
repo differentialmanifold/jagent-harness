@@ -19,13 +19,18 @@ public class JdbcMessageRepository implements MessageRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
 
     public JdbcMessageRepository(
             JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -47,7 +52,7 @@ public class JdbcMessageRepository implements MessageRepository {
                         + "tool_call_id, tool_name, tool_calls_json, "
                         + "stop_reason, metadata_json, created_at) "
                         + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                applicationId,
+                applicationId(),
                 message.getMessageId(),
                 message.getSessionId(),
                 message.getRunId(),
@@ -71,7 +76,7 @@ public class JdbcMessageRepository implements MessageRepository {
                 "select * from messages where application_id = ? and session_id = ? "
                         + "order by id asc, created_at asc",
                 mapper(),
-                applicationId,
+                applicationId(),
                 sessionId);
     }
 
@@ -82,9 +87,9 @@ public class JdbcMessageRepository implements MessageRepository {
                         + "(select max(id) from messages where application_id = ? and session_id = ? "
                         + "and role = 'assistant' and (stop_reason is null or stop_reason not in ('failed', 'aborted'))), 0) order by id asc",
                 mapper(),
-                applicationId,
+                applicationId(),
                 sessionId,
-                applicationId,
+                applicationId(),
                 sessionId);
     }
 
@@ -95,7 +100,7 @@ public class JdbcMessageRepository implements MessageRepository {
                 jdbcTemplate.query(
                         "select * from messages where application_id = ? and session_id = ? order by id desc limit ?",
                         mapper(),
-                        applicationId,
+                        applicationId(),
                         sessionId,
                         limit);
         java.util.Collections.reverse(messages);
@@ -110,13 +115,13 @@ public class JdbcMessageRepository implements MessageRepository {
                                 + "on m.application_id = c.application_id and m.session_id = c.session_id and m.message_id = c.cursor_message_id "
                                 + "where c.application_id = ? and c.session_id = ?",
                         Long.class,
-                        applicationId,
+                        applicationId(),
                         sessionId);
         List<AgentMessage> history =
                 jdbcTemplate.query(
                         "select * from messages where application_id = ? and session_id = ? and id > ? order by id asc",
                         mapper(),
-                        applicationId,
+                        applicationId(),
                         sessionId,
                         cursor);
         List<AgentMessage> receipts = new ArrayList<>();
@@ -142,7 +147,7 @@ public class JdbcMessageRepository implements MessageRepository {
                                 receipts.add(
                                         FailedTurn.receipt(history, sessionId, runId, turnId, ""));
                         },
-                applicationId,
+                applicationId(),
                 sessionId,
                 cursor);
         history.addAll(receipts);
@@ -184,7 +189,7 @@ public class JdbcMessageRepository implements MessageRepository {
         for (int start = 0; start < ids.size(); start += 100) {
             List<String> batch = ids.subList(start, Math.min(start + 100, ids.size()));
             List<Object> args = new ArrayList<>();
-            args.add(applicationId);
+            args.add(applicationId());
             args.addAll(batch);
             List<Long> matchingIds = new ArrayList<>();
             long before = Long.MAX_VALUE;
@@ -217,7 +222,7 @@ public class JdbcMessageRepository implements MessageRepository {
             }
             if (!matchingIds.isEmpty()) {
                 List<Object> matchArgs = new ArrayList<>();
-                matchArgs.add(applicationId);
+                matchArgs.add(applicationId());
                 matchArgs.addAll(matchingIds);
                 matches.addAll(
                         jdbcTemplate.query(

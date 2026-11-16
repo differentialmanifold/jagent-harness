@@ -20,10 +20,10 @@ Build from the repository root, or use a prepared offline Coding Runner package:
 mvn -pl examples/coding-runner -am package
 ```
 
-Copy `examples/coding-runner/target/jagent-coding-runner-2.2.1.jar` to the target machine. Set `JAGENT_CLIENT_TOKEN` to the server's API token, then:
+Copy `examples/coding-runner/target/jagent-coding-runner-2.3.0.jar` to the target machine. Set `JAGENT_USER_TOKEN` to your Harness-issued user token, then:
 
 ```sh
-java -jar jagent-coding-runner-2.2.1.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.3.0.jar --server https://agent.example.com --name linux-dev
 ```
 
 Open the web frontend wherever it is hosted, add a project, and choose **linux-dev**. Leave the workspace empty for a new directory under `~/.jagent/workspaces/user/`, or browse an existing directory on that terminal. One runner can execute work for multiple projects with different directories.
@@ -41,7 +41,7 @@ Prepare the package once. `mvn -pl examples/coding-runner -am package` produces:
 ```text
 target/runners/coding/runner.jar
 target/runners/coding/manifest.json
-target/jagent-coding-runner-2.2.1-offline.zip
+target/jagent-coding-runner-2.3.0-offline.zip
 ```
 
 The manifest records the version, SHA-256 and Java requirement. The ZIP contains the `coding/` directory. Copy that directory to `data/runners/` relative to the Harness process working directory, or set `harness.console.runner-distribution-directory` (`JAGENT_RUNNER_DISTRIBUTION_DIR` in server-demo). Copy both files together. For example, from the repository root:
@@ -92,7 +92,7 @@ Preserve the Agent, Runner identity and project files. To reuse the environment,
 
 ## State, cancellation and recovery
 
-The local state root defaults to `~/.jagent-runner`. Use `--home <directory>` or `JAGENT_RUNNER_HOME` to change it. Each server URL automatically gets an independent `servers/<SHA-256 of server URL>/` subdirectory for its identity, secret, journal, and lock; a trailing slash is ignored. Switching servers needs no home change, and reconnecting to a server reuses its identity. Each server directory supports one running runner. Existing state directly under the root stays with its original server so saved results remain usable. Do not clone identities onto another machine. The API token is read from the environment and not saved.
+The local state root defaults to `~/.jagent-runner`. Use `--home <directory>` or `JAGENT_RUNNER_HOME` to change it. Each server and user automatically gets an independent `servers/<SHA-256 of server URL>/users/<userId>/` subdirectory for its identity, secret, journal, and lock; a trailing slash is ignored. Switching servers needs no home change, and reconnecting to a server reuses its identity. Each server/user directory supports one running runner. Existing state directly under the root stays with its original server so saved results remain usable. Do not clone identities onto another machine. The local default user retains the base server directory. The User Token is read from the environment or a separate credential file.
 
 The server persists registrations, session bindings, and jobs in its database. Long polls wait up to 25 seconds. A receiver remains active during tool execution so cancellation from the frontend can stop local processes. Closing a browser does not cancel execution. User messages and tool results still use the normal conversation API.
 
@@ -101,11 +101,11 @@ Jobs can be delivered again after a disconnect. The runner journals acceptance b
 To recover pending results after interruption, stop `serve`, inspect the conversation and local effects, and explicitly submit the saved results:
 
 ```sh
-java -jar jagent-coding-runner-2.2.1.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.3.0.jar recover --server https://agent.example.com --session ses_example
 ```
 
 Use the same home and executable version. The saved job supplies its project workspace and tool selection. Missing or unfinished results are reported as `UNKNOWN`; the model may issue new calls after receiving them. Restart `serve` afterwards.
 
-Each Runner executes independent conversations concurrently without a fixed conversation limit, including chats in the same project. Each individual conversation remains sequential. Stopping one conversation does not stop the others. Live frontend streaming uses one server instance. Jobs and histories survive a server restart; streams must reconnect. Multi-instance live-event distribution and multi-tenant credentials are not implemented. The shared API token is an operator credential.
+Each Runner executes independent conversations concurrently without a fixed conversation limit, including chats in the same project. Each individual conversation remains sequential. Stopping one conversation does not stop the others. Live frontend streaming uses one server instance. Jobs and histories survive a server restart; streams must reconnect. User credentials isolate each personal space. Multi-instance live-event distribution is not implemented; use sticky routing for live streams. See [personal access](../../docs/guides/access.md).
 
 Use `--description "Linux development machine with Java and Docker"` or `JAGENT_RUNNER_DESCRIPTION` to describe this terminal. Its platform, `coding` capability and registered tools appear in **System Settings → Runners** and Agent discovery. Projects verify installed software before relying on these hints.

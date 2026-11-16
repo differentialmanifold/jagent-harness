@@ -91,6 +91,13 @@ public class McpConfigValidator {
 
     private String resolveEnvironment(String value) {
         Matcher matcher = ENVIRONMENT.matcher(value);
+        if (!io.github.differentialmanifold.jagentharness.core.identity.UserContext.LOCAL.equals(
+                        io.github.differentialmanifold.jagentharness.core.identity.UserContext
+                                .current())
+                && matcher.find())
+            throw new IllegalArgumentException(
+                    "Personal MCP settings cannot read the Harness process environment; supply your own header value");
+        matcher.reset();
         StringBuffer result = new StringBuffer();
         while (matcher.find()) {
             String resolved = System.getenv(matcher.group(1));

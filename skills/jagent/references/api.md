@@ -7,7 +7,7 @@ Use these endpoints to find or create a Personal Agent and delegate work to it. 
 ```javascript
 import { JAgentClient } from '/absolute/path/to/jagent/scripts/jagent.mjs'
 
-const client = new JAgentClient() // JAGENT_SERVER_URL and JAGENT_CLIENT_TOKEN
+const client = new JAgentClient() // JAGENT_SERVER_URL and JAGENT_USER_TOKEN
 const agents = await client.agents()
 // Reuse a suitable enabled Agent, or discover terminals and create one:
 const runners = await client.runners()

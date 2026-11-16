@@ -43,17 +43,18 @@ class PersonalAgentKnowledgeTest {
     @Test
     void configurationBrowsesEffectiveSkillsWithoutCreatingConversationsOrSeedingFiles()
             throws Exception {
-        Profile p = profile();
+        Profile p = store.profile(PersonalAgentService.MAINBOT_ID);
+        int conversationCount = store.conversations(p.id).size();
         String skillPath = "skills/runner-setup/SKILL.md";
         String url = "/api/v1/personal/agents/" + p.id;
         TestHttpClient api = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
         JsonNode catalog = api.management("GET", url + "/skills", null);
-        assertEquals(1, catalog.size());
+        assertEquals(3, catalog.size());
         assertEquals("builtin", catalog.get(0).path("source").asText());
         assertTrue(catalog.get(0).path("readOnly").asBoolean());
         JsonNode builtin = api.management("GET", url + "/skill?path=" + skillPath, null);
         assertTrue(builtin.path("content").asText().contains("runner-setup"));
-        assertTrue(store.conversations(p.id).isEmpty());
+        assertEquals(conversationCount, store.conversations(p.id).size());
         assertEquals(p.revision, store.profile(p.id).revision);
         assertNull(files.readFile(KnowledgeScope.agentGlobal(), skillPath));
         assertTrue(knowledge.skills(p.id).isEmpty());
@@ -66,7 +67,7 @@ class PersonalAgentKnowledgeTest {
             assertEquals("Shared method", knowledge.availableSkill(p.id, skillPath).get("content"));
             files.writeFile(
                     KnowledgeScope.agent(p.id), skillPath, "Private method", "text/markdown");
-            assertEquals(1, knowledge.availableSkills(p.id).size());
+            assertEquals(3, knowledge.availableSkills(p.id).size());
             assertEquals("agent", knowledge.availableSkill(p.id, skillPath).get("source"));
             assertEquals(false, knowledge.availableSkill(p.id, skillPath).get("readOnly"));
             assertEquals(
@@ -86,48 +87,28 @@ class PersonalAgentKnowledgeTest {
     }
 
     @Test
-    void systemAgentDefaultsShowBundledFilesWithoutLeakingIntoProjectDefaultsOrExports()
-            throws Exception {
-        String skillPath = "skills/runner-setup/SKILL.md";
-        assertTrue(
-                vfs.listFiles("skills", "agent-global", null).stream()
-                        .anyMatch(
-                                f ->
-                                        skillPath.equals(f.getPath())
-                                                && f.isReadOnly()
-                                                && "builtin".equals(f.getSource())));
-        assertTrue(
-                vfs.listFiles("skills/runner-setup", "agent-global", null).stream()
-                        .anyMatch(f -> skillPath.equals(f.getPath())));
-        assertTrue(
-                vfs.listFiles("AGENTS.md", "agent-global", null).stream()
-                        .noneMatch(f -> skillPath.equals(f.getPath())));
-        assertTrue(
-                vfs.listFiles("skills", "global", null).stream()
-                        .noneMatch(f -> skillPath.equals(f.getPath())));
+    void builtinsAreMainbotOnlyAndNotSharedDefaultsOrExports() throws Exception {
+        String path = "skills/runner-setup/SKILL.md";
+        Profile ordinary = profile();
+        assertTrue(knowledge.availableSkills(ordinary.id).isEmpty());
         assertThrows(
-                io.github.differentialmanifold.jagentharness.core.execution.ProtocolException.class,
-                () -> vfs.readFile(skillPath, "global", null));
-        assertTrue(vfs.readFile(skillPath, "agent-global", null).isReadOnly());
-        try (java.util.zip.ZipInputStream zip =
-                new java.util.zip.ZipInputStream(
-                        new java.io.ByteArrayInputStream(
-                                vfs.exportSkills("agent-global", null).getBody()))) {
-            java.util.zip.ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null)
-                assertNotEquals(skillPath, entry.getName());
+                PersonalAgentException.class, () -> knowledge.availableSkill(ordinary.id, path));
+        for (String scope : Arrays.asList("global", "agent-global")) {
+            assertTrue(
+                    vfs.listFiles("skills", scope, null).stream()
+                            .noneMatch(f -> path.equals(f.getPath())));
+            assertThrows(
+                    io.github.differentialmanifold.jagentharness.core.execution.ProtocolException
+                            .class,
+                    () -> vfs.readFile(path, scope, null));
+            try (java.util.zip.ZipInputStream zip =
+                    new java.util.zip.ZipInputStream(
+                            new java.io.ByteArrayInputStream(
+                                    vfs.exportSkills(scope, null).getBody()))) {
+                java.util.zip.ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) assertNotEquals(path, entry.getName());
+            }
         }
-        try {
-            files.writeFile(
-                    KnowledgeScope.agentGlobal(), skillPath, "Custom setup", "text/markdown");
-            assertEquals(1, vfs.listFiles(skillPath, "agent-global", null).size());
-            assertFalse(vfs.readFile(skillPath, "agent-global", null).isReadOnly());
-            assertEquals(
-                    "Custom setup", vfs.readFile(skillPath, "agent-global", null).getContent());
-        } finally {
-            files.deleteFile(KnowledgeScope.agentGlobal(), skillPath);
-        }
-        assertTrue(vfs.readFile(skillPath, "agent-global", null).isReadOnly());
     }
 
     @Autowired

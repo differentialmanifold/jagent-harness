@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { setupMainbot, sourceInfo } from './mainbot.mjs'
 import { parseEnv } from 'node:util'
 import { createServer, createConnection } from 'node:net'
 import { runnerStateDirectory } from './runner-state.mjs'
@@ -11,11 +12,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const win = process.platform === 'win32'
 const processes = new Set()
 let stopping = false
-const version = readFileSync(resolve(root, 'pom.xml'), 'utf8').match(/<version>([^<]+)<\/version>/)[1]
-const serverVersion = readFileSync(resolve(root, 'examples/server-demo/pom.xml'), 'utf8').match(/<artifactId>server-demo<\/artifactId>\s*<version>([^<]+)<\/version>/)[1]
+const distribution = existsSync(resolve(root, 'distribution.json')) ? JSON.parse(readFileSync(resolve(root, 'distribution.json'), 'utf8')) : null
+const version = distribution?.version || readFileSync(resolve(root, 'pom.xml'), 'utf8').match(/<version>([^<]+)<\/version>/)[1]
+const serverVersion = distribution?.version || readFileSync(resolve(root, 'examples/server-demo/pom.xml'), 'utf8').match(/<artifactId>server-demo<\/artifactId>\s*<version>([^<]+)<\/version>/)[1]
 export async function launch(component) {
   const options = process.argv.slice(2)
-  const supported = ['--skip-build', '--help', ...(component === 'all' ? ['--client-only'] : [])]
+  const supported = ['--skip-build', '--help', ...(component === 'client' || component === 'all' ? ['--mainbot'] : []), ...(component === 'all' ? ['--client-only'] : [])]
   if (options.includes('--help')) {
     console.log(`Start ${component === 'all' ? 'the harness server, coding runner, and frontend' : component === 'client' ? 'the coding runner only' : component + ' only'}.\nOptions: ${supported.join(', ')}\nConfiguration: .env.local (shell environment takes precedence).`)
     return
@@ -30,14 +32,17 @@ export async function launch(component) {
   const clientOnly = options.includes('--client-only')
   const startServer = component === 'server' || (component === 'all' && !clientOnly)
   const startClient = component === 'client' || component === 'all'
-  const startFrontend = component === 'frontend' || component === 'all'
+  const startFrontend = component === 'frontend' || (component === 'all' && !clientOnly)
   const serverPort = Number(env.AGENT_SERVER_PORT || 18181)
   const frontendPort = Number(env.JAGENT_CONSOLE_PORT || 5175)
   const serverUrl = env.JAGENT_SERVER_URL || `http://127.0.0.1:${serverPort}`
-  const token = env.JAGENT_CLIENT_TOKEN || ''
+  let token = env.JAGENT_USER_TOKEN || ''
+  const credentialsFile = resolve(root, env.JAGENT_USER_CREDENTIALS || env.JAGENT_LOCAL_TOKEN_FILE || 'data/user.env')
   const localServerUrl = `http://127.0.0.1:${serverPort}`
   const runnerHome = resolve(root, env.JAGENT_RUNNER_HOME || 'data/coding-runner')
-  const runnerJar = `examples/coding-runner/target/jagent-coding-runner-${version}.jar`
+  const runnerJar = distribution ? 'runner/runner.jar' : `examples/coding-runner/target/jagent-coding-runner-${version}.jar`
+  const sourceDirectory = resolve(root, env.JAGENT_SOURCE_WORKSPACE || (distribution ? 'sources' : '.'))
+  const source = distribution && !env.JAGENT_SOURCE_WORKSPACE ? distribution : sourceInfo(sourceDirectory)
 
   function start(command, args, cwd, childEnv = env) {
     const child = spawn(command, args, { cwd, env: childEnv, stdio: 'inherit', detached: !win, shell: win && command.endsWith('.cmd') })
@@ -74,7 +79,7 @@ export async function launch(component) {
       probe.listen(port, '127.0.0.1', () => probe.close(resolveDone))
     })
   }
-  async function ready(url, path = '/api/v1/sessions', accept = () => true) {
+  async function ready(url, path = '/api/v1/health', accept = () => true) {
     const end = Date.now() + 90000
     while (!stopping && Date.now() < end) {
       try {
@@ -119,42 +124,60 @@ export async function launch(component) {
     if (new Set(ports).size !== ports.length) throw new Error('Server and console ports must be distinct')
     for (const port of ports) await available(port)
     if (startServer) mkdirSync(resolve(root, 'data'), { recursive: true })
-    if (!options.includes('--skip-build') && (startServer || startClient)) {
+    if (!distribution && !options.includes('--skip-build') && (startServer || startClient)) {
       const modules = [...(startServer ? ['examples/server-demo'] : []), ...((startServer || startClient) ? ['examples/coding-runner'] : [])]
-      await command('mvn', ['-q', '-pl', modules.join(','), '-am', '-DskipTests', 'package'])
+      await command('mvn', ['-q', '-pl', modules.join(','), '-am', '-DskipTests', `-Dharness.source.revision=${source.revision}`, 'package'])
     }
-    if (startFrontend && !existsSync(resolve(root, 'console/node_modules'))) await command('npm', ['ci'], resolve(root, 'console'))
+    if (startFrontend && !distribution && !existsSync(resolve(root, 'console/node_modules'))) await command('npm', ['ci'], resolve(root, 'console'))
     if (startServer) {
       console.log(`Starting Java Agent server at ${localServerUrl}`)
-      service('Agent server', 'java', ['-jar', `examples/server-demo/target/server-demo-${serverVersion}.jar`], {
+      service('Agent server', 'java', ['-jar', distribution ? 'server/server.jar' : `examples/server-demo/target/server-demo-${serverVersion}.jar`], {
         ...env, AGENT_SERVER_PORT: String(serverPort), JAGENT_DATASOURCE_URL: env.JAGENT_DATASOURCE_URL || 'jdbc:sqlite:data/agent-server.db',
+        JAGENT_LOCAL_TOKEN_FILE: env.JAGENT_LOCAL_TOKEN_FILE || credentialsFile,
         JAGENT_CONFIG_ROOT: env.JAGENT_CONFIG_ROOT || resolve(root, 'data/server-config'),
-        JAGENT_RUNNER_DISTRIBUTION_DIR: env.JAGENT_RUNNER_DISTRIBUTION_DIR || resolve(root, 'examples/coding-runner/target/runners')
+        JAGENT_RUNNER_DISTRIBUTION_DIR: env.JAGENT_RUNNER_DISTRIBUTION_DIR || resolve(root, distribution ? 'runners' : 'examples/coding-runner/target/runners')
       })
       await ready(localServerUrl)
     }
-    const clientEnv = { ...env, JAGENT_SERVER_URL: serverUrl, JAGENT_CONSOLE_PORT: String(frontendPort) }
+    if (!token && existsSync(credentialsFile)) token = parseEnv(readFileSync(credentialsFile, 'utf8')).JAGENT_USER_TOKEN || ''
+    const localHarness = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(serverUrl).hostname)
+    const consoleUrl = env.JAGENT_CONSOLE_URL || (startFrontend || localHarness ? `http://127.0.0.1:${frontendPort}` : serverUrl)
+    const clientEnv = { ...env, JAGENT_USER_TOKEN: token, JAGENT_CONSOLE_URL: consoleUrl, JAGENT_SERVER_URL: serverUrl, JAGENT_CONSOLE_PORT: String(frontendPort) }
     // Model and database settings belong to the server, not the client or frontend.
     for (const key of Object.keys(clientEnv)) if (/^JAGENT_(OPENAI_|MODEL|DATASOURCE|TEMPERATURE|COMPACTION|CONTEXT|CONFIG_ROOT)/.test(key)) delete clientEnv[key]
-    if (startClient) {
-      await ready(serverUrl)
-      if (stopping) return
-      console.log('Starting coding runner; select project directories and tools in the console')
-      service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--server', serverUrl, '--name', env.JAGENT_RUNNER_NAME || 'coding-local'], clientEnv)
-      await ready(serverUrl, '/api/v1/runners', runners => {
-        const config = resolve(runnerStateDirectory(serverUrl, runnerHome), 'config.json')
-        if (!existsSync(config)) return false
-        const identity = JSON.parse(readFileSync(config, 'utf8')).runnerId
-        return runners.some(runner => runner.runnerId === identity && runner.online)
-      })
-    }
-    if (stopping) return
-    if (startFrontend) {
-      const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev', '--', '--port', String(frontendPort), '--host', env.JAGENT_CONSOLE_HOST || '127.0.0.1'], resolve(root, 'console'), { ...clientEnv, JAGENT_SERVER_URL: serverUrl })
+    const frontendEnv = { ...clientEnv }
+    delete frontendEnv.JAGENT_USER_TOKEN
+    delete frontendEnv.JAGENT_USER_CREDENTIALS
+    if (startFrontend && distribution) service('Console', process.execPath, ['scripts/lib/console-server.mjs'], frontendEnv)
+    if (startFrontend && !distribution) {
+      const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev', '--', '--port', String(frontendPort), '--host', env.JAGENT_CONSOLE_HOST || '127.0.0.1'], resolve(root, 'console'), frontendEnv)
       ui.once('error', error => { console.error(error.message); shutdown(1) })
       ui.once('exit', code => { if (!stopping) shutdown(code || 1) })
       console.log(`\nFrontend: http://127.0.0.1:${frontendPort} (API: ${serverUrl})`)
     }
+    if (startClient) {
+      if (!token) throw new Error('Configure JAGENT_USER_TOKEN or JAGENT_USER_CREDENTIALS with a credential file issued by the Harness')
+      await ready(serverUrl)
+      const identityResponse = await fetch(`${serverUrl}/api/v1/access/identity`, { headers: { Authorization: `Bearer ${token}` } })
+      if (!identityResponse.ok) throw new Error('The Harness rejected this user credential')
+      const user = await identityResponse.json()
+      if (startFrontend) await ready(consoleUrl, '/api/v1/health')
+      if (stopping) return
+      console.log('Starting coding runner; select project directories and tools in the console')
+      service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--server', serverUrl, '--name', env.JAGENT_RUNNER_NAME || 'coding-local'], clientEnv)
+      let identity
+      await ready(serverUrl, '/api/v1/runners', runners => {
+        const config = resolve(runnerStateDirectory(serverUrl, runnerHome, user.userId), 'config.json')
+        if (!existsSync(config)) return false
+        identity = JSON.parse(readFileSync(config, 'utf8')).runnerId
+        return runners.some(runner => runner.runnerId === identity && runner.online)
+      })
+      if (!stopping && (startServer || options.includes('--mainbot'))) {
+        const result = await setupMainbot(serverUrl, token, identity, sourceDirectory, source)
+        console.log(result.retained ? result.message : `mainbot is ready. Source workspace: ${result.agent.sourceWorkspace}`)
+      }
+    }
+    if (stopping) return
     console.log('Ctrl+C stops only the processes started by this launcher.\n')
   } catch (error) {
     console.error(error.message)

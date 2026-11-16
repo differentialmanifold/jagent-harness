@@ -72,6 +72,8 @@ The tool-call exchange repeats as needed. The runner keeps polling during local 
 
 </details>
 
+Each user has their own mainbot and private workspace. Local startup handles credentials automatically; remote Runners use a Harness-issued User Token. [Personal access and remote deployment](docs/guides/access.md).
+
 ## Try it locally
 
 Install **JDK 8+**, **Maven 3.6.3+**, and **Node.js 22.12+**. An OpenAI-compatible model endpoint is required; SQLite is included.
@@ -98,7 +100,7 @@ node scripts/dev.mjs
 
 Open **http://127.0.0.1:5175** and choose an entry point:
 
-- **Let an Agent work:** open **Agents → New Agent**, enter a name and select **coding-local**. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](docs/guides/agents.md) for a ready-to-use request and what to look for.
+- **Let an Agent work:** open **Agents → mainbot**, which is created and connected automatically by the all-in-one launcher. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](docs/guides/agents.md) for a ready-to-use request and what to look for.
 - **Work in your own project:** add a project, select **coding-local**, then browse or enter a workspace on that terminal. Ask:
 
 > Read the README in this workspace and summarize the project.
@@ -113,6 +115,6 @@ See [Quick start](QUICK_START.md) for independent startup, manual commands, remo
 - [Server integration](jagent-harness-sdk/README.md), [Java client SDK](sdk/java/README.md), [Console hosting](console/README.md) and [HTTP/JSON protocol](protocol/README.md): extend or deploy the parts you need.
 - [Development guide](CONTRIBUTING.md): source layout, checks and where documentation belongs when adding a feature.
 
-This source tree targets `2.2.1`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
+This source tree targets `2.3.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
 
 [MIT License](LICENSE).

@@ -11,7 +11,7 @@ Use the bundled `scripts/jagent.mjs`. It is both a CLI and an importable SDK, re
 
 ## Connect and find or create an Agent
 
-The JAgent server must be running; it does not need any preconfigured Agents. A connected Runner is needed for work involving local files, commands or other terminal tools. Set `JAGENT_SERVER_URL` to the server base URL; the default is `http://127.0.0.1:18181`. Set `JAGENT_CLIENT_TOKEN` when the server requires authentication. Keep the token in the environment.
+The JAgent server must be running; it does not need any preconfigured Agents. A connected Runner is needed for work involving local files, commands or other terminal tools. Set `JAGENT_SERVER_URL` to the server base URL; the default is `http://127.0.0.1:18181`. Set `JAGENT_USER_TOKEN` when the server requires authentication. Keep the token in the environment.
 
 In the examples, replace `<skill-dir>` with this skill's absolute directory and replace IDs with values returned by the client:
 

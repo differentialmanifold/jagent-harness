@@ -1,13 +1,15 @@
 package io.github.differentialmanifold.jagentharness.core.runner;
 
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.util.UUID;
 import java.util.concurrent.*;
 
 /** Short-lived, read-only UI lookups. All filesystem access happens on the runner. */
 final class RunnerWorkspaceRequests {
-    private final ConcurrentMap<String, Pending> requests = new ConcurrentHashMap<>();
+    private final UserState<ConcurrentMap<String, Pending>> requests =
+            new UserState<>(() -> new ConcurrentHashMap<>());
 
     CompletableFuture<WorkspaceListing> browse(String runner, String path) {
         if (path != null && path.length() > 2048)
@@ -17,15 +19,16 @@ final class RunnerWorkspaceRequests {
         request.path = path;
         CompletableFuture<WorkspaceListing> result = new CompletableFuture<>();
         Pending pending = new Pending(request, result);
-        if (requests.putIfAbsent(runner, pending) != null)
+        if (requests.get().putIfAbsent(runner, pending) != null)
             throw new ProtocolException(
                     409, "LOOKUP_PENDING", "A directory lookup is already in progress");
-        result.whenComplete((value, error) -> requests.remove(runner, pending));
+        result.whenComplete(
+                UserContext.callback((value, error) -> requests.get().remove(runner, pending)));
         return result;
     }
 
     WorkspaceRequest poll(String runner) {
-        Pending pending = requests.get(runner);
+        Pending pending = requests.get().get(runner);
         if (pending == null) return null;
         synchronized (pending) {
             long now = System.currentTimeMillis();
@@ -36,9 +39,9 @@ final class RunnerWorkspaceRequests {
     }
 
     void complete(String runner, WorkspaceListing listing) {
-        Pending pending = requests.get(runner);
+        Pending pending = requests.get().get(runner);
         if (pending == null || !pending.request.requestId.equals(listing.requestId)) return;
-        if (requests.remove(runner, pending)) {
+        if (requests.get().remove(runner, pending)) {
             if (listing.error != null)
                 pending.result.completeExceptionally(
                         new ProtocolException(400, "WORKSPACE_ERROR", listing.error));
@@ -48,7 +51,7 @@ final class RunnerWorkspaceRequests {
 
     void expire() {
         long now = System.currentTimeMillis();
-        for (Pending pending : requests.values())
+        for (Pending pending : requests.get().values())
             if (now - pending.createdAt >= 10000)
                 pending.result.completeExceptionally(
                         new ProtocolException(
@@ -58,10 +61,11 @@ final class RunnerWorkspaceRequests {
     }
 
     void close() {
-        for (Pending pending : requests.values())
-            pending.result.completeExceptionally(
-                    new ProtocolException(503, "SERVER_STOPPING", "Server is stopping"));
-        requests.clear();
+        for (java.util.Map<String, Pending> map : requests.all())
+            for (Pending pending : map.values())
+                pending.result.completeExceptionally(
+                        new ProtocolException(503, "SERVER_STOPPING", "Server is stopping"));
+        requests.get().clear();
     }
 
     private static final class Pending {

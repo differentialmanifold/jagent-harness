@@ -10,13 +10,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class JdbcPersonalAgentStore implements PersonalAgentStore {
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final String application;
+    private final String baseApplicationId;
+
+    private String application() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
 
     public JdbcPersonalAgentStore(
             JdbcTemplate db, ObjectMapper json, JdbcStoreProperties properties) {
         this.db = db;
         this.json = json;
-        this.application = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     private String encode(Object value) {
@@ -63,7 +68,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 db.query(
                         "select primary_agent_id from personal_settings where application_id=?",
                         (rs, row) -> rs.getString(1),
-                        application);
+                        application());
         return ids.isEmpty() ? null : ids.get(0);
     }
 
@@ -73,13 +78,13 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
             return db.update(
                             "update personal_settings set primary_agent_id=? where application_id=? and primary_agent_id=?",
                             agentId,
-                            application,
+                            application(),
                             expectedId)
                     == 1;
         try {
             db.update(
                     "insert into personal_settings(application_id, primary_agent_id) values(?,?)",
-                    application,
+                    application(),
                     agentId);
             return true;
         } catch (DataAccessException error) {
@@ -88,11 +93,22 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         }
     }
 
+    public boolean initializeMainbot(Profile profile, Runnable createConversation) {
+        return Boolean.TRUE.equals(
+                JdbcTransactions.write(db)
+                        .execute(
+                                status -> {
+                                    if (!save(profile)) return false;
+                                    createConversation.run();
+                                    return true;
+                                }));
+    }
+
     public List<Profile> profiles() {
         return query(
                 "select body_json from personal_agents where application_id = ? order by agent_id",
                 Profile.class,
-                application);
+                application());
     }
 
     public Profile profile(String id) {
@@ -100,7 +116,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 query(
                         "select body_json from personal_agents where application_id = ? and agent_id = ?",
                         Profile.class,
-                        application,
+                        application(),
                         id));
     }
 
@@ -111,7 +127,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
             if (revision == 0)
                 db.update(
                         "insert into personal_agents(application_id, agent_id, revision, body_json) values(?,?,?,?)",
-                        application,
+                        application(),
                         p.id,
                         p.revision,
                         encode(p));
@@ -119,7 +135,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                             "update personal_agents set revision=?, body_json=? where application_id=? and agent_id=? and revision=?",
                             p.revision,
                             encode(p),
-                            application,
+                            application(),
                             p.id,
                             revision)
                     == 0) {
@@ -138,7 +154,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         return query(
                 "select body_json from personal_conversations where application_id=? and agent_id=? order by created_at",
                 Conversation.class,
-                application,
+                application(),
                 agent);
     }
 
@@ -155,7 +171,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                                         db.update(
                                                 "insert into personal_learning_changes "
                                                         + "(application_id, agent_id, change_id, revision, path, body_json) values(?,?,?,?,?,?)",
-                                                application,
+                                                application(),
                                                 profile.id,
                                                 change.id,
                                                 change.revision,
@@ -174,7 +190,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 "select body_json from personal_learning_changes where application_id=? and agent_id=? "
                         + "and revision < ? order by revision desc limit ?",
                 LearningChange.class,
-                application,
+                application(),
                 agent,
                 beforeRevision <= 0 ? Long.MAX_VALUE : beforeRevision,
                 Math.min(100, Math.max(1, limit)));
@@ -185,7 +201,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 query(
                         "select body_json from personal_learning_changes where application_id=? and agent_id=? and change_id=?",
                         LearningChange.class,
-                        application,
+                        application(),
                         agent,
                         id));
     }
@@ -195,7 +211,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 query(
                         "select body_json from personal_learning_changes where application_id=? and agent_id=? and path=? order by revision desc limit 1",
                         LearningChange.class,
-                        application,
+                        application(),
                         agent,
                         path));
     }
@@ -205,14 +221,14 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 query(
                         "select body_json from personal_conversations where application_id=? and session_id=?",
                         Conversation.class,
-                        application,
+                        application(),
                         session));
     }
 
     public void add(Conversation c) {
         db.update(
                 "insert into personal_conversations(application_id, session_id, agent_id, created_at, body_json) values(?,?,?,?,?)",
-                application,
+                application(),
                 c.sessionId,
                 c.agentId,
                 c.createdAt,
@@ -225,7 +241,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                     if (db.update(
                                     "update personal_conversations set body_json=? where application_id=? and session_id=? and agent_id=?",
                                     encode(c),
-                                    application,
+                                    application(),
                                     c.sessionId,
                                     c.agentId)
                             != 1) throw new IllegalArgumentException("Conversation not found");
@@ -267,11 +283,11 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                     }
                     db.update(
                             "delete from personal_inbox where application_id=? and session_id=?",
-                            application,
+                            application(),
                             c.sessionId);
                     db.update(
                             "delete from personal_conversations where application_id=? and session_id=? and agent_id=?",
-                            application,
+                            application(),
                             c.sessionId,
                             c.agentId);
                     deleteSession.run();
@@ -291,7 +307,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         return query(
                 "select body_json from personal_inbox where application_id=? and status=? order by created_at, message_id",
                 Inbox.class,
-                application,
+                application(),
                 status);
     }
 
@@ -299,7 +315,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         return query(
                 "select body_json from personal_inbox where application_id=? and session_id=? order by created_at, message_id",
                 Inbox.class,
-                application,
+                application(),
                 session);
     }
 
@@ -308,7 +324,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 query(
                         "select body_json from personal_inbox where application_id=? and message_id=?",
                         Inbox.class,
-                        application,
+                        application(),
                         id));
     }
 
@@ -316,7 +332,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         try {
             db.update(
                     "insert into personal_inbox(application_id, message_id, session_id, status, created_at, body_json) values(?,?,?,?,?,?)",
-                    application,
+                    application(),
                     m.id,
                     m.sessionId,
                     m.status,
@@ -334,7 +350,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                         "update personal_inbox set status=?, body_json=? where application_id=? and message_id=? and status=?",
                         m.status,
                         encode(m),
-                        application,
+                        application(),
                         m.id,
                         expectedStatus)
                 == 1;
@@ -381,7 +397,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         return query(
                 "select body_json from personal_cards where application_id=? order by card_id",
                 Card.class,
-                application);
+                application());
     }
 
     public Card card(String id) {
@@ -389,7 +405,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 query(
                         "select body_json from personal_cards where application_id=? and card_id=?",
                         Card.class,
-                        application,
+                        application(),
                         id));
     }
 
@@ -400,7 +416,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
             if (revision == 0)
                 db.update(
                         "insert into personal_cards(application_id, card_id, revision, body_json) values(?,?,?,?)",
-                        application,
+                        application(),
                         c.id,
                         c.revision,
                         encode(c));
@@ -408,7 +424,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                             "update personal_cards set revision=?, body_json=? where application_id=? and card_id=? and revision=?",
                             c.revision,
                             encode(c),
-                            application,
+                            application(),
                             c.id,
                             revision)
                     == 0) {
@@ -428,7 +444,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
                 db.query(
                         "select channel_json from personal_agents where application_id=? and agent_id=?",
                         (rs, row) -> rs.getString(1),
-                        application,
+                        application(),
                         agent);
         return values.isEmpty() ? null : values.get(0);
     }
@@ -437,7 +453,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
         if (db.update(
                         "update personal_agents set channel_json=? where application_id=? and agent_id=?",
                         configuration,
-                        application,
+                        application(),
                         agent)
                 != 1) throw new IllegalArgumentException("Agent not found");
     }

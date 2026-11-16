@@ -11,11 +11,10 @@ From the repository root:
 ```sh
 npm ci --prefix console
 export JAGENT_SERVER_URL='https://agent.example.com'
-export JAGENT_CLIENT_TOKEN='your-shared-token'
 npm --prefix console run dev
 ```
 
-Open `http://127.0.0.1:5175`. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and adds the token on the frontend host. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start-frontend.mjs` does.
+Start your authorized Runner with `--console http://127.0.0.1:5175` to open the page automatically. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and forwards the browser's own session cookie. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start-frontend.mjs` does.
 
 For using the UI, see [Projects](../docs/guides/projects.md), [Personal Agents](../docs/guides/agents.md), and [Configuration](../docs/guides/configuration.md).
 
@@ -25,17 +24,16 @@ For using the UI, see [Projects](../docs/guides/projects.md), [Personal Agents](
 npm run build --prefix console
 ```
 
-Deploy `console/dist/` to a static web host. Configure that host to forward `/api/` to your Harness server, with SSE buffering disabled and a suitable long request timeout. Keep the frontend and API under the same origin. Supply the server token through the trusted host's proxy rather than putting it into JavaScript assets. The UI uses relative API paths, so no build-time server URL is embedded in the bundle.
+Deploy `console/dist/` to a static web host. Configure that host to forward `/api/` to your Harness server, with SSE buffering disabled and a suitable long request timeout. Keep the frontend and API under the same origin. Do not inject a shared Authorization header. Preserve cookies, the original Host and scheme; configure trusted forwarded headers when terminating HTTPS at a reverse proxy. The UI uses relative API paths, so no build-time server URL is embedded in the bundle.
 
 For a local preview of the built files:
 
 ```sh
 export JAGENT_SERVER_URL='https://agent.example.com'
-export JAGENT_CLIENT_TOKEN='your-shared-token'
 npm --prefix console run preview
 ```
 
-Vite dev and preview bind to loopback by default. Use `-- --host 0.0.0.0` only when intentionally exposing them on another interface. For deployed access, use an authenticated HTTPS web host; the shared Harness API token is an operator credential.
+Vite dev and preview bind to loopback by default. Use `-- --host 0.0.0.0` only when intentionally exposing them on another interface. HTTP is accepted with a non-blocking notice; HTTPS is recommended. The browser exchanges a one-time Runner ticket for its own session, and the page locks when that Runner goes offline. See [personal access](../docs/guides/access.md).
 
 ## Other frontends
 

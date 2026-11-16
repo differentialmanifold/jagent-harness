@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentSettings;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.model.ModelCatalog;
-import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentSkills;
 import io.github.differentialmanifold.jagentharness.core.prompt.PromptProvider;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillRegistry;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
@@ -157,11 +156,8 @@ public class AgentConsoleAutoConfiguration {
     @ConditionalOnBean(KnowledgeFileStore.class)
     @ConditionalOnMissingBean
     public VirtualFileController virtualFileController(
-            KnowledgeFileStore knowledgeFileStore,
-            SessionManager sessionManager,
-            ObjectProvider<PersonalAgentSkills> agentSkills) {
-        return new VirtualFileController(
-                knowledgeFileStore, sessionManager, agentSkills.getIfAvailable());
+            KnowledgeFileStore knowledgeFileStore, SessionManager sessionManager) {
+        return new VirtualFileController(knowledgeFileStore, sessionManager);
     }
 
     @Configuration(proxyBeanMethods = false)

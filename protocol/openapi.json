@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "JAgent conversation API",
-    "version": "2.2.1",
+    "version": "2.3.0",
     "description": "Conversation and Runner SDK contract. Personal Agent delegation is documented separately in skills/jagent/references/api.md."
   },
   "servers": [
@@ -13,13 +13,23 @@
   "security": [
     {
       "bearer": []
+    },
+    {
+      "browserSession": []
     }
   ],
   "components": {
     "securitySchemes": {
       "bearer": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "description": "Harness-issued User Token. Identifies one personal space; never place it in URLs or browser assets."
+      },
+      "browserSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "jagent_session",
+        "description": "Runner-authorized browser session. Requires its Runner online."
       }
     }
   },
@@ -898,6 +908,155 @@
             "description": "Connection response"
           }
         }
+      }
+    },
+    "/access/identity": {
+      "get": {
+        "summary": "Return the stable user identity authenticated by a User Token",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid credential or offline Runner"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/access/status": {
+      "get": {
+        "summary": "Check the current browser session and its Runner lease",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid credential or offline Runner"
+          }
+        },
+        "security": []
+      }
+    },
+    "/access/browser": {
+      "post": {
+        "summary": "Issue a 60-second, single-use browser ticket for an online Runner",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid credential or offline Runner"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Runner-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/access/exchange": {
+      "post": {
+        "summary": "Exchange a browser ticket for an HttpOnly session cookie",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid credential or offline Runner"
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ticket"
+                ],
+                "properties": {
+                  "ticket": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-JAgent-Console",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/runners/{id}/disconnect": {
+      "post": {
+        "summary": "End this Runner online lease",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid credential or offline Runner"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   }

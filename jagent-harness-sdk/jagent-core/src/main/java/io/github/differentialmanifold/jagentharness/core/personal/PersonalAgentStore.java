@@ -8,6 +8,7 @@ public interface PersonalAgentStore {
     class Profile {
         public String id, name, description = "", instructions = "", memory = "";
         public String runnerId, workspacePath;
+        public String sourceWorkspace, sourceVersion, sourceRevision;
         public boolean enabled = true;
         public List<String> disabledTools = new ArrayList<>();
         public long revision;
@@ -103,6 +104,9 @@ public interface PersonalAgentStore {
 
     /** Compare-and-set the default; null expectedId initializes it once. */
     boolean setPrimaryAgentId(String agentId, String expectedId);
+
+    /** Create the built-in profile and its first conversation atomically, once per application. */
+    boolean initializeMainbot(Profile profile, Runnable createConversation);
 
     List<Profile> profiles();
 

@@ -11,7 +11,13 @@ import org.springframework.jdbc.core.RowMapper;
 public class JdbcSessionRepository implements SessionRepository {
 
     private final JdbcTemplate jdbcTemplate;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
+
     private final RowMapper<SessionRecord> mapper =
             (rs, rowNum) -> {
                 SessionRecord session = new SessionRecord();
@@ -29,7 +35,7 @@ public class JdbcSessionRepository implements SessionRepository {
 
     public JdbcSessionRepository(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -59,7 +65,7 @@ public class JdbcSessionRepository implements SessionRepository {
                 jdbcTemplate.query(
                         "select * from sessions where application_id=? and project_id=?",
                         mapper,
-                        applicationId,
+                        applicationId(),
                         projectId);
         if (existing.stream()
                 .anyMatch(s -> !java.util.Objects.equals(ownerAgentId, s.getOwnerAgentId())))
@@ -108,7 +114,7 @@ public class JdbcSessionRepository implements SessionRepository {
                                             + "(application_id, session_id, title, project_id, project_name, workspace_path, status, metadata_json, "
                                             + "created_at, updated_at) "
                                             + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                    applicationId,
+                                    applicationId(),
                                     session.getSessionId(),
                                     session.getTitle(),
                                     session.getProjectId(),
@@ -134,7 +140,7 @@ public class JdbcSessionRepository implements SessionRepository {
                                             jdbcTemplate.query(
                                                     "select * from sessions where application_id=? and project_id=?",
                                                     mapper,
-                                                    applicationId,
+                                                    applicationId(),
                                                     projectId);
                                     if (existing.isEmpty()
                                             || existing.stream()
@@ -152,12 +158,12 @@ public class JdbcSessionRepository implements SessionRepository {
                                                         previous == null
                                                                 ? new Object[] {
                                                                     session.getMetadataJson(),
-                                                                    applicationId,
+                                                                    applicationId(),
                                                                     session.getSessionId()
                                                                 }
                                                                 : new Object[] {
                                                                     session.getMetadataJson(),
-                                                                    applicationId,
+                                                                    applicationId(),
                                                                     session.getSessionId(),
                                                                     previous
                                                                 });
@@ -175,7 +181,7 @@ public class JdbcSessionRepository implements SessionRepository {
                 jdbcTemplate.queryForObject(
                         "select count(*) from projects where application_id = ? and project_id = ?",
                         Integer.class,
-                        applicationId,
+                        applicationId(),
                         session.getProjectId());
         if (count != null && count.intValue() > 0) {
             jdbcTemplate.update(
@@ -184,14 +190,14 @@ public class JdbcSessionRepository implements SessionRepository {
                     session.getProjectName(),
                     session.getWorkspacePath(),
                     JdbcTimeCodec.encode(now),
-                    applicationId,
+                    applicationId(),
                     session.getProjectId());
             return;
         }
         jdbcTemplate.update(
                 "insert into projects (application_id, project_id, name, workspace_path, created_at, updated_at) "
                         + "values (?, ?, ?, ?, ?, ?)",
-                applicationId,
+                applicationId(),
                 session.getProjectId(),
                 session.getProjectName(),
                 session.getWorkspacePath(),
@@ -205,7 +211,7 @@ public class JdbcSessionRepository implements SessionRepository {
                 jdbcTemplate.query(
                         "select * from sessions where application_id = ? and session_id = ? and status <> ?",
                         mapper,
-                        applicationId,
+                        applicationId(),
                         sessionId,
                         SessionRecord.STATUS_DELETED);
         return sessions.isEmpty() ? null : sessions.get(0);
@@ -216,7 +222,7 @@ public class JdbcSessionRepository implements SessionRepository {
         return jdbcTemplate.query(
                 "select * from sessions where application_id = ? and status <> ? order by updated_at desc",
                 mapper,
-                applicationId,
+                applicationId(),
                 SessionRecord.STATUS_DELETED);
     }
 
@@ -225,7 +231,7 @@ public class JdbcSessionRepository implements SessionRepository {
         jdbcTemplate.update(
                 "update sessions set updated_at = ? where application_id = ? and session_id = ?",
                 JdbcTimeCodec.encode(Instant.now()),
-                applicationId,
+                applicationId(),
                 sessionId);
     }
 
@@ -236,7 +242,7 @@ public class JdbcSessionRepository implements SessionRepository {
                 "update sessions set title = ?, updated_at = ? where application_id = ? and session_id = ?",
                 title,
                 JdbcTimeCodec.encode(Instant.now()),
-                applicationId,
+                applicationId(),
                 sessionId);
     }
 
@@ -250,7 +256,7 @@ public class JdbcSessionRepository implements SessionRepository {
                 "update sessions set status = ?, updated_at = ? where application_id = ? and session_id = ?",
                 status,
                 JdbcTimeCodec.encode(Instant.now()),
-                applicationId,
+                applicationId(),
                 sessionId);
     }
 }

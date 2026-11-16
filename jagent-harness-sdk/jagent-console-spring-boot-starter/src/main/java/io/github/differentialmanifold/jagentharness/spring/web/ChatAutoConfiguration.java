@@ -37,8 +37,32 @@ public class ChatAutoConfiguration {
     @ConditionalOnMissingBean
     public ApiAuthenticationFilter apiAuthenticationFilter(
             @Value("${harness.protocol.token:}") String token,
-            @Value("${server.address:0.0.0.0}") String bind) {
-        return new ApiAuthenticationFilter(token, bind);
+            @Value("${server.address:0.0.0.0}") String bind,
+            @Value("${harness.identity.enabled:false}") boolean identities,
+            org.springframework.beans.factory.ObjectProvider<UserAccessService> access) {
+        return identities
+                ? new ApiAuthenticationFilter(access.getObject())
+                : new ApiAuthenticationFilter(token, bind);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "harness.identity", name = "enabled", havingValue = "true")
+    public UserAccessService userAccessService(
+            io.github.differentialmanifold.jagentharness.core.identity.UserStore users,
+            io.github.differentialmanifold.jagentharness.core.runner.RunnerService runners,
+            io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentService agents,
+            @Value("${harness.identity.local-token-file:}") String file)
+            throws java.io.IOException {
+        if (!file.trim().isEmpty())
+            io.github.differentialmanifold.jagentharness.core.identity.UserTokenFiles.bootstrap(
+                    users, java.nio.file.Paths.get(file));
+        return new UserAccessService(users, runners, agents);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "harness.identity", name = "enabled", havingValue = "true")
+    public UserAccessController userAccessController(UserAccessService service) {
+        return new UserAccessController(service);
     }
 
     @Bean

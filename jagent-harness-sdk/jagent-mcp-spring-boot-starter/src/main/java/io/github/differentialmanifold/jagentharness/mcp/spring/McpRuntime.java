@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.agent.StopSignal;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.skill.*;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
@@ -32,7 +33,8 @@ public class McpRuntime
     private final McpConfigurationManager configurationManager;
     private final ObjectMapper objectMapper;
     private final SkillActivationStore activationStore;
-    private final Map<String, Scope> scopes = new LinkedHashMap<String, Scope>();
+    private final UserState<Map<String, Scope>> scopes =
+            new UserState<>(() -> new LinkedHashMap<String, Scope>());
     private final List<Scope> retiredScopes = new ArrayList<Scope>();
     private volatile boolean initialized;
 
@@ -193,12 +195,12 @@ public class McpRuntime
     private synchronized Scope scope(String projectId, boolean personal) {
         String key = personal ? "agent-global" : "project:" + scopeKey(projectId);
         McpConfigSnapshot snapshot = configurationManager.runtimeSnapshot(projectId, personal);
-        Scope existing = scopes.get(key);
+        Scope existing = scopes.get().get(key);
         if (existing != null && existing.fingerprint.equals(snapshot.getFingerprint())) {
             return existing;
         }
         Scope loaded = loadScope(snapshot);
-        scopes.put(key, loaded);
+        scopes.get().put(key, loaded);
         if (existing != null) {
             retiredScopes.add(existing);
         }
@@ -315,13 +317,14 @@ public class McpRuntime
 
     @Override
     public synchronized void close() {
-        for (Scope scope : scopes.values()) {
-            close(scope);
-        }
+        for (Map<String, Scope> map : scopes.all())
+            for (Scope scope : map.values()) {
+                close(scope);
+            }
         for (Scope scope : retiredScopes) {
             close(scope);
         }
-        scopes.clear();
+        scopes.get().clear();
         retiredScopes.clear();
         initialized = false;
     }

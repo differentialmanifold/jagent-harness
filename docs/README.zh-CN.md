@@ -35,3 +35,5 @@
 | 通过代码调用个人 Agent | [外部 Agent HTTP/SDK 参考](../skills/jagent/references/api.md) |
 
 未标注中文的指南目前为英文。[开发与文档维护](../CONTRIBUTING.md) 说明新增功能时如何更新文档；[发布说明](releasing.md) 涵盖 Maven 和发布附件。
+
+[个人身份、用户凭据与远程部署](guides/access.md)

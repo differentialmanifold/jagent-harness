@@ -8,8 +8,7 @@ export default defineConfig(({ mode }) => {
   const apiUrl = new URL(apiTarget)
   // http-proxy-3 passes hostname directly to http.request; IPv6 must omit brackets.
   const target = { ...urlToHttpOptions(apiUrl), host: apiUrl.host }
-  const token = process.env.JAGENT_CLIENT_TOKEN || env.JAGENT_CLIENT_TOKEN
-  const proxy = { '/api': { target, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) } }
+  const proxy = { '/api': { target } }
   return {
     plugins: [vue()],
     server: { port: 5175, proxy },

@@ -324,7 +324,7 @@ public class PersonalAgentKnowledge {
     public List<Map<String, Object>> availableSkills(String agent) {
         require(agent);
         Map<String, Map<String, Object>> catalog = new TreeMap<>();
-        addSkillFiles(catalog, bundledSkills.bundledFiles(), "builtin", true);
+        addSkillFiles(catalog, bundledSkills.bundledFiles(agent), "builtin", true);
         addSkillFiles(
                 catalog,
                 files.listFiles(KnowledgeScope.agentGlobal(), "skills"),
@@ -368,7 +368,7 @@ public class PersonalAgentKnowledge {
         if (file == null) {
             source = "builtin";
             file =
-                    bundledSkills.bundledFiles().stream()
+                    bundledSkills.bundledFiles(agent).stream()
                             .filter(f -> normalized.equals(f.getPath()))
                             .findFirst()
                             .orElse(null);

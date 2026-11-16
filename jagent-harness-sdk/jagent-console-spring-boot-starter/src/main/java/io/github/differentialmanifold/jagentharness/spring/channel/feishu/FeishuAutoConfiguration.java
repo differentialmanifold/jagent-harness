@@ -17,8 +17,19 @@ public class FeishuAutoConfiguration {
     @Bean(initMethod = "start", destroyMethod = "close")
     @ConditionalOnMissingBean
     public FeishuService feishuService(
-            PersonalAgentService agents, PersonalAgentStore store, ObjectMapper json) {
-        return new FeishuService(agents, store, json);
+            PersonalAgentService agents,
+            PersonalAgentStore store,
+            ObjectMapper json,
+            org.springframework.beans.factory.ObjectProvider<
+                            io.github.differentialmanifold.jagentharness.core.identity
+                                    .UserDirectory>
+                    users) {
+        return new FeishuService(agents, store, json)
+                .withUsers(
+                        users.getIfAvailable(
+                                () ->
+                                        io.github.differentialmanifold.jagentharness.core.identity
+                                                .UserDirectory.LOCAL));
     }
 
     @Bean

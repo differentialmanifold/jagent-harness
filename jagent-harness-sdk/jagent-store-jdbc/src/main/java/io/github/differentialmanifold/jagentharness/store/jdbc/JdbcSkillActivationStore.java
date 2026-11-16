@@ -12,13 +12,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class JdbcSkillActivationStore implements SkillActivationStore {
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
 
     public JdbcSkillActivationStore(
             JdbcTemplate db, ObjectMapper json, JdbcStoreProperties properties) {
         this.db = db;
         this.json = json;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -33,7 +38,7 @@ public class JdbcSkillActivationStore implements SkillActivationStore {
                         throw new IllegalStateException("Invalid persisted skill activation", e);
                     }
                 },
-                applicationId,
+                applicationId(),
                 sessionId,
                 scopeKey);
     }
@@ -51,7 +56,7 @@ public class JdbcSkillActivationStore implements SkillActivationStore {
         try {
             db.update(
                     "insert into skill_activations (application_id, session_id, scope_key, activation_id, activation_json) values (?, ?, ?, ?, ?)",
-                    applicationId,
+                    applicationId(),
                     sessionId,
                     scopeKey,
                     activation.activationId(),
@@ -68,7 +73,7 @@ public class JdbcSkillActivationStore implements SkillActivationStore {
                 db.queryForObject(
                         "select count(*) from skill_activations where application_id = ? and session_id = ? and scope_key = ? and activation_id = ?",
                         Integer.class,
-                        applicationId,
+                        applicationId(),
                         sessionId,
                         scopeKey,
                         activationId);

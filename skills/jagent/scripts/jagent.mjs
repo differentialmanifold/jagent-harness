@@ -33,7 +33,7 @@ const invalidResponse = status => new JAgentError('JAgent returned an invalid JS
 
 export class JAgentClient {
   constructor({ server = process.env.JAGENT_SERVER_URL || 'http://127.0.0.1:18181',
-    token = process.env.JAGENT_CLIENT_TOKEN, timeoutMs = 15000 } = {}) {
+    token = process.env.JAGENT_USER_TOKEN, timeoutMs = 15000 } = {}) {
     const url = new URL(server)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
       throw new Error('server must be an HTTP(S) base URL without credentials, query or fragment')
@@ -172,7 +172,7 @@ export class JAgentClient {
 }
 
 const help = `JAgent delegation client (Node.js 22+, no npm install)
-Environment: JAGENT_SERVER_URL (default http://127.0.0.1:18181), JAGENT_CLIENT_TOKEN
+Environment: JAGENT_SERVER_URL (default http://127.0.0.1:18181), JAGENT_USER_TOKEN
 
   agents
   runners

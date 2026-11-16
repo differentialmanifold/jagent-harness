@@ -6,13 +6,13 @@
 
 交给 Agent 一个小开发任务，看看它如何自己创建项目、调用工具并验证结果。
 
-## 1. 启动并创建 Agent
+## 1. 启动并认识 mainbot
 
 按 [Quick start](../../QUICK_START.md) 启动服务端、Coding Runner 和 Console，打开 **http://127.0.0.1:5175**。
 
-进入 **Agents → New Agent**，名称填 **Developer**，选择已在线的 Coding Runner，点击 **Create Agent**。Instructions 可以留空，不需要准备工作目录，也不需要先配置飞书。
+进入 **Agents → mainbot** 即可聊天。服务端会自动创建它和第一个会话；一键启动会绑定本机 Coding Runner 并登记源码目录。手动启动时，在 mainbot 的 **Configuration → General & instructions** 选择 Runner，并可填写该 Runner 上的源码目录。不需要先配置飞书。
 
-第一个绑定 Runner 的新 Agent 会自动成为 **主 Agent（Primary Agent）**。Console 默认进入它的聊天；用户创建其他 Agent 时默认使用它绑定的 Runner。已有安装或需要更换入口时，在对应 Agent 的 **Configuration → General & instructions → Set as primary** 中设置。切换主 Agent 不会迁移已有项目或 Runner 绑定。
+mainbot 默认成为 **主 Agent（Primary Agent）**，用户创建其他 Agent 时默认使用它的 Runner。可以通过 **Set as primary** 更换聊天入口，不会迁移项目、Runner 绑定或 mainbot 的内置 Skill。重启保留名称、偏好、记忆和会话。需要其他角色或环境时仍可使用 **New Agent**。
 
 日常直接和主 Agent 聊天即可。它可以通过自己的 Project 执行，也可以发现并委托其他 Agent，跟踪任务、检查结果后回到这里汇报。其他 Agent 仍可通过下拉框访问。Agent 自主创建助手时仍默认使用自己的 Runner，需要其他环境时显式指定 Runner ID。
 
@@ -69,7 +69,7 @@ Agent 应先通过 Project 查看现有实现，再决定怎么改。可以观�
 
 - 点击会话旁的 **…** 重命名或删除。Agent 正在执行时不能删除会话；删除会清理排队消息、解除后续检查，但保留项目、记忆和 Skills。下一条飞书消息会创建新会话。
 - 打开 **Configuration → Runtime Context** 查看当前模型、可用工具和可发现的 Skills。列出的 Skill 不代表模型已经读取过它。
-- 打开 **Configuration → Skills** 查看内置、共享和私有 Skill，只读文件支持预览和查看原文。`runner-setup` 等内置 Skill 也会显示在 **System Settings → Agent defaults → Skills** 中。浏览 Skill 不会将它加载到会话中。
+- 打开 **Configuration → Skills** 查看内置、共享和私有 Skill，只读文件支持预览和查看原文。只有 mainbot 拥有内置的 `jagent-help` 和 `runner-setup`，它们不属于共享的 Agent defaults。浏览 Skill 不会将它加载到会话中。
 - **Configuration → Tools** 选择 Agent 自己可用的服务端操作。创建时选定的 **Bound Runner** 决定项目在哪里执行，不代表 Agent 聊天直接拥有 Runner 的全部工具；项目工具仍在项目的 **Configuration → Tools** 中选择。
 - **Configuration → Runtime Context → Runtime Preview** 展示当前配置生成的系统提示词，不是某一轮历史请求的快照。实时记忆和任务进度分别在 **Knowledge** 与 **Tasks** 查看，详见[配置指南（英文）](configuration.md)。
 
@@ -108,13 +108,21 @@ Agent 在创建时绑定一个 Runner，创建项目时自动使用它。其他�
 
 请提供真实的仓库 URL 和分支。委托通过普通会话异步执行，对方回复后会自动唤醒原 Agent。不同 Agent 的项目、任务和私有记忆保持独立；文件不会自动跨机器同步。可以切换到对应 Agent 查看其会话和项目。`agents` 工具提供查找、创建、发送和查看回复四种操作。
 
+## 向 mainbot 询问 JAgentHarness 本身
+
+> 解释当前版本是如何加载 Skill 的，为什么安装后可能没有在 Project 中出现。请查源码，并指出相关代码位置。
+
+mainbot 会加载 `jagent-help`，读取登记的源码位置和版本，通过普通 Project 查询。后续复用该源码项目，不同问题可使用独立会话。一键源码启动使用当前仓库；预构建运行包携带对应的源码快照。本地未提交修改可能与运行中的 JAR 不一致，mainbot 需要核对证据。改完源码不代表已经部署修复。
+
+这两份内置 Skill 仅出现在 mainbot 的 **Configuration → Skills** 中，不受改名或切换主 Agent 影响。其他 Agent 可通过现有 `agents` 工具向 mainbot 求助，手机 Runner 无需获取源码。
+
 ## 让 JAgent 准备一台 SSH 机器
 
 直接在 JAgent 的聊天中发送：
 
 > 把 `deploy@build.example.com` 配置成当前 Harness 的 Linux 执行环境。如果已有合适的 Runner 就复用，否则部署一个并保持运行。为它创建 Build Agent，最后告诉我验证过的 Runner ID 和 Agent ID。当前 Runner 已经配置好 SSH 登录；目标机器能访问的 Harness 地址是 `https://harness.example.com`。
 
-需要准备执行环境时，JAgent 会通过 `skill` 工具加载内置的 `runner-setup` Skill。普通聊天只看到简短的目录说明，系统提示词不会常驻完整部署步骤，也不需要手动安装 Skill。Skill 会指引它从当前 Harness 获取安装包、检查当前 Runner 的连接地址，再选择直连或 SSH 隧道。提前准备安装包的方法见 [内网分发](../../examples/coding-runner/README.zh-CN.md#在内网分发)。
+在 mainbot 对话中要求准备执行环境时，它会通过 `skill` 工具加载内置的 `runner-setup` Skill。普通聊天只看到简短的目录说明，系统提示词不会常驻完整部署步骤，也不需要手动安装 Skill。Skill 会指引它从当前 Harness 获取安装包、检查当前 Runner 的连接地址，再选择直连或 SSH 隧道。提前准备安装包的方法见 [内网分发](../../examples/coding-runner/README.zh-CN.md#在内网分发)。
 
 替换成实际地址。SSH 地址是要操作的机器，Harness 地址是现有的控制服务。Agent 仍然创建在当前 Harness 中，远程机器运行 Runner 来执行工具。不要把密码、私钥或 API Token 放进聊天，使用执行环境中已配置的凭据；缺少登录权限、必要软件或目标到 Harness 的网络连接时，需要先解决对应条件。
 

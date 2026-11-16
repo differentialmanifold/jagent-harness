@@ -9,7 +9,13 @@ import org.springframework.jdbc.core.RowMapper;
 public class JdbcModelCallUsageStore implements ModelCallUsageStore {
 
     private final JdbcTemplate jdbcTemplate;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
+
     private final RowMapper<ModelCallUsage> mapper =
             (rs, rowNum) -> {
                 ModelCallUsage usage = new ModelCallUsage();
@@ -36,7 +42,7 @@ public class JdbcModelCallUsageStore implements ModelCallUsageStore {
 
     public JdbcModelCallUsageStore(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -46,7 +52,7 @@ public class JdbcModelCallUsageStore implements ModelCallUsageStore {
                         "select * from model_call_usages where application_id = ? and session_id = ? "
                                 + "order by id desc limit 1",
                         mapper,
-                        applicationId,
+                        applicationId(),
                         sessionId);
         return usages.isEmpty() ? null : usages.get(0);
     }
@@ -63,7 +69,7 @@ public class JdbcModelCallUsageStore implements ModelCallUsageStore {
                         + "actual_context_tokens, prompt_tokens, completion_tokens, reasoning_tokens, "
                         + "cached_tokens, total_tokens, created_at) "
                         + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                applicationId,
+                applicationId(),
                 usage.getUsageId(),
                 usage.getSessionId(),
                 usage.getRunId(),

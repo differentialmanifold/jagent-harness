@@ -19,7 +19,12 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
     private static final String DEFAULT_CONTENT_TYPE = "text/markdown";
 
     private final JdbcTemplate jdbcTemplate;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
 
     private final RowMapper<KnowledgeFile> fileMapper =
             (rs, rowNum) ->
@@ -43,7 +48,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
 
     public JdbcKnowledgeFileStore(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -59,7 +64,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                         "select * from knowledge_files where application_id = ? and scope_type = ? and scope_id = ? "
                                 + "and path = ? and node_type = ?",
                         fileMapper,
-                        applicationId,
+                        applicationId(),
                         effectiveScope.getType(),
                         effectiveScope.getId(),
                         KnowledgeFilePaths.normalize(path),
@@ -81,7 +86,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                     "select * from knowledge_files where application_id = ? and scope_type = ? and scope_id = ? "
                             + "and node_type = ? order by path asc",
                     fileMapper,
-                    applicationId,
+                    applicationId(),
                     effectiveScope.getType(),
                     effectiveScope.getId(),
                     KnowledgeFile.TYPE_FILE);
@@ -92,7 +97,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                         + "and (path = ? or path like ?) "
                         + "order by path asc",
                 fileMapper,
-                applicationId,
+                applicationId(),
                 effectiveScope.getType(),
                 effectiveScope.getId(),
                 KnowledgeFile.TYPE_FILE,
@@ -155,7 +160,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
         String normalizedPath = KnowledgeFilePaths.normalize(path);
         jdbcTemplate.update(
                 "delete from knowledge_files where application_id = ? and scope_type = ? and scope_id = ? and path = ?",
-                applicationId,
+                applicationId(),
                 effectiveScope.getType(),
                 effectiveScope.getId(),
                 normalizedPath);
@@ -172,7 +177,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                 "select * from skill_manifests where application_id = ? and scope_type = ? and scope_id = ? "
                         + "order by skill_key asc",
                 skillManifestMapper,
-                applicationId,
+                applicationId(),
                 effectiveScope.getType(),
                 effectiveScope.getId());
     }
@@ -199,7 +204,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                     bytes.length,
                     sha256(bytes),
                     JdbcTimeCodec.encode(now),
-                    applicationId,
+                    applicationId(),
                     scope.getType(),
                     scope.getId(),
                     path);
@@ -209,7 +214,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                             + "(application_id, scope_type, scope_id, path, parent_path, name, node_type, content, "
                             + "content_type, size, content_hash, created_at, updated_at) "
                             + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    applicationId,
+                    applicationId(),
                     scope.getType(),
                     scope.getId(),
                     path,
@@ -248,7 +253,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                     descriptor.getName(),
                     descriptor.getDescription(),
                     JdbcTimeCodec.encode(now),
-                    applicationId,
+                    applicationId(),
                     scope.getType(),
                     scope.getId(),
                     skillKey);
@@ -257,7 +262,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                     "insert into skill_manifests "
                             + "(application_id, scope_type, scope_id, skill_key, skill_dir_path, skill_file_path, name, "
                             + "description, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    applicationId,
+                    applicationId(),
                     scope.getType(),
                     scope.getId(),
                     skillKey,
@@ -275,7 +280,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
             jdbcTemplate.update(
                     "delete from skill_manifests where application_id = ? and scope_type = ? and scope_id = ? "
                             + "and skill_file_path = ?",
-                    applicationId,
+                    applicationId(),
                     scope.getType(),
                     scope.getId(),
                     skillFilePath);
@@ -292,7 +297,7 @@ public class JdbcKnowledgeFileStore implements KnowledgeFileStore {
                                 + column
                                 + " = ?",
                         Integer.class,
-                        applicationId,
+                        applicationId(),
                         scope.getType(),
                         scope.getId(),
                         value);

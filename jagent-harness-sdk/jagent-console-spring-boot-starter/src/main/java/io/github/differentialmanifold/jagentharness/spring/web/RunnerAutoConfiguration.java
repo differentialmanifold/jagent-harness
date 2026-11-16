@@ -19,7 +19,19 @@ import org.springframework.context.annotation.Bean;
 public class RunnerAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    public RunnerController runnerController(RunnerService service) {
-        return new RunnerController(service);
+    public RunnerController runnerController(
+            RunnerService service,
+            org.springframework.beans.factory.ObjectProvider<
+                            io.github.differentialmanifold.jagentharness.core.personal
+                                    .PersonalAgentService>
+                    personal) {
+        return new RunnerController(service)
+                .onRegistered(
+                        info -> {
+                            io.github.differentialmanifold.jagentharness.core.personal
+                                            .PersonalAgentService
+                                    agents = personal.getIfAvailable();
+                            if (agents != null) agents.bindMainbotIfUnbound(info.runnerId);
+                        });
     }
 }

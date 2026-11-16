@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.execution;
 
 import io.github.differentialmanifold.jagentharness.core.agent.*;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.session.*;
@@ -16,7 +17,8 @@ public class RunService implements AutoCloseable {
     private final RunnerService runners;
     private final SessionManager sessions;
     private final RunInputCoordinator inputs;
-    private final ConcurrentMap<String, LocalRun> local = new ConcurrentHashMap<>();
+    private final UserState<ConcurrentMap<String, LocalRun>> local =
+            new UserState<>(() -> new ConcurrentHashMap<>());
     private final ExecutorService workers =
             Executors.newCachedThreadPool(
                     r -> {
@@ -61,24 +63,25 @@ public class RunService implements AutoCloseable {
             return runners.submit(request, events);
         RunHandle handle = new RunHandle(request.sessionId, request.runId, events);
         LocalRun pending = new LocalRun(handle);
-        if (local.putIfAbsent(request.sessionId, pending) != null)
+        if (local.get().putIfAbsent(request.sessionId, pending) != null)
             throw new ProtocolException(
                     409, "SESSION_BUSY", "Another request is modifying this session");
         try {
             workers.execute(
-                    () -> {
-                        try {
-                            ChatResponse result =
-                                    conversations.chat(request, handle::emit, pending.stop);
-                            local.remove(request.sessionId, pending);
-                            handle.complete(result);
-                        } catch (Throwable error) {
-                            local.remove(request.sessionId, pending);
-                            handle.fail(error);
-                        }
-                    });
+                    UserContext.capture(
+                            () -> {
+                                try {
+                                    ChatResponse result =
+                                            conversations.chat(request, handle::emit, pending.stop);
+                                    local.get().remove(request.sessionId, pending);
+                                    handle.complete(result);
+                                } catch (Throwable error) {
+                                    local.get().remove(request.sessionId, pending);
+                                    handle.fail(error);
+                                }
+                            }));
         } catch (RejectedExecutionException error) {
-            local.remove(request.sessionId, pending);
+            local.get().remove(request.sessionId, pending);
             throw new ProtocolException(503, "UNAVAILABLE", "Agent server is shutting down");
         }
         return handle;
@@ -86,7 +89,7 @@ public class RunService implements AutoCloseable {
 
     public ChatResponse state(String sessionId) {
         sessions.requireSession(sessionId);
-        LocalRun active = local.get(sessionId);
+        LocalRun active = local.get().get(sessionId);
         if (active != null) return running(sessionId, active.handle.runId);
         String runner = runners == null ? null : runners.binding(sessionId);
         if (runner != null)
@@ -140,7 +143,7 @@ public class RunService implements AutoCloseable {
 
     public void stop(String runId) {
         boolean localStopped = false;
-        for (LocalRun active : local.values())
+        for (LocalRun active : local.get().values())
             if (runId.equals(active.handle.runId)) {
                 active.stop.stop();
                 localStopped = true;
@@ -162,7 +165,8 @@ public class RunService implements AutoCloseable {
     }
 
     public void close() {
-        for (LocalRun active : local.values()) active.stop.stop();
+        for (java.util.Map<String, LocalRun> map : local.all())
+            for (LocalRun active : map.values()) active.stop.stop();
         workers.shutdownNow();
     }
 

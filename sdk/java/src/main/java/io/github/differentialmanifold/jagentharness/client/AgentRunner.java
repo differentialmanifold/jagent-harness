@@ -28,6 +28,10 @@ public final class AgentRunner implements AutoCloseable {
     private final Signal closing = new Signal();
     private final ConcurrentMap<String, Active> active = new ConcurrentHashMap<>();
     private final ExecutorService worker = Executors.newCachedThreadPool();
+    private final Consumer<String> console;
+    private final String consoleUrl;
+    private final boolean userIdentity;
+    private volatile boolean registeredOnce;
     private boolean running;
     private boolean released;
     private volatile Thread receiver;
@@ -42,8 +46,31 @@ public final class AgentRunner implements AutoCloseable {
         return RunnerFiles.stateDirectory(RunnerFiles.serverUrl(server), stateRoot);
     }
 
+    public static Path stateDirectory(String server, Path root, String userId) throws IOException {
+        Path base = stateDirectory(server, root);
+        if (userId == null || "local".equals(userId)) return base;
+        if (!userId.matches("usr_[a-f0-9]{32}"))
+            throw new IllegalArgumentException("Invalid server user identity");
+        return base.resolve("users").resolve(userId);
+    }
+
+    public Path stateDirectory() {
+        return home;
+    }
+
+    public String consoleLink() throws IOException {
+        String ticket =
+                http.management("POST", "/api/v1/access/browser", Collections.emptyMap())
+                        .path("ticket")
+                        .asText();
+        return RunnerFiles.serverUrl(consoleUrl) + "/#jagent-ticket=" + ticket;
+    }
+
     private AgentRunner(Builder b) throws IOException {
         status = b.status;
+        console = b.console;
+        consoleUrl = b.consoleUrl == null ? b.server : b.consoleUrl;
+        userIdentity = b.userIdentity;
         String server = RunnerFiles.serverUrl(b.server);
         URL origin = new URL(server);
         if ("http".equals(origin.getProtocol())
@@ -56,7 +83,14 @@ public final class AgentRunner implements AutoCloseable {
         for (ToolDefinition tool : b.tools)
             if (!names.add(tool.getName()))
                 throw new IllegalArgumentException("Duplicate tool: " + tool.getName());
-        home = RunnerFiles.stateDirectory(server, b.home);
+        String userId = null;
+        if (b.userIdentity)
+            userId =
+                    new HttpRunnerTransport(server, b.token)
+                            .management("GET", "/api/v1/access/identity", null)
+                            .path("userId")
+                            .asText();
+        home = stateDirectory(server, b.home, userId);
         toolContext = b.toolContext;
         workspaces = b.workspaces;
         events = b.events;
@@ -102,6 +136,15 @@ public final class AgentRunner implements AutoCloseable {
                     if (!registered) {
                         http.management("POST", "/api/v1/runners", info, closing);
                         registered = true;
+                        registeredOnce = true;
+                        if (userIdentity && console != null) {
+                            try {
+                                console.accept(consoleLink());
+                            } catch (Exception e) {
+                                report(
+                                        "Console could not be opened; restart the runner to open it after the frontend is ready");
+                            }
+                        }
                         report("Runner " + info.name + " online: " + info.runnerId);
                     }
                     Set<String> current = new HashSet<>(active.keySet());
@@ -343,6 +386,16 @@ public final class AgentRunner implements AutoCloseable {
     }
 
     private synchronized void end() {
+        if (userIdentity && registeredOnce) {
+            try {
+                http.management(
+                        "POST",
+                        "/api/v1/runners/" + info.runnerId + "/disconnect",
+                        Collections.emptyMap());
+            } catch (IOException ignored) {
+                /* An interrupted connection expires through its heartbeat lease. */
+            }
+        }
         running = false;
         receiver = null;
         // No receiver remains to deliver cancellation if serve exits with an error.
@@ -406,6 +459,9 @@ public final class AgentRunner implements AutoCloseable {
         private final String server;
         private final Path home;
         private String token = "";
+        private boolean userIdentity;
+        private Consumer<String> console;
+        private String consoleUrl;
         private String name = "Java runner";
         private String description = "",
                 platform = System.getProperty("os.name") + " " + System.getProperty("os.arch");
@@ -425,6 +481,19 @@ public final class AgentRunner implements AutoCloseable {
 
         public Builder token(String token) {
             this.token = token;
+            return this;
+        }
+
+        /** Server-issued personal credential; state is isolated by server and stable user ID. */
+        public Builder userToken(String token) {
+            this.token = Objects.requireNonNull(token);
+            this.userIdentity = true;
+            return this;
+        }
+        /** Optional desktop integration. The SDK itself never launches a browser. */
+        public Builder onConsole(String url, Consumer<String> open) {
+            this.consoleUrl = url;
+            this.console = open;
             return this;
         }
 

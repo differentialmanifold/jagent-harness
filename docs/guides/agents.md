@@ -6,13 +6,13 @@
 
 Give your Agent a small development task and watch it create a project, run tools, and check the result.
 
-## 1. Start and create an Agent
+## 1. Start and meet mainbot
 
 Follow [Quick start](../../QUICK_START.md) to start the server, Coding Runner, and Console. Open **http://127.0.0.1:5175**.
 
-In **Agents → New Agent**, enter **Developer**, choose your online Coding Runner, and click **Create Agent**. Instructions are optional. You do not need to create a workspace or configure Feishu.
+Open **Agents → mainbot** and start chatting. The server creates it and its first conversation automatically. The all-in-one launcher binds the local Coding Runner and registers the source checkout. With manual startup, choose the Runner and optional source directory in mainbot's **Configuration → General & instructions**. No Feishu setup is required.
 
-The first Agent created with a Runner becomes your **primary Agent**. The Console opens it by default; its Runner is the default when you create another Agent. For an existing installation, or to choose another entry point, open that Agent's **Configuration → General & instructions → Set as primary**. Switching the primary Agent keeps all existing projects and Runner bindings unchanged.
+mainbot is the initial **primary Agent**. Its Runner is the default when you create another Agent. You can choose another entry point with **Set as primary** without moving existing projects, Runner bindings or mainbot's built-in Skills. Restarts preserve names, preferences, memory and conversations. **New Agent** remains available for another role or environment.
 
 Talk to this Agent normally. It can solve work through its own Projects, or discover and delegate to another Agent, track the task, review the result and report back here. Other Agents remain available in the selector. An Agent creating a colleague still defaults to its own Runner; an explicit Runner ID selects another environment.
 
@@ -75,13 +75,21 @@ Use a real repository URL and branch. The Agent discovers Runner capabilities, r
 
 Use **System Settings → Models** to describe available model capabilities. Chats use the system default unless you select a model. Agents can pass a model you explicitly request when sending work; they do not choose or switch models themselves; see [Configuration](configuration.md#models-and-execution-environments).
 
+## Ask mainbot about JAgentHarness
+
+> Explain how this version loads a Skill and why it might not appear in a Project. Check the source and show the relevant code locations.
+
+mainbot loads `jagent-help`, reads its registered source location/version and opens an ordinary source Project on its Coding Runner. Further questions reuse that Project with independent sessions when needed. The all-in-one launcher uses the current checkout; the prebuilt application includes a source snapshot. A dirty checkout may differ from the running JAR. mainbot checks evidence before claiming a match or a repair; editing source does not deploy it.
+
+These built-in Skills appear only in mainbot's **Configuration → Skills**, independent of its display name or the selected primary Agent. Other Agents can ask mainbot for help through their existing `agents` tool. No source checkout is required on a phone Runner.
+
 ## Ask JAgent to prepare an SSH machine
 
-In your JAgent chat, ask:
+In mainbot’s chat, ask:
 
 > Prepare `deploy@build.example.com` as a Linux execution environment connected to this Harness. Reuse a suitable Runner if one already exists; otherwise deploy one and keep it running. Create a Build Agent on it and report the verified Runner and Agent IDs. SSH access is already configured on your current Runner. The Harness address reachable from the target is `https://harness.example.com`.
 
-JAgent loads the built-in `runner-setup` Skill through its `skill` tool when this workflow is relevant. Ordinary chats only see its short catalog description; the deployment procedure is not included in every system prompt. No manual Skill installation is needed. The Skill explains how to obtain the package from this Harness, inspect the current Runner’s connection, and use a direct route or an SSH tunnel. See [offline distribution](../../examples/coding-runner/README.md#distribute-inside-your-network) to prepare the package once.
+mainbot loads its built-in `runner-setup` Skill through its `skill` tool when this workflow is relevant. Ordinary chats only see its short catalog description; the deployment procedure is not included in every system prompt. No manual Skill installation is needed. The Skill explains how to obtain the package from this Harness, inspect the current Runner’s connection, and use a direct route or an SSH tunnel. See [offline distribution](../../examples/coding-runner/README.md#distribute-inside-your-network) to prepare the package once.
 
 Use your actual SSH destination and reachable Harness address. These are different addresses: the first is a machine to administer, the second is the existing control service. Agents remain in this Harness; the new Runner executes tools on the SSH machine. Do not put passwords, private keys or API tokens in chat; configure access in the execution environment. If the target cannot reach the Harness or lacks required access/software, JAgent needs that prerequisite resolved.
 
@@ -105,7 +113,7 @@ Replies from other Agents and background project events appear as expandable pro
 
 - Use **…** beside a chat to rename or delete it. Deletion is blocked during an active Agent turn. It removes queued messages and detaches follow-ups; projects, memory and Skills remain. A later Feishu message creates a new chat.
 - Open **Configuration → Runtime Context** to inspect the current model, available tools and discoverable Skills. Listed Skills have not necessarily been read by the model.
-- Open **Configuration → Skills** to browse built-in, shared and private Skills, with Preview and Code views for read-only files. Built-in Skills such as `runner-setup` are also listed in **System Settings → Agent defaults → Skills**. Browsing a Skill does not load it into a conversation.
+- Open **Configuration → Skills** to browse built-in, shared and private Skills, with Preview and Code views for read-only files. Only mainbot has the built-in `jagent-help` and `runner-setup` Skills; they are not shared Agent defaults. Browsing a Skill does not load it into a conversation.
 - **Configuration → Tools** selects this Agent's own server-side operations. The **Bound Runner** selected at creation controls where projects execute; it does not give the Agent chat direct access to every Runner tool. Configure those tools in the project's **Configuration → Tools**.
 - **Configuration → Runtime Context → Runtime Preview** shows the system prompt produced from current settings. It is not a saved historical model request. Current memory and task progress are visible in **Knowledge** and **Tasks**; see [Configuration](configuration.md).
 

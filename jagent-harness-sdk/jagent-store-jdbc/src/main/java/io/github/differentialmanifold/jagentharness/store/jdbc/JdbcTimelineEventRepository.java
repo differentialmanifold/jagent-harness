@@ -9,11 +9,16 @@ import org.springframework.jdbc.core.RowMapper;
 public class JdbcTimelineEventRepository implements TimelineEventRepository {
 
     private final JdbcTemplate jdbcTemplate;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
 
     public JdbcTimelineEventRepository(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -22,7 +27,7 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
                 "insert into timeline_events "
                         + "(application_id, event_id, session_id, run_id, turn_id, type, payload_json, created_at) "
                         + "values (?, ?, ?, ?, ?, ?, ?, ?)",
-                applicationId,
+                applicationId(),
                 event.getEventId(),
                 event.getSessionId(),
                 event.getRunId(),
@@ -38,7 +43,7 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
                 "select * from timeline_events where application_id = ? and session_id = ? "
                         + "order by id asc, created_at asc",
                 mapper(),
-                applicationId,
+                applicationId(),
                 sessionId);
     }
 
@@ -50,7 +55,7 @@ public class JdbcTimelineEventRepository implements TimelineEventRepository {
                                 + "and type in ('agent_start', 'agent_end', 'agent_error', 'agent_stopped', 'agent_requires_action') "
                                 + "order by id desc limit 1",
                         mapper(),
-                        applicationId,
+                        applicationId(),
                         sessionId);
         return events.isEmpty() ? null : events.get(0);
     }

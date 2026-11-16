@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 // Keep in sync with AgentRunner.stateDirectory in the Java client SDK.
-export function runnerStateDirectory(server, stateRoot) {
+export function runnerStateDirectory(server, stateRoot, userId = null) {
   const normalized = server.replace(/\/$/, '')
   const url = new URL(normalized)
   // Validate without reserializing: Java hashes the original origin spelling too.
@@ -17,7 +17,13 @@ export function runnerStateDirectory(server, stateRoot) {
   const scoped = resolve(root, 'servers', createHash('sha256').update(normalized, 'utf8').digest('hex'))
   const legacy = resolve(root, 'config.json')
   if (!existsSync(resolve(scoped, 'config.json')) && existsSync(legacy)) {
-    if (JSON.parse(readFileSync(legacy, 'utf8')).server === normalized) return root
+    if (JSON.parse(readFileSync(legacy, 'utf8')).server === normalized) return forUser(root, userId)
   }
-  return scoped
+  return forUser(scoped, userId)
+}
+
+function forUser(base, userId) {
+  if (!userId || userId === 'local') return base
+  if (!/^usr_[a-f0-9]{32}$/.test(userId)) throw new Error('Invalid server user identity')
+  return resolve(base, 'users', userId)
 }

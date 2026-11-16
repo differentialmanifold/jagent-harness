@@ -39,6 +39,15 @@ public class PersonalAgentController {
         return service.save(profile);
     }
 
+    @PostMapping("/mainbot/setup")
+    public Profile setupMainbot(@RequestBody Map<String, String> body) {
+        return service.setupMainbot(
+                body.get("runnerId"),
+                body.get("sourceWorkspace"),
+                body.get("sourceVersion"),
+                body.get("sourceRevision"));
+    }
+
     @GetMapping("/defaults")
     public Map<String, String> defaults() {
         return service.defaults();

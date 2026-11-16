@@ -568,9 +568,9 @@ class PersonalAgentIntegrationTest {
     @Test
     void bundledRunnerSkillIsDiscoveredWithoutInjectingItsProcedureAndLoadsOnDemand()
             throws Exception {
-        Profile p = profile("Optional workflows");
+        Profile p = service.require(PersonalAgentService.MAINBOT_ID);
         Conversation c = service.newConversation(p.id, "Setup");
-        SessionRecord project = service.createProjectSession(p.id, new CreateSessionRequest());
+        SessionRecord project = projects.createSession(p.id, new CreateSessionRequest());
         String path = "skills/runner-setup/SKILL.md";
         io.github.differentialmanifold.jagentharness.spring.web.dto.AgentContextRequest request =
                 new io.github.differentialmanifold.jagentharness.spring.web.dto
@@ -630,6 +630,23 @@ class PersonalAgentIntegrationTest {
                         .filter(skill -> "runner-setup".equals(skill.getName()))
                         .count());
         assertTrue(promptController.preview(request).getSystemPrompt().contains("Custom setup"));
+        files.deleteFile(KnowledgeScope.agent(p.id), path);
+        Profile other = profile("Not mainbot");
+        Conversation otherChat = service.newConversation(other.id, "Help");
+        request.setSessionId(otherChat.sessionId);
+        assertFalse(
+                contextController.current(request).getSkills().stream()
+                        .anyMatch(skill -> path.equals(skill.getFilePath())));
+        ToolContext otherContext =
+                new ToolContext(
+                        otherChat.sessionId,
+                        "run",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", other.id));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> tools.get("skill", otherContext).execute(otherContext, args));
     }
 
     @Test

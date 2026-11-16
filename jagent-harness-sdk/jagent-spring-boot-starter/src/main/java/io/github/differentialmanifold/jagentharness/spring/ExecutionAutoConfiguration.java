@@ -51,8 +51,15 @@ public class ExecutionAutoConfiguration {
             SessionManager sessions,
             ConversationService conversations,
             AgentEventPublisher publisher,
-            ObjectMapper json) {
-        return new RunnerService(store, sessions, conversations, publisher, json);
+            ObjectMapper json,
+            ObjectProvider<io.github.differentialmanifold.jagentharness.core.identity.UserDirectory>
+                    users) {
+        return new RunnerService(store, sessions, conversations, publisher, json)
+                .withUsers(
+                        users.getIfAvailable(
+                                () ->
+                                        io.github.differentialmanifold.jagentharness.core.identity
+                                                .UserDirectory.LOCAL));
     }
 
     @Bean
