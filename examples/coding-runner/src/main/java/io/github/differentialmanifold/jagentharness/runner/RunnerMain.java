@@ -92,10 +92,13 @@ public final class RunnerMain {
                                                 : server));
         CodingTools coding = new CodingTools();
         Map<String, String> diagnostics = coding.toolDiagnostics();
+        RunnerBuild build = new RunnerBuild();
 
         System.out.println("Search backend (find, grep): " + diagnostics.get("grep"));
         try (AgentRunner runner =
                 AgentRunner.builder(server, home)
+                        .version(build.value("version"))
+                        .buildRevision(build.value("buildRevision"))
                         .userToken(token)
                         .onConsole(
                                 consoleUrl,

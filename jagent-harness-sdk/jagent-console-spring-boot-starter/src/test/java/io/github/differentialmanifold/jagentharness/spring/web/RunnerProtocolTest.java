@@ -42,9 +42,62 @@ class RunnerProtocolTest {
     @Autowired SessionStore history;
     @Autowired ConversationService chat;
     @Autowired ConversationProtocolTest.Scripted model;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate db;
     @LocalServerPort int port;
     final ObjectMapper json = new ObjectMapper();
     final String secret = "secret-for-tests-with-at-least-32-characters";
+
+    @Test
+    void optionalBuildMetadataSurvivesPersistenceHeartbeatAndMixedVersionReconnects()
+            throws Exception {
+        RunnerInfo legacy = register();
+        assertNull(store.runner(legacy.runnerId).version);
+        assertNull(store.runner(legacy.runnerId).protocolVersion);
+        RunnerInfo modern = register();
+        modern.version = "2.3.0";
+        modern.buildRevision = "commit-one";
+        modern.protocolVersion = "1";
+        JsonNode registered = http(modern.runnerId).management("POST", "/api/v1/runners", modern);
+        assertEquals(modern.version, registered.path("version").asText());
+        io.github.differentialmanifold.jagentharness.store.jdbc.JdbcStoreProperties properties =
+                new io.github.differentialmanifold.jagentharness.store.jdbc.JdbcStoreProperties();
+        properties.setApplicationId("runner-tests");
+        RunnerStore reopened =
+                new io.github.differentialmanifold.jagentharness.store.jdbc.JdbcRunnerStore(
+                        db, json, properties);
+        for (RunnerInfo info : Arrays.asList(legacy, modern)) {
+            CompletableFuture<RunnerPoll> poll = runners.poll(info.runnerId, null, 0);
+            try {
+                RunnerInfo persisted = reopened.runner(info.runnerId);
+                assertEquals(info.version, persisted.version);
+                assertEquals(info.buildRevision, persisted.buildRevision);
+                assertEquals(info.protocolVersion, persisted.protocolVersion);
+                assertTrue(persisted.lastSeen > 0);
+                JsonNode listed = http(info.runnerId).management("GET", "/api/v1/runners", null);
+                JsonNode row = null;
+                for (JsonNode candidate : listed)
+                    if (info.runnerId.equals(candidate.path("runnerId").asText())) row = candidate;
+                assertNotNull(row);
+                assertEquals(
+                        info.version,
+                        row.path("version").isNull() ? null : row.path("version").asText());
+            } finally {
+                runners.disconnect(info.runnerId);
+                poll.get(2, TimeUnit.SECONDS);
+            }
+        }
+        modern.version = "2.4.0";
+        modern.buildRevision = "commit-two";
+        http(modern.runnerId).management("POST", "/api/v1/runners", modern);
+        assertEquals("commit-two", reopened.runner(modern.runnerId).buildRevision);
+        // A downgraded/old Runner must not inherit stale metadata from the previous process.
+        com.fasterxml.jackson.databind.node.ObjectNode oldPayload = json.valueToTree(modern);
+        oldPayload.remove(Arrays.asList("version", "buildRevision", "protocolVersion"));
+        http(modern.runnerId).management("POST", "/api/v1/runners", oldPayload);
+        assertNull(reopened.runner(modern.runnerId).version);
+        assertNull(reopened.runner(modern.runnerId).buildRevision);
+        assertNull(reopened.runner(modern.runnerId).protocolVersion);
+    }
 
     @Test
     void publicChatOnlyAcceptsUserInputForBoundAndServerOnlyProjects() throws Exception {

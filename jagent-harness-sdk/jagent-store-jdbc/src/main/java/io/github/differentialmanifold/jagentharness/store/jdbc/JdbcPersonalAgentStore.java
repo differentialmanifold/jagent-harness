@@ -11,6 +11,7 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private final String baseApplicationId;
+    private volatile String inboxInsertSql;
 
     private String application() {
         return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
@@ -329,20 +330,48 @@ public class JdbcPersonalAgentStore implements PersonalAgentStore {
     }
 
     public boolean enqueue(Inbox m) {
+        String sql = inboxInsertSql();
+        List<Object> args =
+                new ArrayList<>(
+                        Arrays.asList(
+                                application(),
+                                m.id,
+                                m.sessionId,
+                                m.status,
+                                m.createdAt,
+                                encode(m)));
+        if (sql.contains("where not exists")) {
+            args.add(application());
+            args.add(m.id);
+        }
         try {
-            db.update(
-                    "insert into personal_inbox(application_id, message_id, session_id, status, created_at, body_json) values(?,?,?,?,?,?)",
-                    application(),
-                    m.id,
-                    m.sessionId,
-                    m.status,
-                    m.createdAt,
-                    encode(m));
-            return true;
+            return db.update(sql, args.toArray()) == 1;
         } catch (DataAccessException e) {
+            // Other compatible databases retain the unique constraint as a race guard.
             if (duplicate(e)) return false;
             throw e;
         }
+    }
+
+    private String inboxInsertSql() {
+        if (inboxInsertSql == null) {
+            String product =
+                    db.execute(
+                            (org.springframework.jdbc.core.ConnectionCallback<String>)
+                                    connection ->
+                                            connection.getMetaData().getDatabaseProductName());
+            String insert =
+                    "insert into personal_inbox(application_id, message_id, session_id, status, created_at, body_json) ";
+            if ("PostgreSQL".equalsIgnoreCase(product) || "SQLite".equalsIgnoreCase(product))
+                inboxInsertSql =
+                        insert
+                                + "values(?,?,?,?,?,?) on conflict(application_id, message_id) do nothing";
+            else
+                inboxInsertSql =
+                        insert
+                                + "select ?,?,?,?,?,? where not exists (select 1 from personal_inbox where application_id=? and message_id=?)";
+        }
+        return inboxInsertSql;
     }
 
     public boolean update(Inbox m, String expectedStatus) {

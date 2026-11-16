@@ -49,3 +49,15 @@ test('a project may disable every client tool',()=>{
  const validate=ajv.getSchema('protocol#/definitions/RunnerProject')
  assert.ok(validate(project),JSON.stringify(validate.errors))
 })
+
+test('runner build metadata is optional and supports mixed versions',()=>{
+ const runner=JSON.parse(readFileSync(new URL('./fixtures/runner-registration.json',import.meta.url)))
+ const validate=ajv.getSchema('protocol#/definitions/RunnerInfo')
+ assert.ok(validate(runner),JSON.stringify(validate.errors))
+ for(const field of ['version','buildRevision','protocolVersion']) runner[field]=null
+ assert.ok(validate(runner),JSON.stringify(validate.errors))
+ for(const field of ['version','buildRevision','protocolVersion']) delete runner[field]
+ assert.ok(validate(runner),JSON.stringify(validate.errors))
+ runner.version='x'.repeat(129)
+ assert.equal(validate(runner),false)
+})

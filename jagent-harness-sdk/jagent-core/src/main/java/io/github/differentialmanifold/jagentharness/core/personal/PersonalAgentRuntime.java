@@ -259,6 +259,9 @@ final class PersonalAgentRuntime {
                                             && !PersonalTaskPlan.terminal(child))) continue;
             Inbox next = new Inbox();
             next.id = "continue_" + c.id + "_" + c.revision;
+            // Completed and failed nudges also consume this revision, including after restart.
+            // enqueue still arbitrates concurrent schedulers atomically.
+            if (store.message(next.id) != null) continue;
             next.agentId = c.ownerId;
             next.sessionId = c.conversationId;
             next.source = "CONTINUE";

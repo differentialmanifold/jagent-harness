@@ -99,6 +99,9 @@ public final class AgentRunner implements AutoCloseable {
             Map<String, Object> config = identity(home, server);
             info.runnerId = (String) config.get("runnerId");
             info.name = b.name;
+            info.version = b.version;
+            info.buildRevision = b.buildRevision;
+            info.protocolVersion = "1";
             info.description = b.description;
             info.platform = b.platform;
             info.capabilities.addAll(b.capabilities);
@@ -463,6 +466,7 @@ public final class AgentRunner implements AutoCloseable {
         private Consumer<String> console;
         private String consoleUrl;
         private String name = "Java runner";
+        private String version, buildRevision;
         private String description = "",
                 platform = System.getProperty("os.name") + " " + System.getProperty("os.arch");
         private List<String> capabilities = new ArrayList<>();
@@ -514,6 +518,18 @@ public final class AgentRunner implements AutoCloseable {
 
         public Builder name(String name) {
             this.name = Objects.requireNonNull(name);
+            return this;
+        }
+
+        /** Version of the application hosting this Runner; unknown when omitted. */
+        public Builder version(String version) {
+            this.version = version;
+            return this;
+        }
+
+        /** Optional commit or build identifier, refreshed on every registration. */
+        public Builder buildRevision(String buildRevision) {
+            this.buildRevision = buildRevision;
             return this;
         }
 

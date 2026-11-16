@@ -18,6 +18,9 @@ public interface PersonalAgentStore {
         public String sessionId, agentId, title;
         public long createdAt;
         public boolean running;
+        /** Derived for conversation listings; not a conversation-wide terminal status. */
+        public long failedMessages;
+
         public String requesterAgentId, requesterSessionId, requesterTaskId, requesterModelId;
         public ReplyTarget requesterReplyTo;
         public List<String> delegationChain = new ArrayList<>();

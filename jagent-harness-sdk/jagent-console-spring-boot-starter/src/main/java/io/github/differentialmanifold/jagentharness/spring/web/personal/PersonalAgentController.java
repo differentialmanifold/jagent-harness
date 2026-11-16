@@ -63,9 +63,14 @@ public class PersonalAgentController {
     public List<Conversation> conversations(@PathVariable String agent) {
         service.require(agent);
         List<Conversation> conversations = store.conversations(agent);
-        for (Conversation c : conversations)
-            c.running =
-                    store.messages(c.sessionId).stream().anyMatch(m -> "RUNNING".equals(m.status));
+        for (Conversation c : conversations) {
+            List<Inbox> messages = store.messages(c.sessionId);
+            c.running = messages.stream().anyMatch(m -> "RUNNING".equals(m.status));
+            c.failedMessages =
+                    messages.stream()
+                            .filter(m -> !"LEARNING".equals(m.source) && "FAILED".equals(m.status))
+                            .count();
+        }
         return conversations;
     }
 
