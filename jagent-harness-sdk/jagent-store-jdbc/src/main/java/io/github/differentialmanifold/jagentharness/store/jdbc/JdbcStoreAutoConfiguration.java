@@ -34,6 +34,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @EnableConfigurationProperties({JdbcStoreProperties.class, JdbcRunStopProperties.class})
 public class JdbcStoreAutoConfiguration {
     @Bean
+    @ConditionalOnMissingBean(
+            io.github.differentialmanifold.jagentharness.core.identity.UserStore.class)
+    public JdbcUserStore jdbcUserStore(
+            JdbcTemplate db, JdbcSchemaInitializer schema, JdbcStoreProperties properties) {
+        return new JdbcUserStore(db, properties);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(ModelCatalogStore.class)
     public JdbcModelCatalogStore jdbcModelCatalogStore(
             JdbcTemplate db,

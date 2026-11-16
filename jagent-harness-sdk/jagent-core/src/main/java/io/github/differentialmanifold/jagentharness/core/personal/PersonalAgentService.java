@@ -4,6 +4,7 @@ import static io.github.differentialmanifold.jagentharness.core.personal.Persona
 
 import io.github.differentialmanifold.jagentharness.core.agent.*;
 import io.github.differentialmanifold.jagentharness.core.execution.RunService;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.message.*;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.*;
 import io.github.differentialmanifold.jagentharness.core.project.*;
@@ -59,8 +60,79 @@ public class PersonalAgentService implements AutoCloseable {
                         this, store, records, history, harness, learning, plans, this.projects);
     }
 
+    public static final String MAINBOT_ID = "agent_mainbot";
+
+    public UserDirectory users = UserDirectory.LOCAL;
+
+    public PersonalAgentService withUsers(UserDirectory users) {
+        this.users = users;
+        return this;
+    }
+
     public void start() {
+        users.forEach(this::initializeMainbot);
         runtime.start();
+    }
+
+    public synchronized void bindMainbotIfUnbound(String runner) {
+        initializeMainbot();
+        Profile main = require(MAINBOT_ID);
+        if (main.runnerId == null) {
+            main.runnerId = runner;
+            if (!store.save(main) && require(MAINBOT_ID).runnerId == null) throw conflict();
+        }
+    }
+
+    public void initializeMainbot() {
+        if (store.profile(MAINBOT_ID) == null) {
+            Profile p = new Profile();
+            p.id = MAINBOT_ID;
+            p.name = "mainbot";
+            p.description = "Your primary assistant for everyday work and JAgentHarness support.";
+            store.initializeMainbot(p, () -> newConversation(MAINBOT_ID, "Chat 1"));
+        }
+        if (store.profile(MAINBOT_ID) != null && store.primaryAgentId() == null)
+            store.setPrimaryAgentId(MAINBOT_ID, null);
+    }
+
+    /** Operator setup after a known Runner registers; never pick the first connected terminal. */
+    public synchronized Profile setupMainbot(
+            String runnerId, String sourceWorkspace, String sourceVersion, String sourceRevision) {
+        Profile p = require(MAINBOT_ID);
+        runnerId = text(runnerId, "runnerId", 128);
+        if (p.runnerId != null && !p.runnerId.equals(runnerId))
+            throw new PersonalAgentException(
+                    PersonalAgentException.Kind.CONFLICT,
+                    "MAINBOT_ALREADY_BOUND",
+                    "mainbot is already bound to another Runner; its environment was kept unchanged");
+        final String targetRunner = runnerId;
+        RunnerInfo runner =
+                runners().stream()
+                        .filter(r -> r.runnerId.equals(targetRunner))
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new IllegalArgumentException("Choose an existing Runner"));
+        Set<String> names =
+                runner.tools.stream().map(t -> t.name).collect(java.util.stream.Collectors.toSet());
+        if (!runner.workspaces || !names.contains("read") || !names.contains("bash"))
+            throw new IllegalArgumentException(
+                    "mainbot setup needs a Coding Runner with workspaces, read and bash tools");
+        String path =
+                sourceWorkspace == null || sourceWorkspace.trim().isEmpty()
+                        ? null
+                        : projects.canonicalWorkspace(
+                                runnerId, text(sourceWorkspace, "sourceWorkspace", 2048));
+        if (Objects.equals(p.runnerId, runnerId)
+                && Objects.equals(p.sourceWorkspace, path)
+                && Objects.equals(p.sourceVersion, sourceVersion)
+                && Objects.equals(p.sourceRevision, sourceRevision)) return p;
+        p.runnerId = runnerId;
+        p.sourceWorkspace = path;
+        p.sourceVersion = sourceVersion == null ? null : text(sourceVersion, "sourceVersion", 128);
+        p.sourceRevision =
+                sourceRevision == null ? null : text(sourceRevision, "sourceRevision", 160);
+        if (!store.save(p)) throw conflict();
+        return p;
     }
 
     public void tick() {
@@ -89,6 +161,10 @@ public class PersonalAgentService implements AutoCloseable {
                 && !require(p.id).runnerId.equals(p.runnerId))
             throw new IllegalArgumentException(
                     "An Agent stays bound to its Runner; create another Agent for a different environment");
+        Profile old = p.id == null ? null : require(p.id);
+        p.sourceWorkspace = old == null ? null : old.sourceWorkspace;
+        p.sourceVersion = old == null ? null : old.sourceVersion;
+        p.sourceRevision = old == null ? null : old.sourceRevision;
         p.disabledTools =
                 p.disabledTools == null
                         ? new ArrayList<>()
@@ -133,6 +209,7 @@ public class PersonalAgentService implements AutoCloseable {
         Map<String, String> result = new LinkedHashMap<>();
         String primary = store.primaryAgentId();
         Profile profile = primary == null ? null : store.profile(primary);
+        result.put("mainbotAgentId", MAINBOT_ID);
         result.put("primaryAgentId", profile == null ? null : profile.id);
         result.put("primaryRunnerId", profile == null ? null : profile.runnerId);
         return result;

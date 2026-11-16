@@ -44,11 +44,18 @@ public class PersonalAgentAutoConfiguration {
             RunService runs,
             PersonalAgentKnowledge knowledge,
             PersonalAgentLearning learning,
-            ObjectProvider<ModelCatalog> models) {
+            ObjectProvider<ModelCatalog> models,
+            ObjectProvider<io.github.differentialmanifold.jagentharness.core.identity.UserDirectory>
+                    users) {
         return new PersonalAgentService(
                         store, records, sessions, history, harness, projects, runs, knowledge,
                         learning)
-                .withModels(models.getIfAvailable());
+                .withModels(models.getIfAvailable())
+                .withUsers(
+                        users.getIfAvailable(
+                                () ->
+                                        io.github.differentialmanifold.jagentharness.core.identity
+                                                .UserDirectory.LOCAL));
     }
 
     @Bean

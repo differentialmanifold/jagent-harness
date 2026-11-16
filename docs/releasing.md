@@ -34,3 +34,9 @@ Keep the API version, JSON Schema, OpenAPI, and protocol fixtures consistent whe
 Tagged releases attach the Coding Runner offline ZIP (JAR plus version/checksum manifest), the web frontend archive, and SHA256SUMS. Operators can install the offline package on their Harness once and distribute it inside an isolated network. Runner deployment does not depend on reaching GitHub. The executable includes its coding tools and is not a Central library. See [local distribution](../examples/coding-runner/README.md#distribute-inside-your-network).
 
 Release assets also include `jagent-skill-<version>.zip`, containing the complete standalone `jagent/` skill and its dependency-free Node.js client.
+
+## Offline application package
+
+Run `node scripts/package.mjs` from a checkout. It builds the existing Maven examples and Console, includes a filtered source snapshot and version/revision metadata, and writes `target/jagent-<version>.zip`. It does not publish anything. Tagged releases attach this package alongside the existing artifacts.
+
+After extraction, users only need Java 8+, Node.js 22.12+ and model configuration. `node scripts/dev.mjs` starts the server, Coding Runner and built Console at port 5175, and configures mainbot with the bundled source. Source acquisition needs no internet at runtime. Build from a clean checkout for releases; dirty development builds are marked explicitly. Maven consumers can continue using the libraries independently.

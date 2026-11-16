@@ -7,6 +7,7 @@ import io.github.differentialmanifold.jagentharness.core.execution.ConversationS
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolMapper;
 import io.github.differentialmanifold.jagentharness.core.execution.RunHandle;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.session.*;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +23,13 @@ public class RunnerService implements AutoCloseable {
     private static final java.util.logging.Logger LOG =
             java.util.logging.Logger.getLogger(RunnerService.class.getName());
     private boolean databaseFailure;
+    private UserDirectory users = UserDirectory.LOCAL;
+
+    public RunnerService withUsers(UserDirectory users) {
+        this.users = users;
+        return this;
+    }
+
     private final ExecutorService workers =
             Executors.newCachedThreadPool(
                     r -> {
@@ -35,9 +43,10 @@ public class RunnerService implements AutoCloseable {
     private final AgentEventPublisher publisher;
     private final ObjectMapper json;
     private final RunnerWorkspaceRequests workspaces = new RunnerWorkspaceRequests();
-    private final ConcurrentMap<String, Waiter> waiters = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, CopyOnWriteArrayList<RunHandle>> observers =
-            new ConcurrentHashMap<>();
+    private final UserState<ConcurrentMap<String, Waiter>> waiters =
+            new UserState<>(() -> new ConcurrentHashMap<>());
+    private final UserState<ConcurrentMap<String, CopyOnWriteArrayList<RunHandle>>> observers =
+            new UserState<>(() -> new ConcurrentHashMap<>());
     private final ScheduledExecutorService timer =
             Executors.newSingleThreadScheduledExecutor(
                     r -> {
@@ -57,7 +66,7 @@ public class RunnerService implements AutoCloseable {
         this.chat = chat;
         this.publisher = publisher;
         this.json = json;
-        timer.scheduleWithFixedDelay(this::tick, 200, 200, TimeUnit.MILLISECONDS);
+        timer.scheduleWithFixedDelay(() -> users.scan(this::tick), 200, 200, TimeUnit.MILLISECONDS);
     }
 
     public static String hash(String value) {
@@ -131,9 +140,15 @@ public class RunnerService implements AutoCloseable {
         }
         store.register(info, hash(secret));
         // Re-registration starts a new receiver after reconnect or process restart.
-        Waiter previousPoll = waiters.remove(info.runnerId);
+        Waiter previousPoll = waiters.get().remove(info.runnerId);
         if (previousPoll != null) previousPoll.result.complete(new RunnerPoll());
         return info;
+    }
+
+    public void disconnect(String runner) {
+        store.heartbeat(runner, 0);
+        Waiter w = waiters.get().remove(runner);
+        if (w != null) w.result.complete(new RunnerPoll());
     }
 
     public List<RunnerInfo> list() {
@@ -336,21 +351,26 @@ public class RunnerService implements AutoCloseable {
     public RunHandle watch(String run, Consumer<StreamEvent> listener) {
         RunnerJob job = job(run);
         RunHandle handle = new RunHandle(job.request.sessionId, run, listener);
-        observers.compute(
-                run,
-                (id, list) -> {
-                    if (list == null) list = new CopyOnWriteArrayList<>();
-                    list.add(handle);
-                    return list;
-                });
+        observers
+                .get()
+                .compute(
+                        run,
+                        (id, list) -> {
+                            if (list == null) list = new CopyOnWriteArrayList<>();
+                            list.add(handle);
+                            return list;
+                        });
         handle.onClose(
-                () ->
-                        observers.computeIfPresent(
-                                run,
-                                (id, list) -> {
-                                    list.remove(handle);
-                                    return list.isEmpty() ? null : list;
-                                }));
+                UserContext.capture(
+                        () ->
+                                observers
+                                        .get()
+                                        .computeIfPresent(
+                                                run,
+                                                (id, list) -> {
+                                                    list.remove(handle);
+                                                    return list.isEmpty() ? null : list;
+                                                })));
         // Re-read after subscribing to cover completion concurrent with subscription.
         ChatResponse response = job(run).response;
         if (response != null) handle.complete(response);
@@ -389,19 +409,20 @@ public class RunnerService implements AutoCloseable {
         RunHandle handle = new RunHandle(request.sessionId, request.runId, listener);
         try {
             workers.execute(
-                    () -> {
-                        try {
-                            handle.complete(
-                                    chat.chat(
-                                            request,
-                                            event -> {
-                                                event(event);
-                                                handle.emit(event);
-                                            }));
-                        } catch (Throwable error) {
-                            handle.fail(error);
-                        }
-                    });
+                    UserContext.capture(
+                            () -> {
+                                try {
+                                    handle.complete(
+                                            chat.chat(
+                                                    request,
+                                                    event -> {
+                                                        event(event);
+                                                        handle.emit(event);
+                                                    }));
+                                } catch (Throwable error) {
+                                    handle.fail(error);
+                                }
+                            }));
         } catch (RejectedExecutionException error) {
             throw new ProtocolException(503, "SERVER_STOPPING", "Server is stopping");
         }
@@ -441,23 +462,24 @@ public class RunnerService implements AutoCloseable {
         store.heartbeat(runner, System.currentTimeMillis());
         CompletableFuture<RunnerPoll> result = new CompletableFuture<>();
         Waiter waiter = new Waiter(runner, activeRuns, availableSlots > 0, result);
-        Waiter previous = waiters.putIfAbsent(runner, waiter);
+        Waiter previous = waiters.get().putIfAbsent(runner, waiter);
         if (previous != null)
             throw new ProtocolException(
                     409, "RUNNER_CONNECTED", "Only one poll per runner is allowed");
         ScheduledFuture<?> timeout =
                 timer.schedule(() -> result.complete(new RunnerPoll()), 25, TimeUnit.SECONDS);
         result.whenComplete(
-                (value, error) -> {
-                    waiters.remove(runner, waiter);
-                    timeout.cancel(false);
-                });
+                UserContext.callback(
+                        (value, error) -> {
+                            waiters.get().remove(runner, waiter);
+                            timeout.cancel(false);
+                        }));
         wake(runner);
         return result;
     }
 
     private void wake(String runner) {
-        Waiter waiter = waiters.get(runner);
+        Waiter waiter = waiters.get().get(runner);
         if (waiter == null) return;
         synchronized (waiter) {
             if (waiter.result.isDone()) return;
@@ -485,7 +507,7 @@ public class RunnerService implements AutoCloseable {
             if (result.job != null
                     || result.workspaceRequest != null
                     || !result.cancelledRuns.isEmpty()) {
-                waiters.remove(runner, waiter);
+                waiters.get().remove(runner, waiter);
                 waiter.result.complete(result);
             }
         }
@@ -520,7 +542,7 @@ public class RunnerService implements AutoCloseable {
     }
 
     public void event(StreamEvent event) {
-        List<RunHandle> listeners = observers.get(event.runId);
+        List<RunHandle> listeners = observers.get().get(event.runId);
         if (listeners != null) for (RunHandle handle : listeners) handle.emit(event);
     }
 
@@ -544,14 +566,14 @@ public class RunnerService implements AutoCloseable {
     }
 
     private void finish(String run, ChatResponse response) {
-        List<RunHandle> listeners = observers.remove(run);
+        List<RunHandle> listeners = observers.get().remove(run);
         if (listeners != null) for (RunHandle handle : listeners) handle.complete(response);
     }
 
     private void tick() {
         try {
-            for (String runner : waiters.keySet()) wake(runner);
-            for (String run : observers.keySet()) {
+            for (String runner : waiters.get().keySet()) wake(runner);
+            for (String run : observers.get().keySet()) {
                 RunnerJob job = store.job(run);
                 if (job != null && job.response != null) finish(run, job.response);
             }
@@ -571,11 +593,14 @@ public class RunnerService implements AutoCloseable {
         timer.shutdownNow();
         workers.shutdownNow();
         workspaces.close();
-        for (Waiter w : waiters.values()) w.result.complete(new RunnerPoll());
-        for (List<RunHandle> handles : observers.values())
-            for (RunHandle handle : handles)
-                handle.fail(new ProtocolException(503, "SERVER_STOPPING", "Server is stopping"));
-        observers.clear();
+        for (java.util.Map<String, Waiter> map : waiters.all())
+            for (Waiter w : map.values()) w.result.complete(new RunnerPoll());
+        for (java.util.Map<String, CopyOnWriteArrayList<RunHandle>> map : observers.all())
+            for (List<RunHandle> handles : map.values())
+                for (RunHandle handle : handles)
+                    handle.fail(
+                            new ProtocolException(503, "SERVER_STOPPING", "Server is stopping"));
+        observers.get().clear();
     }
 
     private static class Waiter {

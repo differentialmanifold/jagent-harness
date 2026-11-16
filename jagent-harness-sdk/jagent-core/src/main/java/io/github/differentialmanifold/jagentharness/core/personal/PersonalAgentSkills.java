@@ -1,57 +1,109 @@
 package io.github.differentialmanifold.jagentharness.core.personal;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
-import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
-import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
-import io.github.differentialmanifold.jagentharness.core.prompt.SkillProvider;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import io.github.differentialmanifold.jagentharness.core.prompt.*;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
-/** Optional built-in workflows. Only their descriptors enter the system prompt. */
+/** Versioned support workflows available only to the built-in mainbot identity. */
 public final class PersonalAgentSkills implements SkillProvider {
-    private static final String PATH = "skills/runner-setup/SKILL.md";
+    private static final String ENVIRONMENT = "skills/jagent-help/references/environment.json";
     private final PersonalAgentStore store;
-    private final String content;
-    private final SkillDescriptor descriptor;
+    private final Map<String, String> resources = new LinkedHashMap<>();
+    private final List<SkillDescriptor> descriptors = new ArrayList<>();
+    private final Properties build = new Properties();
 
     public PersonalAgentSkills(PersonalAgentStore store) {
         this.store = store;
-        try (InputStream input = PersonalAgentSkills.class.getResourceAsStream("/" + PATH)) {
-            if (input == null) throw new IllegalStateException("Missing bundled skill: " + PATH);
+        for (String name : Arrays.asList("jagent-help", "runner-setup")) {
+            String path = "skills/" + name + "/SKILL.md";
+            String content = resource(path);
+            resources.put(path, content);
+            SkillDescriptor parsed = SkillFileParser.readDescriptor(content, name, path);
+            descriptors.add(
+                    new SkillDescriptor(
+                            parsed.getName(), parsed.getDescription(), path, "builtin"));
+        }
+        try (InputStream input =
+                PersonalAgentSkills.class.getResourceAsStream("/jagent-build.properties")) {
+            if (input != null) build.load(input);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot load Harness build information", e);
+        }
+    }
+
+    private String resource(String path) {
+        try (InputStream input = PersonalAgentSkills.class.getResourceAsStream("/" + path)) {
+            if (input == null) throw new IllegalStateException("Missing bundled skill: " + path);
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
             int count;
             while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
-            content = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+            return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot load bundled skill: " + PATH, e);
+            throw new IllegalStateException("Cannot load bundled skill: " + path, e);
         }
-        SkillDescriptor parsed = SkillFileParser.readDescriptor(content, "runner-setup", PATH);
-        descriptor =
-                new SkillDescriptor(parsed.getName(), parsed.getDescription(), PATH, "builtin");
     }
 
     @Override
     public List<SkillDescriptor> listSkills(AgentContext context) {
-        return PersonalTool.identity(store, context) == null
-                ? Collections.emptyList()
-                : Collections.singletonList(descriptor);
+        return PersonalAgentService.MAINBOT_ID.equals(PersonalTool.identity(store, context))
+                ? Collections.unmodifiableList(descriptors)
+                : Collections.emptyList();
     }
 
     @Override
     public String readResource(AgentContext context, String path) {
-        return PATH.equals(path) && PersonalTool.identity(store, context) != null ? content : null;
+        if (!PersonalAgentService.MAINBOT_ID.equals(PersonalTool.identity(store, context)))
+            return null;
+        return ENVIRONMENT.equals(path) ? environment() : resources.get(path);
     }
 
-    /** Read-only configuration browsing; does not activate a Skill in a conversation. */
-    public List<KnowledgeFile> bundledFiles() {
-        return Collections.singletonList(
+    private String environment() {
+        PersonalAgentStore.Profile p = store.profile(PersonalAgentService.MAINBOT_ID);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("harnessVersion", build.getProperty("version", "unknown"));
+        data.put("harnessRevision", build.getProperty("revision", "unknown"));
+        data.put(
+                "repository",
+                build.getProperty(
+                        "repository", "https://github.com/differentialmanifold/jagent-harness"));
+        data.put("runnerId", p == null ? null : p.runnerId);
+        data.put("sourceWorkspace", p == null ? null : p.sourceWorkspace);
+        data.put("sourceVersion", p == null ? null : p.sourceVersion);
+        data.put("sourceRevision", p == null ? null : p.sourceRevision);
+        try {
+            return new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(data);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Configuration browsing uses the same identity scope, without activating a Skill. */
+    public List<KnowledgeFile> bundledFiles(String agentId) {
+        if (!PersonalAgentService.MAINBOT_ID.equals(agentId)) return Collections.emptyList();
+        List<KnowledgeFile> files = new ArrayList<>();
+        resources.forEach(
+                (path, content) ->
+                        files.add(
+                                new KnowledgeFile(
+                                        path,
+                                        KnowledgeFile.TYPE_FILE,
+                                        content,
+                                        "text/markdown",
+                                        null,
+                                        null)));
+        files.add(
                 new KnowledgeFile(
-                        PATH, KnowledgeFile.TYPE_FILE, content, "text/markdown", null, null));
+                        ENVIRONMENT,
+                        KnowledgeFile.TYPE_FILE,
+                        environment(),
+                        "application/json",
+                        null,
+                        null));
+        return files;
     }
 }

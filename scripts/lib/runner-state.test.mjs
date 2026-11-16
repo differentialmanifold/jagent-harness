@@ -49,3 +49,17 @@ test('launcher rejects origins rejected by the Java runner', () => {
     assert.throws(() => runnerStateDirectory(server, tmpdir()), /plain http/)
   }
 })
+
+
+test('user state stays distinct and agrees with the SDK for existing server state', t => {
+  const root = mkdtempSync(resolve(tmpdir(), 'runner-users-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const server = 'https://agent.example.com'
+  const user = 'usr_' + 'a'.repeat(32)
+  const base = runnerStateDirectory(server, root)
+  assert.equal(runnerStateDirectory(server, root, user), resolve(base, 'users', user))
+  assert.equal(runnerStateDirectory(server, root, 'local'), base)
+  writeFileSync(resolve(root, 'config.json'), JSON.stringify({ server }))
+  assert.equal(runnerStateDirectory(server, root, user), resolve(root, 'users', user))
+  assert.throws(() => runnerStateDirectory(server, root, '../user'), /Invalid server user/)
+})

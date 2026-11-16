@@ -5,7 +5,6 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFilePaths;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
-import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentSkills;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileContentResponse;
@@ -16,7 +15,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,20 +39,11 @@ public class VirtualFileController {
 
     private final KnowledgeFileStore knowledgeFileStore;
     private final SessionManager sessionManager;
-    private final PersonalAgentSkills agentSkills;
 
     public VirtualFileController(
             KnowledgeFileStore knowledgeFileStore, SessionManager sessionManager) {
-        this(knowledgeFileStore, sessionManager, null);
-    }
-
-    public VirtualFileController(
-            KnowledgeFileStore knowledgeFileStore,
-            SessionManager sessionManager,
-            PersonalAgentSkills agentSkills) {
         this.knowledgeFileStore = knowledgeFileStore;
         this.sessionManager = sessionManager;
-        this.agentSkills = agentSkills;
     }
 
     @GetMapping("/files")
@@ -64,17 +53,6 @@ public class VirtualFileController {
             @RequestParam(value = "sessionId", required = false) String sessionId) {
         KnowledgeScope resolved = scope(scope, sessionId);
         Map<String, VirtualFileResponse> catalog = new LinkedHashMap<>();
-        String normalized =
-                prefix == null || prefix.trim().isEmpty()
-                        ? ""
-                        : KnowledgeFilePaths.normalize(prefix);
-        for (KnowledgeFile file : bundledFiles(resolved)) {
-            if (normalized.isEmpty()
-                    || file.getPath().equals(normalized)
-                    || file.getPath().startsWith(normalized + "/")) {
-                catalog.put(file.getPath(), new VirtualFileResponse(file, "builtin", true));
-            }
-        }
         for (KnowledgeFile file : knowledgeFileStore.listFiles(resolved, prefix)) {
             catalog.put(file.getPath(), new VirtualFileResponse(file));
         }
@@ -92,11 +70,6 @@ public class VirtualFileController {
         String normalized = KnowledgeFilePaths.normalize(path);
         KnowledgeFile file = knowledgeFileStore.readFile(resolved, normalized);
         if (file == null) {
-            for (KnowledgeFile bundled : bundledFiles(resolved)) {
-                if (bundled.getPath().equals(normalized)) {
-                    return new VirtualFileContentResponse(bundled, "builtin", true);
-                }
-            }
             throw new ProtocolException(404, "NOT_FOUND", "Knowledge file not found: " + path);
         }
         return new VirtualFileContentResponse(file);
@@ -191,12 +164,6 @@ public class VirtualFileController {
         }
         SessionRecord session = sessionManager.requireSession(sessionId.trim());
         return KnowledgeScope.project(session.getProjectId());
-    }
-
-    private List<KnowledgeFile> bundledFiles(KnowledgeScope scope) {
-        return agentSkills != null && KnowledgeScope.agentGlobal().equals(scope)
-                ? agentSkills.bundledFiles()
-                : Collections.emptyList();
     }
 
     private void validateKnowledgePath(String path) {

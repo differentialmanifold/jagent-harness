@@ -10,13 +10,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class JdbcRunnerStore implements RunnerStore {
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final String app;
+    private final String baseApplicationId;
+
+    private String app() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
+
     private final TransactionTemplate tx;
 
     public JdbcRunnerStore(JdbcTemplate db, ObjectMapper json, JdbcStoreProperties properties) {
         this.db = db;
         this.json = json;
-        app = properties.requireApplicationId();
+        baseApplicationId = properties.requireApplicationId();
         tx = JdbcTransactions.write(db);
     }
 
@@ -44,7 +50,7 @@ public class JdbcRunnerStore implements RunnerStore {
                     info.lastSeen = r.getLong(2);
                     return info;
                 },
-                app);
+                app());
     }
 
     public RunnerInfo runner(String id) {
@@ -56,7 +62,7 @@ public class JdbcRunnerStore implements RunnerStore {
                             info.lastSeen = r.getLong(2);
                             return info;
                         },
-                        app,
+                        app(),
                         id);
         return values.isEmpty() ? null : values.get(0);
     }
@@ -66,7 +72,7 @@ public class JdbcRunnerStore implements RunnerStore {
                 db.query(
                         "select credential_hash from tool_runners where application_id = ? and runner_id = ?",
                         (r, n) -> r.getString(1),
-                        app,
+                        app(),
                         id);
         return values.isEmpty() ? null : values.get(0);
     }
@@ -75,7 +81,7 @@ public class JdbcRunnerStore implements RunnerStore {
         if (credentialHash(info.runnerId) == null)
             db.update(
                     "insert into tool_runners (application_id, runner_id, credential_hash, info_json, last_seen) values (?, ?, ?, ?, ?)",
-                    app,
+                    app(),
                     info.runnerId,
                     hash,
                     encode(info),
@@ -85,7 +91,7 @@ public class JdbcRunnerStore implements RunnerStore {
                     "update tool_runners set info_json = ?, last_seen = ? where application_id = ? and runner_id = ?",
                     encode(info),
                     System.currentTimeMillis(),
-                    app,
+                    app(),
                     info.runnerId);
     }
 
@@ -93,14 +99,14 @@ public class JdbcRunnerStore implements RunnerStore {
         db.update(
                 "update tool_runners set last_seen = ? where application_id = ? and runner_id = ?",
                 now,
-                app,
+                app(),
                 id);
     }
 
     public void bind(String session, String runner) {
         db.update(
                 "insert into runner_sessions (application_id, session_id, runner_id) values (?, ?, ?)",
-                app,
+                app(),
                 session,
                 runner);
     }
@@ -110,7 +116,7 @@ public class JdbcRunnerStore implements RunnerStore {
                 db.query(
                         "select runner_id from runner_sessions where application_id = ? and session_id = ?",
                         (r, n) -> r.getString(1),
-                        app,
+                        app(),
                         session);
         return values.isEmpty() ? null : values.get(0);
     }
@@ -120,7 +126,7 @@ public class JdbcRunnerStore implements RunnerStore {
                 db.query(
                         "select config_json from runner_projects where application_id = ? and project_id = ?",
                         (r, n) -> decode(r.getString(1), RunnerProject.class),
-                        app,
+                        app(),
                         id);
         if (!values.isEmpty()) return values.get(0);
         // Existing chats already store their terminal and workspace. Preserve that project
@@ -135,7 +141,7 @@ public class JdbcRunnerStore implements RunnerStore {
                             project.workspace = r.getString("workspace_path");
                             return project;
                         },
-                        app,
+                        app(),
                         id);
         if (previous.isEmpty()) return null;
         RunnerProject project = previous.get(0);
@@ -152,12 +158,12 @@ public class JdbcRunnerStore implements RunnerStore {
                     if (db.update(
                                     "update runner_projects set config_json = ? where application_id = ? and project_id = ?",
                                     encode(project),
-                                    app,
+                                    app(),
                                     project.projectId)
                             == 0)
                         db.update(
                                 "insert into runner_projects (application_id, project_id, config_json) values (?, ?, ?)",
-                                app,
+                                app(),
                                 project.projectId,
                                 encode(project));
                     return null;
@@ -171,7 +177,7 @@ public class JdbcRunnerStore implements RunnerStore {
                             db.update(
                                     "update runner_sessions set active_run_id = ? where application_id = ? and session_id = ? and runner_id = ? and active_run_id is null",
                                     job.request.runId,
-                                    app,
+                                    app(),
                                     job.request.sessionId,
                                     job.runnerId);
                     if (locked != 1)
@@ -179,7 +185,7 @@ public class JdbcRunnerStore implements RunnerStore {
                                 "This session already has an unfinished runner job");
                     db.update(
                             "insert into runner_jobs (application_id, run_id, runner_id, session_id, request_json, workspace, status, cancelled, created_at) values (?, ?, ?, ?, ?, ?, 'QUEUED', 0, ?)",
-                            app,
+                            app(),
                             job.request.runId,
                             job.runnerId,
                             job.request.sessionId,
@@ -208,7 +214,7 @@ public class JdbcRunnerStore implements RunnerStore {
                 db.query(
                         "select * from runner_jobs where application_id = ? and run_id = ?",
                         (r, n) -> row(r),
-                        app,
+                        app(),
                         id);
         return jobs.isEmpty() ? null : jobs.get(0);
     }
@@ -217,14 +223,14 @@ public class JdbcRunnerStore implements RunnerStore {
         return db.query(
                 "select * from runner_jobs where application_id = ? and runner_id = ? and status in ('QUEUED','CLAIMED') order by created_at",
                 (r, n) -> row(r),
-                app,
+                app(),
                 runner);
     }
 
     public boolean claim(String run) {
         return db.update(
                         "update runner_jobs set status = 'CLAIMED' where application_id = ? and run_id = ? and status = 'QUEUED' and cancelled = 0",
-                        app,
+                        app(),
                         run)
                 == 1;
     }
@@ -238,12 +244,12 @@ public class JdbcRunnerStore implements RunnerStore {
                     if (db.update(
                                     "update runner_sessions set active_run_id = ? where application_id = ? and session_id = ? and active_run_id is null",
                                     run,
-                                    app,
+                                    app(),
                                     job.request.sessionId)
                             != 1) throw new IllegalStateException("Session has another active job");
                     if (db.update(
                                     "update runner_jobs set status = 'CLAIMED', response_json = null where application_id = ? and run_id = ? and status = 'INTERRUPTED'",
-                                    app,
+                                    app(),
                                     run)
                             != 1) throw new IllegalStateException("Job changed while recovering");
                     return null;
@@ -253,7 +259,7 @@ public class JdbcRunnerStore implements RunnerStore {
     public void cancel(String run) {
         db.update(
                 "update runner_jobs set cancelled = 1 where application_id = ? and run_id = ?",
-                app,
+                app(),
                 run);
     }
 
@@ -264,11 +270,11 @@ public class JdbcRunnerStore implements RunnerStore {
                             "update runner_jobs set status = ?, response_json = ? where application_id = ? and run_id = ? and status in ('QUEUED','CLAIMED')",
                             response.status,
                             encode(response),
-                            app,
+                            app(),
                             run);
                     db.update(
                             "update runner_sessions set active_run_id = null where application_id = ? and active_run_id = ?",
-                            app,
+                            app(),
                             run);
                     return null;
                 });

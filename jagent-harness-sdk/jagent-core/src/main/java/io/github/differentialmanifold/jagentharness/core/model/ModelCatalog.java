@@ -100,7 +100,11 @@ public final class ModelCatalog {
             } else if (p.apiKey == null || p.apiKey.isEmpty())
                 p.apiKey =
                         old.models.stream()
-                                .filter(m -> m.id.equals(p.id))
+                                .filter(
+                                        m ->
+                                                m.id.equals(p.id)
+                                                        && Objects.equals(m.baseUrl, p.baseUrl)
+                                                        && Objects.equals(m.provider, p.provider))
                                 .map(m -> m.apiKey)
                                 .findFirst()
                                 .orElse("");

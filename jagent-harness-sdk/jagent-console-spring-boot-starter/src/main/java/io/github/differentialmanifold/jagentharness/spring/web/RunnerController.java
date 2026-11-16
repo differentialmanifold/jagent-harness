@@ -12,6 +12,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/v1/runners")
 public class RunnerController {
     private final RunnerService service;
+    private java.util.function.Consumer<RunnerInfo> onRegistered = info -> {};
+
+    public RunnerController onRegistered(java.util.function.Consumer<RunnerInfo> listener) {
+        this.onRegistered = listener;
+        return this;
+    }
+
     private final HttpExecution http = new HttpExecution();
 
     public RunnerController(RunnerService service) {
@@ -27,7 +34,17 @@ public class RunnerController {
     public RunnerInfo register(
             @RequestBody RunnerInfo body,
             @RequestHeader(value = "X-Runner-Secret", required = false) String secret) {
-        return service.register(body, secret);
+        RunnerInfo info = service.register(body, secret);
+        onRegistered.accept(info);
+        return info;
+    }
+
+    @PostMapping("/{id}/disconnect")
+    public Map<String, Boolean> disconnect(
+            @PathVariable String id, @RequestHeader("X-Runner-Secret") String secret) {
+        service.authenticate(id, secret);
+        service.disconnect(id);
+        return Collections.singletonMap("accepted", true);
     }
 
     @GetMapping("/{id}/poll")

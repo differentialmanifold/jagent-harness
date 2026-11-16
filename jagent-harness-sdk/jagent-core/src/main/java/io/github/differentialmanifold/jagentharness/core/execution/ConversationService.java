@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.core.execution;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
 import io.github.differentialmanifold.jagentharness.core.event.*;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.message.*;
 import io.github.differentialmanifold.jagentharness.core.message.ImageInputValidator;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
@@ -25,7 +26,8 @@ public class ConversationService {
     private final ToolRegistry tools;
     private final RunInputCoordinator inputs;
     private final AgentEventPublisher publisher;
-    private final ConcurrentMap<String, Active> active = new ConcurrentHashMap<>();
+    private final UserState<ConcurrentMap<String, Active>> active =
+            new UserState<>(() -> new ConcurrentHashMap<>());
 
     public ConversationService(
             ObjectMapper json,
@@ -54,7 +56,7 @@ public class ConversationService {
         validate(request);
         sessions.requireSession(request.sessionId);
         Active running = new Active();
-        if (active.putIfAbsent(request.sessionId, running) != null)
+        if (active.get().putIfAbsent(request.sessionId, running) != null)
             throw new ProtocolException(
                     409, "SESSION_BUSY", "Another request is modifying this session");
         try (StopRegistration registration = stop.onStop(running::stop)) {
@@ -161,14 +163,14 @@ public class ConversationService {
                 throw error;
             }
         } finally {
-            active.remove(request.sessionId, running);
+            active.get().remove(request.sessionId, running);
         }
     }
 
     public ChatResponse state(String sessionId) {
         sessions.requireSession(sessionId);
         ChatResponse response = snapshot(sessionId);
-        Active running = active.get(sessionId);
+        Active running = active.get().get(sessionId);
         if (running != null) {
             response.runId = running.runId;
             response.status = "RUNNING";
@@ -243,7 +245,7 @@ public class ConversationService {
     }
 
     public void cancel(String runId) {
-        for (Map.Entry<String, Active> entry : active.entrySet()) {
+        for (Map.Entry<String, Active> entry : active.get().entrySet()) {
             if (runId.equals(entry.getValue().runId)) {
                 entry.getValue().stop();
                 return;

@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.core.personal;
 import static io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentSupport.*;
 
 import io.github.differentialmanifold.jagentharness.core.agent.*;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.message.*;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.*;
 import io.github.differentialmanifold.jagentharness.core.session.*;
@@ -28,7 +29,8 @@ final class PersonalAgentRuntime {
             Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "personal-inbox"));
     private final ExecutorService workers =
             Executors.newCachedThreadPool(r -> daemon(r, "personal-agent"));
-    private final ConcurrentMap<String, TurnStop> active = new ConcurrentHashMap<>();
+    private final UserState<ConcurrentMap<String, TurnStop>> active =
+            new UserState<>(() -> new ConcurrentHashMap<>());
     private volatile boolean closed;
     private volatile boolean failed;
 
@@ -56,7 +58,7 @@ final class PersonalAgentRuntime {
     }
 
     boolean isActive(String agent) {
-        return active.containsKey(agent);
+        return active.get().containsKey(agent);
     }
 
     private static Thread daemon(Runnable r, String name) {
@@ -67,15 +69,19 @@ final class PersonalAgentRuntime {
 
     public void start() {
         synchronized (agents) {
-            restoreProjectOwnership();
-            recoverInterrupted();
-            clock.scheduleWithFixedDelay(this::tick, 500, 1000, TimeUnit.MILLISECONDS);
+            agents.users.forEach(
+                    () -> {
+                        restoreProjectOwnership();
+                        recoverInterrupted();
+                    });
+            clock.scheduleWithFixedDelay(
+                    () -> agents.users.scan(this::tick), 500, 1000, TimeUnit.MILLISECONDS);
         }
     }
 
     synchronized void recoverInterrupted() {
         for (Inbox m : store.inbox("RUNNING")) {
-            if (active.containsKey(m.agentId)) continue;
+            if (active.get().containsKey(m.agentId)) continue;
             if (!"LEARNING".equals(m.source)) resolveUncertainTools(m.sessionId);
             m.status = "FAILED";
             m.error =
@@ -227,7 +233,7 @@ final class PersonalAgentRuntime {
         List<Inbox> outstanding = store.inbox("WAITING");
         for (Card c : cards) {
             if (occupied.contains(c.ownerId)
-                    || active.containsKey(c.ownerId)
+                    || active.get().containsKey(c.ownerId)
                     || c.conversationId == null
                     || c.acceptance.trim().isEmpty()
                     || c.nextCheckAt > 0
@@ -272,7 +278,7 @@ final class PersonalAgentRuntime {
         synchronized (agents) {
             if (closed) return;
             try {
-                for (Map.Entry<String, TurnStop> entry : active.entrySet())
+                for (Map.Entry<String, TurnStop> entry : active.get().entrySet())
                     if (!require(entry.getKey()).enabled) entry.getValue().stop();
                 recoverInterrupted();
                 projects.checkResults();
@@ -317,21 +323,24 @@ final class PersonalAgentRuntime {
                                         .contains(m.source));
                 pending.sort(Comparator.comparing(m -> "LEARNING".equals(m.source)));
                 for (Inbox m : pending) {
-                    TurnStop running = active.get(m.agentId);
+                    TurnStop running = active.get().get(m.agentId);
                     if (!"LEARNING".equals(m.source) && running != null && running.review)
                         running.stop();
                 }
                 for (Inbox m : pending)
                     if (require(m.agentId).enabled
-                            && active.putIfAbsent(
-                                            m.agentId, new TurnStop("LEARNING".equals(m.source)))
+                            && active.get()
+                                            .putIfAbsent(
+                                                    m.agentId,
+                                                    new TurnStop("LEARNING".equals(m.source)))
                                     == null) {
                         m.status = "RUNNING";
                         try {
-                            if (store.update(m, "PENDING")) workers.submit(() -> run(m));
-                            else active.remove(m.agentId);
+                            if (store.update(m, "PENDING"))
+                                workers.submit(UserContext.capture(() -> run(m)));
+                            else active.get().remove(m.agentId);
                         } catch (RuntimeException e) {
-                            active.remove(m.agentId);
+                            active.get().remove(m.agentId);
                             throw e;
                         }
                     }
@@ -351,7 +360,7 @@ final class PersonalAgentRuntime {
         ScheduledFuture<?> deadline = null;
         try {
             if ("LEARNING".equals(m.source)) {
-                TurnStop stop = active.get(m.agentId);
+                TurnStop stop = active.get().get(m.agentId);
                 deadline =
                         clock.schedule(stop::stop, learning.timeoutMillis, TimeUnit.MILLISECONDS);
                 m.answer = learning.review(m, stop);
@@ -418,7 +427,7 @@ final class PersonalAgentRuntime {
                                                     }
                                                 }
                                             })
-                                    .stopSignal(active.get(m.agentId))
+                                    .stopSignal(active.get().get(m.agentId))
                                     .build());
             m.status = "COMPLETED".equals(result.getStatus()) ? "DONE" : "FAILED";
             m.answer = result.getAnswer() == null ? "" : result.getAnswer();
@@ -452,13 +461,14 @@ final class PersonalAgentRuntime {
             store.update(m, "RUNNING");
         } finally {
             if (deadline != null) deadline.cancel(false);
-            active.remove(m.agentId);
+            active.get().remove(m.agentId);
         }
     }
 
     public void close() {
         closed = true;
-        for (TurnStop stop : active.values()) stop.stop();
+        for (java.util.Map<String, TurnStop> map : active.all())
+            for (TurnStop stop : map.values()) stop.stop();
         clock.shutdownNow();
         workers.shutdownNow();
         projects.close();

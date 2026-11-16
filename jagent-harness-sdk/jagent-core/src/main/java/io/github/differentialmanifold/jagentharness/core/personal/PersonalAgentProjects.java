@@ -4,6 +4,7 @@ import static io.github.differentialmanifold.jagentharness.core.personal.Persona
 
 import io.github.differentialmanifold.jagentharness.core.agent.*;
 import io.github.differentialmanifold.jagentharness.core.execution.*;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.message.*;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.*;
 import io.github.differentialmanifold.jagentharness.core.project.*;
@@ -48,12 +49,19 @@ final class PersonalAgentProjects {
         return projects.sessions(agent);
     }
 
+    public String canonicalWorkspace(String runner, String path) {
+        return projects.canonicalWorkspace(runner, path);
+    }
+
     public List<RunnerInfo> runners() {
         return projects.runners();
     }
 
     public SessionRecord open(String agent, CreateSessionRequest request, boolean newSession) {
         Profile p = require(agent);
+        if (PersonalAgentService.MAINBOT_ID.equals(agent) && p.runnerId == null)
+            throw new IllegalArgumentException(
+                    "No Runner is bound yet. Start the launcher or configure mainbot in the Console before opening projects.");
         List<SessionRecord> owned = list(agent);
         String path = request.getWorkspacePath();
         if (request.getProjectId() != null && request.getProjectId().isEmpty())
@@ -220,13 +228,14 @@ final class PersonalAgentProjects {
             runs.submit(request, null)
                     .result()
                     .whenComplete(
-                            (result, error) ->
-                                    finishWatch(
-                                            watch,
-                                            error == null
-                                                    ? resultText(result)
-                                                    : "Project execution interrupted: "
-                                                            + error.getMessage()));
+                            UserContext.callback(
+                                    (result, error) ->
+                                            finishWatch(
+                                                    watch,
+                                                    error == null
+                                                            ? resultText(result)
+                                                            : "Project execution interrupted: "
+                                                                    + error.getMessage())));
         } catch (RuntimeException e) {
             finishWatch(watch, "Could not submit project work: " + e.getMessage());
         }

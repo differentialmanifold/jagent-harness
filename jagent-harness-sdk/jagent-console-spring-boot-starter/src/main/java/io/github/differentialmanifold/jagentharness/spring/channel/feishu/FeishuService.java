@@ -5,6 +5,7 @@ import com.lark.oapi.channel.*;
 import com.lark.oapi.channel.config.LarkChannelOptions;
 import com.lark.oapi.channel.model.*;
 import com.lark.oapi.scene.registration.*;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.personal.*;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.*;
@@ -35,12 +36,20 @@ public class FeishuService implements AutoCloseable {
         LarkChannel create(LarkChannelOptions options);
     }
 
+    private UserDirectory users = UserDirectory.LOCAL;
+
+    public FeishuService withUsers(UserDirectory users) {
+        this.users = users;
+        return this;
+    }
+
     private final Registrar registrar;
     private final ChannelFactory channelFactory;
     private final PersonalAgentService agents;
     private final PersonalAgentStore store;
     private final ObjectMapper json;
-    private final Map<String, Connection> connections = new ConcurrentHashMap<>();
+    private final UserState<Map<String, Connection>> connections =
+            new UserState<>(() -> new ConcurrentHashMap<>());
     private final ExecutorService setups =
             Executors.newFixedThreadPool(
                     2,
@@ -75,6 +84,11 @@ public class FeishuService implements AutoCloseable {
     }
 
     public void start() {
+        users.forEach(this::restore);
+        delivery.scheduleWithFixedDelay(() -> users.scan(this::deliver), 2, 2, TimeUnit.SECONDS);
+    }
+
+    private void restore() {
         for (Profile p : store.profiles()) {
             String saved = store.channel(p.id);
             if (saved != null)
@@ -85,10 +99,9 @@ public class FeishuService implements AutoCloseable {
                     Connection c = new Connection();
                     c.status = "ERROR";
                     c.error = "Stored connection could not be restored. Reconnect in the console.";
-                    connections.put(p.id, c);
+                    connections.get().put(p.id, c);
                 }
         }
-        delivery.scheduleWithFixedDelay(this::deliver, 2, 2, TimeUnit.SECONDS);
     }
 
     public synchronized Map<String, Object> register(String agent) {
@@ -96,71 +109,74 @@ public class FeishuService implements AutoCloseable {
         disconnect(agent);
         Connection c = new Connection();
         c.status = "REGISTERING";
-        connections.put(agent, c);
+        connections.get().put(agent, c);
         c.registration =
                 setups.submit(
-                        () -> {
-                            try {
-                                RegisterAppResult result =
-                                        registrar.register(
-                                                RegisterAppOptions.newBuilder()
-                                                        .source("jagent-harness")
-                                                        .appPreset(
-                                                                AppPreset.newBuilder()
-                                                                        .name(
-                                                                                agents.require(
-                                                                                                agent)
-                                                                                        .name)
-                                                                        .desc(
-                                                                                "Personal Agent powered by JAgentHarness")
-                                                                        .build())
-                                                        .addons(
-                                                                AppAddons.newBuilder()
-                                                                        .preset(false)
-                                                                        .tenantScopes(
-                                                                                "im:message:send_as_bot",
-                                                                                "im:message.p2p_msg:readonly")
-                                                                        .tenantEvents(
-                                                                                "im.message.receive_v1")
-                                                                        .build())
-                                                        .onQRCode(
-                                                                info -> {
-                                                                    c.url = info.getUrl();
-                                                                    c.expiresAt =
-                                                                            System
-                                                                                            .currentTimeMillis()
-                                                                                    + info
-                                                                                                    .getExpireIn()
-                                                                                            * 1000L;
-                                                                    c.status =
-                                                                            "AWAITING_AUTHORIZATION";
-                                                                })
-                                                        .build());
-                                Configuration config = new Configuration();
-                                config.appId = result.getClientId();
-                                config.appSecret = result.getClientSecret();
-                                if (result.getUserInfo() != null) {
-                                    config.ownerId = result.getUserInfo().getOpenId();
-                                    config.brand = result.getUserInfo().getTenantBrand();
-                                }
-                                synchronized (this) {
-                                    if (connections.get(agent) != c) return;
-                                    persistAndConnect(agent, c, config);
-                                }
-                            } catch (Exception e) {
-                                if (connections.get(agent) == c) {
-                                    c.status = "ERROR";
-                                    c.url = null;
-                                    c.expiresAt = 0;
-                                    c.error =
-                                            e instanceof RegisterAppException
-                                                    ? "Authorization ended: "
-                                                            + ((RegisterAppException) e).getCode()
-                                                            + ". Try again or connect an existing app."
-                                                    : "Registration could not complete. Check network access and try again.";
-                                }
-                            }
-                        });
+                        UserContext.capture(
+                                () -> {
+                                    try {
+                                        RegisterAppResult result =
+                                                registrar.register(
+                                                        RegisterAppOptions.newBuilder()
+                                                                .source("jagent-harness")
+                                                                .appPreset(
+                                                                        AppPreset.newBuilder()
+                                                                                .name(
+                                                                                        agents
+                                                                                                .require(
+                                                                                                        agent)
+                                                                                                .name)
+                                                                                .desc(
+                                                                                        "Personal Agent powered by JAgentHarness")
+                                                                                .build())
+                                                                .addons(
+                                                                        AppAddons.newBuilder()
+                                                                                .preset(false)
+                                                                                .tenantScopes(
+                                                                                        "im:message:send_as_bot",
+                                                                                        "im:message.p2p_msg:readonly")
+                                                                                .tenantEvents(
+                                                                                        "im.message.receive_v1")
+                                                                                .build())
+                                                                .onQRCode(
+                                                                        info -> {
+                                                                            c.url = info.getUrl();
+                                                                            c.expiresAt =
+                                                                                    System
+                                                                                                    .currentTimeMillis()
+                                                                                            + info
+                                                                                                            .getExpireIn()
+                                                                                                    * 1000L;
+                                                                            c.status =
+                                                                                    "AWAITING_AUTHORIZATION";
+                                                                        })
+                                                                .build());
+                                        Configuration config = new Configuration();
+                                        config.appId = result.getClientId();
+                                        config.appSecret = result.getClientSecret();
+                                        if (result.getUserInfo() != null) {
+                                            config.ownerId = result.getUserInfo().getOpenId();
+                                            config.brand = result.getUserInfo().getTenantBrand();
+                                        }
+                                        synchronized (this) {
+                                            if (connections.get().get(agent) != c) return;
+                                            persistAndConnect(agent, c, config);
+                                        }
+                                    } catch (Exception e) {
+                                        if (connections.get().get(agent) == c) {
+                                            c.status = "ERROR";
+                                            c.url = null;
+                                            c.expiresAt = 0;
+                                            c.error =
+                                                    e instanceof RegisterAppException
+                                                            ? "Authorization ended: "
+                                                                    + ((RegisterAppException) e)
+                                                                            .getCode()
+                                                                    + ". Try again or connect an existing app."
+                                                            : "Registration could not complete. Check network access and try again.";
+                                        }
+                                    }
+                                }));
         return status(agent);
     }
 
@@ -173,7 +189,7 @@ public class FeishuService implements AutoCloseable {
         closeConnection(agent);
         config.enabled = true;
         Connection c = new Connection();
-        connections.put(agent, c);
+        connections.get().put(agent, c);
         persistAndConnect(agent, c, config);
         return status(agent);
     }
@@ -189,6 +205,7 @@ public class FeishuService implements AutoCloseable {
             c.expiresAt = System.currentTimeMillis() + 600000;
         }
         persist(agent, config);
+        final String user = UserContext.current();
         LarkChannel channel =
                 channelFactory.create(
                         LarkChannelOptions.newBuilder(config.appId, config.appSecret)
@@ -201,17 +218,28 @@ public class FeishuService implements AutoCloseable {
                                 .build());
         c.channel = channel;
         c.status = "CONNECTING";
-        channel.on("message", (ChannelEventHandler<NormalizedMessage>) m -> receive(agent, c, m));
+        channel.on(
+                "message",
+                (ChannelEventHandler<NormalizedMessage>)
+                        m -> {
+                            try (UserContext ignored = UserContext.enter(user)) {
+                                receive(agent, c, m);
+                            }
+                        });
         channel.on(
                 "reconnecting",
                 event -> {
-                    if (connections.get(agent) == c) c.status = "RECONNECTING";
+                    try (UserContext ignored = UserContext.enter(user)) {
+                        if (connections.get().get(agent) == c) c.status = "RECONNECTING";
+                    }
                 });
         channel.on(
                 "reconnected",
                 event -> {
-                    if (connections.get(agent) == c)
-                        c.status = config.ownerId == null ? "PAIRING" : "CONNECTED";
+                    try (UserContext ignored = UserContext.enter(user)) {
+                        if (connections.get().get(agent) == c)
+                            c.status = config.ownerId == null ? "PAIRING" : "CONNECTED";
+                    }
                 });
         channel.on(
                 "error",
@@ -221,25 +249,27 @@ public class FeishuService implements AutoCloseable {
                 });
         channel.connect()
                 .whenComplete(
-                        (bot, error) -> {
-                            if (connections.get(agent) != c) {
-                                channel.disconnect();
-                                return;
-                            }
-                            if (error == null) {
-                                c.status = config.ownerId == null ? "PAIRING" : "CONNECTED";
-                                c.error = "";
-                            } else {
-                                c.status = "ERROR";
-                                c.error =
-                                        "Could not connect. For an existing app, enable the bot, receive-message event, long connection, and send/receive DM permissions, then publish the app. Check server network access.";
-                            }
-                        });
+                        UserContext.callback(
+                                (bot, error) -> {
+                                    if (connections.get().get(agent) != c) {
+                                        channel.disconnect();
+                                        return;
+                                    }
+                                    if (error == null) {
+                                        c.status = config.ownerId == null ? "PAIRING" : "CONNECTED";
+                                        c.error = "";
+                                    } else {
+                                        c.status = "ERROR";
+                                        c.error =
+                                                "Could not connect. For an existing app, enable the bot, receive-message event, long connection, and send/receive DM permissions, then publish the app. Check server network access.";
+                                    }
+                                }));
     }
 
     private synchronized void receive(String agent, Connection c, NormalizedMessage m) {
-        if (connections.get(agent) != c || !"p2p".equals(m.getChatType()) || m.getContent() == null)
-            return;
+        if (connections.get().get(agent) != c
+                || !"p2p".equals(m.getChatType())
+                || m.getContent() == null) return;
         Configuration config = c.configuration;
         if (config.ownerId == null || config.ownerId.isEmpty()) {
             if (c.pairCode == null
@@ -284,7 +314,7 @@ public class FeishuService implements AutoCloseable {
 
     public Map<String, Object> status(String agent) {
         agents.require(agent);
-        Connection c = connections.get(agent);
+        Connection c = connections.get().get(agent);
         Configuration config = c == null ? null : c.configuration;
         String saved = store.channel(agent);
         Map<String, Object> out = new LinkedHashMap<>();
@@ -344,7 +374,7 @@ public class FeishuService implements AutoCloseable {
     }
 
     private void closeConnection(String agent) {
-        Connection old = connections.remove(agent);
+        Connection old = connections.get().remove(agent);
         if (old != null) {
             if (old.registration != null) old.registration.cancel(true);
             if (old.channel != null) old.channel.disconnect();
@@ -362,7 +392,7 @@ public class FeishuService implements AutoCloseable {
                         || "LEARNING".equals(m.source)
                         || m.deliveryAttempts >= 5
                         || m.nextDeliveryAt > System.currentTimeMillis()) continue;
-                Connection c = connections.get(m.agentId);
+                Connection c = connections.get().get(m.agentId);
                 if (c == null || !"CONNECTED".equals(c.status) || c.configuration.ownerId == null)
                     continue;
                 if (!c.configuration.ownerId.equals(m.replyTo.recipientId)
@@ -408,11 +438,12 @@ public class FeishuService implements AutoCloseable {
     }
 
     public synchronized void close() {
-        for (Connection c : connections.values()) {
-            if (c.registration != null) c.registration.cancel(true);
-            if (c.channel != null) c.channel.disconnect();
-        }
-        connections.clear();
+        for (java.util.Map<String, Connection> map : connections.all())
+            for (Connection c : map.values()) {
+                if (c.registration != null) c.registration.cancel(true);
+                if (c.channel != null) c.channel.disconnect();
+            }
+        connections.get().clear();
         setups.shutdownNow();
         delivery.shutdownNow();
     }

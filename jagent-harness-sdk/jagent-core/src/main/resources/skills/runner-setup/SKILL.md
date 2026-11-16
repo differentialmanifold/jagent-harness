@@ -32,7 +32,7 @@ The Harness can serve operator-installed packages at these paths, relative to it
 - `/api/v1/distributions/runners/coding/manifest.json`
 - `/api/v1/distributions/runners/coding/runner.jar`
 
-The manifest contains `kind`, `version`, `artifact`, `sha256` and `javaVersion`. Use the existing Runner's configured `JAGENT_CLIENT_TOKEN` for Bearer authentication when required, without placing its value in chat or logs. Missing credentials are a prerequisite to resolve, not a reason to disable authentication.
+The manifest contains `kind`, `version`, `artifact`, `sha256` and `javaVersion`. Use the existing Runner's configured `JAGENT_USER_TOKEN`, or load it from its credential file, for Bearer authentication, without placing its value in chat or logs. Missing credentials are a prerequisite to resolve, not a reason to disable authentication.
 
 Download the manifest and JAR through the current Runner. Check the expected kind and artifact, verify SHA-256, and check the target's Java version. SCP both files to the target if it cannot fetch them directly; verify the checksum there before starting. The JAR includes the SDK and coding tools, but not Java itself.
 
@@ -57,10 +57,10 @@ The SSH initiator maintains the tunnel. Supervise and reconnect it there; manage
 For the Coding Runner, the basic command is:
 
 ```sh
-java -jar runner.jar --server <address-reachable-from-target> --name <name>
+java -jar runner.jar --server <address-reachable-from-target> --name <name> --credentials <private-user.env> --no-browser
 ```
 
-`serve` is optional; `recover` is not a second startup step. Supply the Harness token in the Runner's environment if required. Use `--description` to describe this machine's capabilities. Keep credentials out of command text, output and persistent Agent memory.
+`serve` is optional; `recover` is not a second startup step. Use the same user's Harness-issued token to keep the new Runner in that user's space. Supply it through a private credential file or environment. This token grants access to the user's personal space, so deploy it only to an authorized, trusted machine; do not claim that it is execution-only. Never create another Harness user merely to add an execution environment. Use `--description` to describe this machine's capabilities. Keep credentials out of command text, output and persistent Agent memory.
 
 `--home` selects persistent identity and execution state, not a workspace. Concurrent Runner processes against the same Harness need distinct state directories. Do not copy `config.json` or clone identities. A state lock usually means an existing process should be reused. Workspace conflicts require waiting or a separate checkout; ownership or permission errors require the authorized owner or correct access. Creating another identity does not resolve these conflicts.
 

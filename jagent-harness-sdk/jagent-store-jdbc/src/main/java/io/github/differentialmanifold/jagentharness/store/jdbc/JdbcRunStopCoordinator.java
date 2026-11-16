@@ -6,6 +6,7 @@ import io.github.differentialmanifold.jagentharness.core.agent.RunStopHandle;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRegistration;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestResult;
 import io.github.differentialmanifold.jagentharness.core.agent.StopRequestedException;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -24,7 +25,13 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
     private static final String STATUS_STOP_REQUESTED = "STOP_REQUESTED";
 
     private final JdbcTemplate jdbcTemplate;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
+
     private final long pollIntervalMillis;
     private final ScheduledExecutorService listenerExecutor;
 
@@ -33,7 +40,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
             JdbcStoreProperties storeProperties,
             JdbcRunStopProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.applicationId = storeProperties.requireApplicationId();
+        this.baseApplicationId = storeProperties.requireApplicationId();
         this.pollIntervalMillis =
                 positive(properties.getPollIntervalMillis(), "pollIntervalMillis");
         int listenerThreads = positive(properties.getListenerThreads(), "listenerThreads");
@@ -49,7 +56,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
                     "insert into agent_runs "
                             + "(application_id, run_id, session_id, status, created_at, updated_at) "
                             + "values (?, ?, ?, ?, ?, ?)",
-                    applicationId,
+                    applicationId(),
                     runId,
                     sessionId,
                     STATUS_NORMAL,
@@ -76,7 +83,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
                                 + "where application_id = ? and run_id = ? and status = ?",
                         STATUS_STOP_REQUESTED,
                         now,
-                        applicationId,
+                        applicationId(),
                         runId,
                         STATUS_NORMAL);
         if (updated > 0) {
@@ -102,7 +109,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
                 jdbcTemplate.query(
                         "select status from agent_runs where application_id = ? and run_id = ?",
                         (resultSet, rowNum) -> resultSet.getString("status"),
-                        applicationId,
+                        applicationId(),
                         runId);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -139,7 +146,10 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
         private void start() {
             listenerTask =
                     listenerExecutor.scheduleWithFixedDelay(
-                            this::refresh, 0L, pollIntervalMillis, TimeUnit.MILLISECONDS);
+                            UserContext.capture(this::refresh),
+                            0L,
+                            pollIntervalMillis,
+                            TimeUnit.MILLISECONDS);
         }
 
         @Override
@@ -195,7 +205,7 @@ public class JdbcRunStopCoordinator implements RunStopCoordinator, AutoCloseable
             }
             jdbcTemplate.update(
                     "delete from agent_runs where application_id = ? and run_id = ?",
-                    applicationId,
+                    applicationId(),
                     runId);
         }
 

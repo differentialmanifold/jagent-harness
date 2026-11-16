@@ -3,6 +3,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.event.*;
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolMapper;
+import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.session.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -23,7 +24,7 @@ public class SessionEventStream implements AgentEventListener {
                     });
     private final SessionManager sessions;
     private final ObjectMapper json;
-    private final Map<SseEmitter, String> observers = new LinkedHashMap<>();
+    private final Map<SseEmitter, Observer> observers = new LinkedHashMap<>();
 
     public SessionEventStream(SessionManager sessions, ObjectMapper json) {
         this.sessions = sessions;
@@ -44,7 +45,7 @@ public class SessionEventStream implements AgentEventListener {
             emitter.complete();
             return emitter;
         }
-        observers.put(emitter, session);
+        observers.put(emitter, new Observer(session));
         emitter.onCompletion(() -> remove(emitter));
         emitter.onTimeout(
                 () -> {
@@ -63,8 +64,10 @@ public class SessionEventStream implements AgentEventListener {
 
     @Override
     public synchronized void onEvent(AgentEvent event) {
-        for (Map.Entry<SseEmitter, String> entry : new ArrayList<>(observers.entrySet()))
-            if (Objects.equals(entry.getValue(), event.getSessionId()))
+        for (Map.Entry<SseEmitter, Observer> entry : new ArrayList<>(observers.entrySet()))
+            if (Objects.equals(entry.getValue().session, event.getSessionId())
+                    && entry.getValue().user.equals(UserContext.current())
+                    && entry.getValue().valid.getAsBoolean())
                 send(entry.getKey(), "event", ProtocolMapper.event(event, json));
     }
 
@@ -83,14 +86,20 @@ public class SessionEventStream implements AgentEventListener {
 
     private synchronized void keepAlive() {
         for (SseEmitter emitter : new ArrayList<>(observers.keySet())) {
-            try {
+            Observer observer = observers.get(emitter);
+            try (UserContext ignored = UserContext.enter(observer.user)) {
+                if (!observer.valid.getAsBoolean()) {
+                    remove(emitter);
+                    emitter.complete();
+                    continue;
+                }
                 try {
-                    sessions.requireSession(observers.get(emitter));
+                    sessions.requireSession(observer.session);
                 } catch (SessionNotFoundException missing) {
                     send(
                             emitter,
                             "session_missing",
-                            Collections.singletonMap("sessionId", observers.get(emitter)));
+                            Collections.singletonMap("sessionId", observer.session));
                     remove(emitter);
                     emitter.complete();
                     continue;
@@ -108,5 +117,26 @@ public class SessionEventStream implements AgentEventListener {
         heartbeat.shutdownNow();
         for (SseEmitter emitter : new ArrayList<>(observers.keySet())) emitter.complete();
         observers.clear();
+    }
+
+    private static final class Observer {
+        final String user = UserContext.current();
+        final String session;
+        final java.util.function.BooleanSupplier valid;
+
+        Observer(String session) {
+            this.session = session;
+            org.springframework.web.context.request.RequestAttributes attrs =
+                    org.springframework.web.context.request.RequestContextHolder
+                            .getRequestAttributes();
+            Object check =
+                    attrs == null
+                            ? null
+                            : attrs.getAttribute(
+                                    UserAccessService.ATTRIBUTE,
+                                    org.springframework.web.context.request.RequestAttributes
+                                            .SCOPE_REQUEST);
+            valid = check == null ? () -> true : (java.util.function.BooleanSupplier) check;
+        }
     }
 }

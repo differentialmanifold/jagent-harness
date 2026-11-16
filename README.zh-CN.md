@@ -72,6 +72,8 @@ sequenceDiagram
 
 </details>
 
+每个用户都有自己的 mainbot、项目和会话。个人本地启动自动处理凭据；远程 Runner 使用 Harness 签发的用户 Token 接入，无需网页登录。[个人身份与远程部署](docs/guides/access.md)。
+
 ## 快速体验
 
 安装 **JDK 8+**、**Maven 3.6.3+** 和 **Node.js 22.12+**，准备一个兼容 OpenAI 的模型接口。示例自带 SQLite，无需安装数据库服务。
@@ -98,7 +100,7 @@ node scripts/dev.mjs
 
 打开 **http://127.0.0.1:5175**，选择一种方式开始：
 
-- **让 Agent 自主推进：** 打开 **Agents → New Agent**，填写名称并选择 **coding-local**。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](docs/guides/agents.zh-CN.md) 提供可直接发送的要求和观察指引。
+- **让 Agent 自主推进：** 打开 **Agents → mainbot**，一键启动已自动创建它并绑定 Coding Runner。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](docs/guides/agents.zh-CN.md) 提供可直接发送的要求和观察指引。
 - **操作自己的项目：** 添加项目，选择 **coding-local**，浏览或输入该终端上的工作目录，然后发送：
 
 > 阅读工作区中的 README，总结这个项目。
@@ -113,6 +115,6 @@ node scripts/dev.mjs
 - [服务端集成](jagent-harness-sdk/README.md)、[Java 客户端 SDK](sdk/java/README.md)、[Console 部署](console/README.md)、[HTTP/JSON 协议](protocol/README.md)：按需部署与扩展。
 - [开发指南](CONTRIBUTING.md)：源码结构、验证命令，以及新增功能时文档应该放在哪里。
 
-本源码树的目标版本为 `2.2.1`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
+本源码树的目标版本为 `2.3.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
 
 [MIT License](LICENSE)。

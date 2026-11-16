@@ -28,6 +28,7 @@ These references stay beside the code they describe. Start with the component yo
 
 | Goal | Reference |
 | --- | --- |
+| Share a Harness with separate personal spaces; issue user credentials | [Personal access](guides/access.md) |
 | Change addresses, tokens or local startup defaults | [Quick start configuration](../QUICK_START.md#configuration-reference) |
 | Run coding tools on another machine; inspect recovery behavior | [Coding Runner](../examples/coding-runner/README.md) · [中文](../examples/coding-runner/README.zh-CN.md) |
 | Build a server application with Maven, add server tools, choose storage | [Server integration](../jagent-harness-sdk/README.md) and [runnable server host](../examples/server-demo/README.md) |

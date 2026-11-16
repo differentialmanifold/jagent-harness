@@ -25,8 +25,15 @@ public final class RunnerMain {
         for (int i = 0; i < args.length; i++) {
             if (args[i].startsWith("--")) {
                 String name = args[i].substring(2);
-                if ("help".equals(name)) flags.put(name, "true");
-                else if (Arrays.asList("home", "server", "name", "session", "description")
+                if ("help".equals(name) || "no-browser".equals(name)) flags.put(name, "true");
+                else if (Arrays.asList(
+                                        "home",
+                                        "server",
+                                        "name",
+                                        "session",
+                                        "description",
+                                        "credentials",
+                                        "console")
                                 .contains(name)
                         && i + 1 < args.length) flags.put(name, args[++i]);
                 else throw new IllegalArgumentException("Unknown or incomplete option: --" + name);
@@ -45,7 +52,23 @@ public final class RunnerMain {
                                                 "JAGENT_RUNNER_HOME",
                                                 System.getProperty("user.home")
                                                         + "/.jagent-runner")));
-        String token = System.getenv().getOrDefault("JAGENT_CLIENT_TOKEN", "");
+        String token = System.getenv().getOrDefault("JAGENT_USER_TOKEN", "");
+        Path credentials =
+                Paths.get(
+                        flags.getOrDefault(
+                                "credentials",
+                                System.getenv()
+                                        .getOrDefault("JAGENT_USER_CREDENTIALS", "data/user.env")));
+        if (token.isEmpty() && Files.isRegularFile(credentials)) {
+            Properties props = new Properties();
+            try (java.io.Reader reader = Files.newBufferedReader(credentials)) {
+                props.load(reader);
+            }
+            token = props.getProperty("JAGENT_USER_TOKEN", "");
+        }
+        if (token.isEmpty())
+            throw new IllegalArgumentException(
+                    "Configure JAGENT_USER_TOKEN or --credentials <user.env> with credentials issued by your Harness");
         String command = words.isEmpty() ? "serve" : words.get(0);
         if (words.size() > 1 || !("serve".equals(command) || "recover".equals(command)))
             throw new IllegalArgumentException("Use serve or recover");
@@ -58,14 +81,31 @@ public final class RunnerMain {
                         "server",
                         System.getenv()
                                 .getOrDefault("JAGENT_SERVER_URL", "http://127.0.0.1:18181"));
-        Path stateDirectory = AgentRunner.stateDirectory(server, home);
+        String consoleUrl =
+                flags.getOrDefault(
+                        "console",
+                        System.getenv()
+                                .getOrDefault(
+                                        "JAGENT_CONSOLE_URL",
+                                        server.equals("http://127.0.0.1:18181")
+                                                ? "http://127.0.0.1:5175"
+                                                : server));
         CodingTools coding = new CodingTools();
         Map<String, String> diagnostics = coding.toolDiagnostics();
-        System.out.println("Runner state: " + stateDirectory);
+
         System.out.println("Search backend (find, grep): " + diagnostics.get("grep"));
         try (AgentRunner runner =
                 AgentRunner.builder(server, home)
-                        .token(token)
+                        .userToken(token)
+                        .onConsole(
+                                consoleUrl,
+                                flags.containsKey("no-browser")
+                                                || "false"
+                                                        .equalsIgnoreCase(
+                                                                System.getenv(
+                                                                        "JAGENT_OPEN_BROWSER"))
+                                        ? null
+                                        : RunnerMain::openBrowser)
                         .name(
                                 flags.getOrDefault(
                                         "name",
@@ -93,6 +133,7 @@ public final class RunnerMain {
                                                 "Executing " + event.payload.get("toolName"));
                                 })
                         .build()) {
+            System.out.println("Runner state: " + runner.stateDirectory());
             Thread shutdown = new Thread(runner::close);
             Runtime.getRuntime().addShutdownHook(shutdown);
             try {
@@ -112,6 +153,20 @@ public final class RunnerMain {
         }
     }
 
+    private static void openBrowser(String url) {
+        try {
+            String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+            if (os.contains("mac")) new ProcessBuilder("open", url).start();
+            else if (os.contains("win"))
+                new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start();
+            else new ProcessBuilder("xdg-open", url).start();
+            System.out.println("Opening your Console in the default browser");
+        } catch (Exception e) {
+            System.err.println(
+                    "No desktop browser is available. Use --no-browser for an execution-only Runner.");
+        }
+    }
+
     private static void help() {
         System.out.println(
                 "JAgent Coding Runner (Java 8+)\n"
@@ -119,8 +174,8 @@ public final class RunnerMain {
                         + "  [serve] [--server <url>] [--name <name>] [--description <text>] [--home <path>]\n"
                         + "Optional recovery of an interrupted operation (not a startup step):\n"
                         + "  recover --session <id> [--server <url>] [--home <path>]\n"
-                        + "JAGENT_SERVER_URL overrides the default server address. --help prints this help.\n"
-                        + "State is isolated by server under --home <path>. Authentication: JAGENT_CLIENT_TOKEN.\n"
+                        + "JAGENT_SERVER_URL overrides the default server address. --console <url> selects the remote Console; --no-browser skips opening it. --help prints this help.\n"
+                        + "State is isolated by server and user under --home <path>. Authentication: JAGENT_USER_TOKEN or --credentials <user.env>.\n"
                         + "Select the workspace and enabled tools per project in the console. Selected tools run with full access under the runner OS account.");
     }
 }

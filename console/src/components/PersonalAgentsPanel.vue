@@ -73,6 +73,9 @@
           :before-leave="beforeTabLeave"
         >
           <el-tab-pane label="Chat" name="chat">
+            <el-alert v-if="selectedId === defaults.mainbotAgentId && !selected.runnerId"
+              title="mainbot is ready to chat. Start the all-in-one launcher or select a Runner in Configuration to enable project work."
+              type="info" :closable="false" show-icon />
             <div class="personal-chat-layout">
               <ChatPanel
                 v-model:draft="draft"
@@ -239,6 +242,10 @@
                         {{ runner.online ? "Online" : "Offline" }}
                       </option>
                     </select>
+                  </el-form-item>
+                  <el-form-item v-if="selectedId === defaults.mainbotAgentId" label="JAgentHarness source directory on Runner">
+                    <el-input v-model="profile.sourceWorkspace" placeholder="Prepared automatically by the launcher; optional for manual setup" />
+                    <p class="personal-muted">Used by jagent-help through an ordinary Project. The directory must exist on the bound Runner.</p>
                   </el-form-item>
                   <p class="personal-muted">
                     Each new project gets its own directory under this Agent's
@@ -493,7 +500,7 @@
           <p class="personal-muted">
             Choose where this Agent's projects execute tools. Project
             directories are created automatically. Your primary Runner is selected by default.
-            The first Agent with a Runner becomes your primary Agent.
+            mainbot is created automatically as the initial primary Agent.
           </p> </el-form-item
         ><el-form-item label="Instructions (optional)"
           ><el-input
@@ -916,8 +923,15 @@ async function openAgentConversation(id) {
 }
 async function saveProfile() {
   await action(async () => {
-    const saved = await post("/agents", profile.value);
+    const desiredSource = profile.value.sourceWorkspace || null;
+    const sourceChanged = desiredSource !== (selected.value.sourceWorkspace || null);
+    let saved = await post("/agents", profile.value);
     agents.value = agents.value.map((a) => (a.id === saved.id ? saved : a));
+    resetProfile();
+    if (saved.id === defaults.value.mainbotAgentId && saved.runnerId && sourceChanged) {
+      saved = await post("/mainbot/setup", { runnerId: saved.runnerId, sourceWorkspace: desiredSource });
+      agents.value = agents.value.map((a) => (a.id === saved.id ? saved : a));
+    }
     resetProfile();
     ElMessage.success("Saved");
   });

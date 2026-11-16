@@ -50,7 +50,10 @@ class ModelConfigurationTest {
         ModelCatalogStore.Configuration saved = models.save(config);
         assertEquals("saved", saved.source);
         assertEquals("", saved.models.get(0).apiKey);
-        assertEquals("environment-secret", models.require(null).apiKey);
+        assertEquals(
+                "",
+                models.require(null).apiKey,
+                "Changing an endpoint must not forward the deployment credential");
         assertEquals("environment-model", properties.getModel().getModel());
         properties.getModel().setModel("new-environment-model");
         properties.getModel().setApiKey("new-environment-secret");
@@ -58,7 +61,7 @@ class ModelConfigurationTest {
                 wiring.modelCatalog(store, properties, registry, new ObjectMapper());
         assertEquals("saved-model", restarted.require(null).model);
         assertEquals("https://saved.example/v1", restarted.require(null).baseUrl);
-        assertEquals("environment-secret", restarted.require(null).apiKey);
+        assertEquals("", restarted.require(null).apiKey);
         assertEquals(60, restarted.require(null).timeoutSeconds);
     }
 }

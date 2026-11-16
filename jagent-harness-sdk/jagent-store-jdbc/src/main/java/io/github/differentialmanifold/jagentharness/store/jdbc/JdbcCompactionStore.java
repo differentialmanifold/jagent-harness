@@ -10,7 +10,13 @@ import org.springframework.jdbc.core.RowMapper;
 public class JdbcCompactionStore implements CompactionStore {
 
     private final JdbcTemplate jdbcTemplate;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
+
     private final RowMapper<CompactionState> mapper =
             (rs, rowNum) -> {
                 CompactionState state = new CompactionState();
@@ -25,7 +31,7 @@ public class JdbcCompactionStore implements CompactionStore {
 
     public JdbcCompactionStore(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     @Override
@@ -34,7 +40,7 @@ public class JdbcCompactionStore implements CompactionStore {
                 jdbcTemplate.query(
                         "select * from compaction_states where application_id = ? and session_id = ?",
                         mapper,
-                        applicationId,
+                        applicationId(),
                         sessionId);
         return states.isEmpty() ? null : states.get(0);
     }
@@ -50,14 +56,14 @@ public class JdbcCompactionStore implements CompactionStore {
                         summary,
                         cursorMessageId,
                         now,
-                        applicationId,
+                        applicationId(),
                         sessionId);
         if (updated == 0) {
             jdbcTemplate.update(
                     "insert into compaction_states "
                             + "(application_id, session_id, summary, cursor_message_id, version, metadata_json, updated_at) "
                             + "values (?, ?, ?, ?, ?, ?, ?)",
-                    applicationId,
+                    applicationId(),
                     sessionId,
                     summary,
                     cursorMessageId,

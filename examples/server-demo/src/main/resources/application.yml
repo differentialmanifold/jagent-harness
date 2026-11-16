@@ -13,8 +13,9 @@ spring:
       connection-init-sql: PRAGMA busy_timeout=5000
 
 harness:
-  protocol:
-    token: ${JAGENT_CLIENT_TOKEN:}
+  identity:
+    enabled: true
+    local-token-file: ${JAGENT_LOCAL_TOKEN_FILE:./data/user.env}
   store:
     jdbc:
       application-id: ${JAGENT_APPLICATION_ID:agent-server}

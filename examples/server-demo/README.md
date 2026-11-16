@@ -16,12 +16,12 @@ For local source builds, run `mvn install` in the framework root first. From thi
 
 ```sh
 mvn package
-java -jar target/server-demo-2.2.1.jar
+java -jar target/server-demo-2.3.0.jar
 ```
 
 Provide `JAGENT_MODEL`, `JAGENT_OPENAI_BASE_URL`, and `JAGENT_OPENAI_API_KEY` as process environment variables. Direct JAR launches do not read the framework's `.env.local`.
 
-The application listens on `127.0.0.1:18181` and stores conversations in `agent-server.db` in its working directory. Set `AGENT_BIND_ADDRESS`, `AGENT_SERVER_PORT`, and `JAGENT_CLIENT_TOKEN` for your deployment. Use a persistent writable SQLite location and serve remote access through HTTPS.
+The application listens on `127.0.0.1:18181` and stores conversations in `agent-server.db` in its working directory. Set `AGENT_BIND_ADDRESS` and `AGENT_SERVER_PORT` for your deployment. The first startup writes local credentials to `data/user.env`; issue other users with the [local user commands](../../docs/guides/access.md). Use a persistent writable SQLite location. HTTP works with a warning; HTTPS is recommended for remote access.
 
 ## Extend the server
 

@@ -332,3 +332,25 @@ create table if not exists run_models (
     payload_json text not null,
     primary key (application_id, session_id, run_id)
 );
+
+-- Deployment identities are separate from per-user application namespaces.
+create table if not exists harness_users (
+ application_id varchar(128) not null,
+ user_id varchar(64) not null,
+ name varchar(128) not null,
+ token_hash varchar(128) not null,
+ active integer not null,
+ created_at bigint not null,
+ primary key(application_id,user_id),
+ unique(application_id,token_hash)
+);
+create table if not exists harness_access (
+ application_id varchar(128) not null,
+ secret_hash varchar(128) not null,
+ kind varchar(16) not null,
+ user_id varchar(64) not null,
+ runner_id varchar(128) not null,
+ credential_hash varchar(128) not null,
+ expires_at bigint not null,
+ primary key(application_id,secret_hash)
+);

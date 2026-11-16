@@ -108,7 +108,7 @@ test('CLI creates with multiline instructions; SDK requires a Runner and validat
   const instructions = 'Verify results.\nReport evidence with `commands` and $literal text.'
   await writeFile(path, instructions)
   const script = fileURLToPath(new URL('../jagent/scripts/jagent.mjs', import.meta.url))
-  const options = { env: { ...process.env, JAGENT_SERVER_URL: state.url, JAGENT_CLIENT_TOKEN: '' } }
+  const options = { env: { ...process.env, JAGENT_SERVER_URL: state.url, JAGENT_USER_TOKEN: '' } }
   const { stdout } = await run(process.execPath, [script, 'create-agent', '--name', 'Developer', '--runner', 'r', '--instructions-file', path], options)
   assert.equal(JSON.parse(stdout).runnerId, 'r')
   assert.deepEqual(state.requests[0].body, { name: 'Developer', runnerId: 'r', instructions })
@@ -171,11 +171,11 @@ test('CLI and HTTP errors are machine readable, credentials stay in the header',
     return [{ id: 'a', name: 'Developer', enabled: true }]
   })
   const script = fileURLToPath(new URL('../jagent/scripts/jagent.mjs', import.meta.url))
-  const options = { env: { ...process.env, JAGENT_SERVER_URL: state.url, JAGENT_CLIENT_TOKEN: 'cli-secret' } }
+  const options = { env: { ...process.env, JAGENT_SERVER_URL: state.url, JAGENT_USER_TOKEN: 'cli-secret' } }
   const { stdout, stderr } = await run(process.execPath, [script, 'agents'], options)
   assert.equal(JSON.parse(stdout)[0].id, 'a')
   assert.equal(stderr, '')
-  const failure = await run(process.execPath, [script, 'agents'], { env: { ...options.env, JAGENT_CLIENT_TOKEN: '' } }).catch(e => e)
+  const failure = await run(process.execPath, [script, 'agents'], { env: { ...options.env, JAGENT_USER_TOKEN: '' } }).catch(e => e)
   assert.equal(failure.code, 1)
   assert.equal(JSON.parse(failure.stderr).status, 401)
   assert.doesNotMatch(failure.stderr, /cli-secret/)

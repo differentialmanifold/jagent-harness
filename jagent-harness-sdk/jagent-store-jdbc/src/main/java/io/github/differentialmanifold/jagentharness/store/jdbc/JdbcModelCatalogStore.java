@@ -8,13 +8,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class JdbcModelCatalogStore implements ModelCatalogStore {
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final String app;
+    private final String baseApplicationId;
+
+    private String app() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
 
     public JdbcModelCatalogStore(
             JdbcTemplate db, ObjectMapper json, JdbcStoreProperties properties) {
         this.db = db;
         this.json = json;
-        this.app = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     public Configuration configuration() {
@@ -26,7 +31,7 @@ public final class JdbcModelCatalogStore implements ModelCatalogStore {
                             c.revision = rs.getLong(2);
                             return c;
                         },
-                        app);
+                        app());
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -39,14 +44,14 @@ public final class JdbcModelCatalogStore implements ModelCatalogStore {
                                     if (configuration() != null) return false;
                                     db.update(
                                             "insert into model_settings (application_id, revision, payload_json) values (?, 1, ?)",
-                                            app,
+                                            app(),
                                             write(c));
                                     return true;
                                 }
                                 return db.update(
                                                 "update model_settings set revision=revision+1, payload_json=? where application_id=? and revision=?",
                                                 write(c),
-                                                app,
+                                                app(),
                                                 c.revision)
                                         == 1;
                             });
@@ -60,7 +65,7 @@ public final class JdbcModelCatalogStore implements ModelCatalogStore {
                 db.query(
                         "select payload_json from run_models where application_id=? and session_id=? and run_id=?",
                         (rs, n) -> read(rs.getString(1), Selection.class),
-                        app,
+                        app(),
                         session,
                         run);
         return rows.isEmpty() ? null : rows.get(0);
@@ -73,13 +78,13 @@ public final class JdbcModelCatalogStore implements ModelCatalogStore {
                             if (db.update(
                                             "update run_models set payload_json=? where application_id=? and session_id=? and run_id=?",
                                             write(selection),
-                                            app,
+                                            app(),
                                             session,
                                             run)
                                     == 0)
                                 db.update(
                                         "insert into run_models (application_id, session_id, run_id, payload_json) values (?, ?, ?, ?)",
-                                        app,
+                                        app(),
                                         session,
                                         run,
                                         write(selection));

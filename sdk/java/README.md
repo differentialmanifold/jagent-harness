@@ -14,7 +14,7 @@ Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and prot
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>2.2.1</version>
+  <version>2.3.0</version>
 </dependency>
 ```
 
@@ -47,7 +47,7 @@ ToolDefinition status = new ToolDefinition() {
 
 try (AgentRunner runner = AgentRunner.builder(
         "http://127.0.0.1:18181", Paths.get("device-agent-state"))
-        .token(System.getenv("JAGENT_CLIENT_TOKEN"))
+        .userToken(System.getenv("JAGENT_USER_TOKEN"))
         .name("My device")
         .tools(Collections.singletonList(status))
         .onStatus(System.out::println)
@@ -60,7 +60,7 @@ Open the frontend, create a project, and select **My device**. The SDK registers
 
 `serve()` blocks the calling thread. An existing application can run it on a worker thread and call `close()` during shutdown. The SDK does not install JVM shutdown hooks or terminate the process. A standalone application should connect its shutdown lifecycle to `close()`; the [coding CLI](../../examples/coding-runner/src/main/java/io/github/differentialmanifold/jagentharness/runner/RunnerMain.java) demonstrates this.
 
-The path passed to `builder` is a state root, not a working directory for tools. Each server URL automatically gets its own `servers/<SHA-256 of server URL>/` directory containing the runner identity, execution records, and lock. A trailing slash is ignored. Reconnecting to the same URL reuses its identity; different URLs can run concurrently under one root. Use a separate root for another device. The API token is not saved. `AgentRunner.stateDirectory(server, root)` resolves the directory for tools that also persist local state.
+The path passed to `builder` is a state root, not a working directory for tools. Each server and stable user identity gets its own `servers/<SHA-256 of server URL>/users/<userId>/` directory containing the runner identity, execution records, and lock. A trailing slash is ignored. Reconnecting to the same URL reuses its identity; different URLs can run concurrently under one root. Use a separate root for another device. The local default user retains the base server directory. The User Token is not saved in Runner state. `runner.stateDirectory()` resolves the directory for tools that also persist local state.
 
 For compatibility, an existing `config.json` directly under the root remains in use only for its original server (unless a scoped identity already exists). Its journals and background jobs stay at their original paths. Other servers automatically use isolated subdirectories, without changing the legacy identity.
 

@@ -31,7 +31,13 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-    private final String applicationId;
+    private final String baseApplicationId;
+
+    private String applicationId() {
+        return io.github.differentialmanifold.jagentharness.core.identity.UserContext.namespace(
+                baseApplicationId);
+    }
+
     private final TransactionTemplate transactions;
     private final RowMapper<StoredInput> inputMapper =
             new RowMapper<StoredInput>() {
@@ -54,7 +60,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         this.jdbcTemplate = requireJdbcTemplate(jdbcTemplate);
         this.objectMapper = requireObjectMapper(objectMapper);
         this.transactions = JdbcTransactions.write(jdbcTemplate);
-        this.applicationId = properties.requireApplicationId();
+        this.baseApplicationId = properties.requireApplicationId();
     }
 
     public JdbcRunInputCoordinator(JdbcTemplate jdbcTemplate, JdbcStoreProperties properties) {
@@ -80,7 +86,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                     "insert into agent_active_runs "
                             + "(application_id, session_id, run_id, accepting_inputs, "
                             + "created_at, updated_at) values (?, ?, ?, 1, ?, ?)",
-                    applicationId,
+                    applicationId(),
                     sessionId,
                     runId,
                     now,
@@ -126,14 +132,14 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                                                 + "from agent_active_runs active "
                                                 + "where active.application_id = ? and active.run_id = ? "
                                                 + "and active.accepting_inputs = 1",
-                                        applicationId,
+                                        applicationId(),
                                         inputId,
                                         normalizedContent,
                                         imagesJson,
                                         STATUS_ACCEPTED,
                                         now,
                                         now,
-                                        applicationId,
+                                        applicationId(),
                                         runId);
                             });
         } catch (DataAccessException e) {
@@ -178,7 +184,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                                 + "where application_id = ? and session_id = ? and run_id = ? "
                                 + "and status = ? order by id asc",
                         inputMapper,
-                        applicationId,
+                        applicationId(),
                         sessionId,
                         runId,
                         STATUS_ACCEPTED);
@@ -207,7 +213,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                 completedTurnId,
                 now,
                 now,
-                applicationId,
+                applicationId(),
                 input.id,
                 STATUS_ACCEPTED);
     }
@@ -224,7 +230,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                             "update agent_active_runs set accepting_inputs = 0, updated_at = ? "
                                     + "where application_id = ? and session_id = ? and run_id = ?",
                             now,
-                            applicationId,
+                            applicationId(),
                             sessionId,
                             runId);
                     jdbcTemplate.update(
@@ -233,14 +239,14 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                                     + "and status = ?",
                             STATUS_CANCELLED,
                             now,
-                            applicationId,
+                            applicationId(),
                             sessionId,
                             runId,
                             STATUS_ACCEPTED);
                     jdbcTemplate.update(
                             "delete from agent_active_runs "
                                     + "where application_id = ? and session_id = ? and run_id = ?",
-                            applicationId,
+                            applicationId(),
                             sessionId,
                             runId);
                     return null;
@@ -253,7 +259,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
         return jdbcTemplate.update(
                         "update agent_active_runs set accepting_inputs = accepting_inputs "
                                 + "where application_id = ? and run_id = ? and accepting_inputs = 1",
-                        applicationId,
+                        applicationId(),
                         runId)
                 == 1;
     }
@@ -263,7 +269,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                 jdbcTemplate.query(
                         "select * from agent_run_inputs where application_id = ? and input_id = ?",
                         inputMapper,
-                        applicationId,
+                        applicationId(),
                         inputId);
         return first(rows);
     }
@@ -274,7 +280,7 @@ public class JdbcRunInputCoordinator implements RunInputCoordinator {
                         "select session_id from agent_active_runs "
                                 + "where application_id = ? and run_id = ?",
                         (rs, rowNum) -> new ActiveRun(rs.getString("session_id")),
-                        applicationId,
+                        applicationId(),
                         runId);
         return first(rows);
     }
