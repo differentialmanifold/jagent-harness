@@ -112,6 +112,9 @@ public class RunnerService implements AutoCloseable {
                 || info.description.length() > 4000
                 || info.platform == null
                 || info.platform.length() > 256
+                || (info.version != null && info.version.length() > 128)
+                || (info.buildRevision != null && info.buildRevision.length() > 160)
+                || (info.protocolVersion != null && info.protocolVersion.length() > 32)
                 || info.capabilities == null
                 || info.capabilities.size() > 64
                 || info.capabilities.stream().anyMatch(c -> c == null || c.length() > 128)

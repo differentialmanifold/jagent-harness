@@ -33,6 +33,8 @@
           >
             <span>{{ conversation.title }}</span
             ><small v-if="conversation.running">Running</small>
+            <small v-if="conversation.failedMessages" class="personal-error"
+              title="Open this chat to inspect failed messages">{{ conversation.failedMessages }} failed</small>
           </button>
           <ChatActions
             :busy="busy || conversations.some((c) => c.running)"

@@ -29,5 +29,8 @@
   "platform": "Linux x86_64",
   "capabilities": [
     "coding"
-  ]
+  ],
+  "version": "2.3.0",
+  "buildRevision": "example-build",
+  "protocolVersion": "1"
 }

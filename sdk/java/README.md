@@ -8,6 +8,8 @@ Use `AgentRunner` to register native tools and receive work from the server. Run
 
 Requires Java 8+. Runtime dependencies are `jagent-api` (tool contracts and protocol types) and Jackson. HTTP uses the JDK.
 
+Applications may set `.version("1.2.3")` and `.buildRevision("commit-or-build-id")` on the Runner builder. Use the hosting application's build metadata; the SDK does not substitute its own version. It reports wire protocol version `"1"` automatically. Metadata is sent during registration, survives server persistence and heartbeat updates, and is refreshed when a restarted application registers again.
+
 ## Install
 
 ```xml

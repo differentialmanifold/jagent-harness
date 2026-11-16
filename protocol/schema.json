@@ -368,6 +368,30 @@
             "type": "string",
             "maxLength": 128
           }
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128,
+          "description": "Runner application version; omitted or null when unknown."
+        },
+        "buildRevision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160,
+          "description": "Optional commit or build identifier, refreshed on registration."
+        },
+        "protocolVersion": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 32,
+          "description": "Wire API major version: 1 for /api/v1; independent of product version."
         }
       },
       "required": [

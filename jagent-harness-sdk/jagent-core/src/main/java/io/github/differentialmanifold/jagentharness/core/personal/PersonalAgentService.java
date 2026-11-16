@@ -306,20 +306,40 @@ public class PersonalAgentService implements AutoCloseable {
                         "text",
                         32000);
         m.createdAt = System.currentTimeMillis();
-        if (!store.enqueue(m)) {
-            Inbox previous = store.message(m.id);
-            if (!agent.equals(previous.agentId)
-                    || !session.equals(previous.sessionId)
-                    || !m.text.equals(previous.text)
-                    || !Objects.equals(m.modelId, previous.modelId)
-                    || !new com.fasterxml.jackson.databind.ObjectMapper()
-                            .valueToTree(m.images)
-                            .equals(
-                                    new com.fasterxml.jackson.databind.ObjectMapper()
-                                            .valueToTree(previous.images))) throw conflict();
-            return previous;
+        // A receipt remains replayable even if its model has since been disabled or removed.
+        Inbox previous = store.message(m.id);
+        if (previous != null) return matchingReceipt(m, previous);
+        if (modelId != null && !modelId.trim().isEmpty()) {
+            if (models == null)
+                throw new PersonalAgentException(
+                        PersonalAgentException.Kind.UNAVAILABLE,
+                        "MODEL_CATALOG_UNAVAILABLE",
+                        "Model catalog is unavailable");
+            try {
+                models.require(modelId);
+            } catch (IllegalArgumentException error) {
+                throw new PersonalAgentException(
+                        PersonalAgentException.Kind.INVALID,
+                        "MODEL_UNAVAILABLE",
+                        error.getMessage());
+            }
         }
+        if (!store.enqueue(m)) return matchingReceipt(m, store.message(m.id));
         return m;
+    }
+
+    private Inbox matchingReceipt(Inbox m, Inbox previous) {
+        if (previous == null) throw conflict();
+        if (!m.agentId.equals(previous.agentId)
+                || !m.sessionId.equals(previous.sessionId)
+                || !m.text.equals(previous.text)
+                || !Objects.equals(m.modelId, previous.modelId)
+                || !new com.fasterxml.jackson.databind.ObjectMapper()
+                        .valueToTree(m.images)
+                        .equals(
+                                new com.fasterxml.jackson.databind.ObjectMapper()
+                                        .valueToTree(previous.images))) throw conflict();
+        return previous;
     }
 
     String requestedModel(String agent, String session) {
@@ -630,6 +650,31 @@ public class PersonalAgentService implements AutoCloseable {
                 messages.stream()
                         .filter(m -> "PROJECT".equals(m.source) && "WAITING".equals(m.status))
                         .count());
+        result.put(
+                "completedMessages",
+                messages.stream()
+                        .filter(m -> !"LEARNING".equals(m.source) && "DONE".equals(m.status))
+                        .count());
+        List<Inbox> failures =
+                messages.stream()
+                        .filter(m -> !"LEARNING".equals(m.source) && "FAILED".equals(m.status))
+                        .collect(java.util.stream.Collectors.toList());
+        result.put("failedMessages", (long) failures.size());
+        Inbox latest =
+                failures.stream()
+                        .max(
+                                Comparator.comparingLong((Inbox m) -> m.createdAt)
+                                        .thenComparing(m -> m.id))
+                        .orElse(null);
+        Map<String, Object> failure = null;
+        if (latest != null) {
+            failure = new LinkedHashMap<>();
+            failure.put("id", latest.id);
+            failure.put("source", latest.source);
+            failure.put("error", latest.error);
+            failure.put("createdAt", latest.createdAt);
+        }
+        result.put("latestFailure", failure);
         List<Card> tasks =
                 cards(agent).stream()
                         .filter(c -> session.equals(c.conversationId))

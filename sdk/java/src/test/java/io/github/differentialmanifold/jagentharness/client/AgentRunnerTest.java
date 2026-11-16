@@ -45,6 +45,9 @@ class AgentRunnerTest {
                         while (server.registration.get() == null && System.nanoTime() < deadline)
                             Thread.sleep(20);
                         assertNotNull(server.registration.get());
+                        assertNull(server.registration.get().version);
+                        assertNull(server.registration.get().buildRevision);
+                        assertEquals("1", server.registration.get().protocolVersion);
                         assertEquals(3, server.registrationCalls.get());
                         runner.close();
                         serving.get(5, TimeUnit.SECONDS);
@@ -80,6 +83,8 @@ class AgentRunnerTest {
             try (AgentRunner runner =
                     AgentRunner.builder(server.url(), home)
                             .tools(Collections.singletonList(tool))
+                            .version("device-1.0")
+                            .buildRevision("commit-one")
                             .toolContext(device)
                             .toolDiagnostics(
                                     Collections.singletonMap(tool.getName(), "Native device API"))
@@ -98,6 +103,9 @@ class AgentRunnerTest {
                 assertNotNull(result);
                 assertEquals("COMPLETED", result.status);
                 assertFalse(server.registration.get().workspaces);
+                assertEquals("device-1.0", server.registration.get().version);
+                assertEquals("commit-one", server.registration.get().buildRevision);
+                assertEquals("1", server.registration.get().protocolVersion);
                 assertEquals(
                         "Native device API",
                         server.registration.get().toolDiagnostics.get(tool.getName()));
@@ -121,8 +129,23 @@ class AgentRunnerTest {
             try (AgentRunner restarted =
                     AgentRunner.builder(server.url(), home)
                             .tools(Collections.singletonList(tool))
+                            .version("device-2.0")
+                            .buildRevision("commit-two")
                             .build()) {
                 assertEquals(id, restarted.runnerId());
+                Future<?> serving =
+                        server.threads.submit(
+                                () -> {
+                                    restarted.serve();
+                                    return null;
+                                });
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (!"device-2.0".equals(server.registration.get().version)
+                        && System.nanoTime() < deadline) Thread.sleep(10);
+                assertEquals("device-2.0", server.registration.get().version);
+                assertEquals("commit-two", server.registration.get().buildRevision);
+                restarted.close();
+                serving.get(5, TimeUnit.SECONDS);
             }
             assertFalse(
                     new String(

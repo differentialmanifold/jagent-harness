@@ -21,6 +21,11 @@
       <p v-if="runner.runnerId === primaryRunnerId">Bound to your primary Agent. Change the primary Agent in its Configuration to select another default environment.</p>
       <p>{{ runner.platform || runner.runtime }}</p>
       <p>
+        <strong>Version:</strong> {{ runner.version || "Unknown" }}
+        <template v-if="runner.buildRevision"> · <strong>Build:</strong> {{ runner.buildRevision }}</template>
+        <template v-if="runner.protocolVersion"> · <strong>Protocol:</strong> {{ runner.protocolVersion }}</template>
+      </p>
+      <p>
         {{
           runner.description ||
           "No capability description supplied by this Runner."
