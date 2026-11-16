@@ -15,8 +15,8 @@ For separate processes, start the server, frontend, then Runner. In IDEA, use th
 Run these commands **on the Harness host**, from the same working directory and with the same database configuration as the server. They do not start a web server or Agent execution loops.
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.2.1.jar users create --name Alice --output alice.env
-java -jar examples/server-demo/target/server-demo-2.2.1.jar users list
+java -jar examples/server-demo/target/server-demo-2.3.0.jar users create --name Alice --output alice.env
+java -jar examples/server-demo/target/server-demo-2.3.0.jar users list
 ```
 
 With the prebuilt application, replace the JAR path with `server/server.jar`. If the server was started by the launcher, first set `JAGENT_DATASOURCE_URL=jdbc:sqlite:data/agent-server.db`; direct Java startup defaults to `jdbc:sqlite:agent-server.db`.
@@ -30,7 +30,7 @@ Host the Console and `/api/` under one public origin. Forward `/api/` to the Har
 On the user's computer:
 
 ```sh
-java -jar jagent-coding-runner-2.2.1.jar \
+java -jar jagent-coding-runner-2.3.0.jar \
   --server http://harness.example.com \
   --credentials /path/to/alice.env
 ```
@@ -50,8 +50,8 @@ The browser session lasts up to 12 hours and requires its launching Runner to re
 ## Reset or revoke access
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.2.1.jar users reset --id usr_example --output replacement.env
-java -jar examples/server-demo/target/server-demo-2.2.1.jar users revoke --id usr_example
+java -jar examples/server-demo/target/server-demo-2.3.0.jar users reset --id usr_example --output replacement.env
+java -jar examples/server-demo/target/server-demo-2.3.0.jar users revoke --id usr_example
 ```
 
 Use the actual ID from `users list`; the automatically created local user's ID is `local`. Resetting preserves data, invalidates the previous token and browser sessions, and re-enables a revoked user. Update every Runner using that token. Revocation prevents further authenticated access; it does not delete the user's data. If `data/user.env` is lost, reset `local` explicitly. Startup never silently replaces an existing credential.
