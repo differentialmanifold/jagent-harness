@@ -109,7 +109,7 @@ Run one Personal Agent worker per database application ID. User messages, projec
 
 ## Storage
 
-The demo uses SQLite. The JDBC library does not supply a database driver: your application chooses the dependency and provides `spring.datasource` configuration or a `DataSource` bean.
+The packaged demo defaults to SQLite and also includes the PostgreSQL driver. Standalone Maven consumers supply their chosen JDBC driver and configure `spring.datasource` or a `DataSource` bean. [Packaged host database settings](../QUICK_START.md#choose-a-database)
 
 | Property | Purpose |
 | --- | --- |
@@ -118,7 +118,7 @@ The demo uses SQLite. The JDBC library does not supply a database driver: your a
 | `harness.store.jdbc.initialize-schema` | Set to `false` when managing schema creation yourself |
 | `harness.store.jdbc.schema-locations` | List of custom initialization scripts |
 
-To use another database, replace the SQLite driver in your application, configure the connection, and select or provide its schema. SQLite and H2 are covered by integration tests. PostgreSQL DDL is included but has not been verified against a live instance. Other databases may need DDL and SQL adaptations or custom storage implementations.
+The JDBC module includes schemas for SQLite, H2 and PostgreSQL. For other databases, supply a compatible schema and verify the SQL used by the stores, or implement the storage interfaces.
 
 Custom `MessageRepository` implementations should preserve `AgentMessage.metadataJson` when saving and loading history.
 

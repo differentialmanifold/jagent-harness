@@ -51,7 +51,7 @@ This package runs your personal mainbot, the web Console and a Coding Runner on 
 2. Edit \`~/.jagent/.env.local\` with your model name, OpenAI-compatible endpoint and API key.
 3. Open a new terminal and run \`jagent\`. The Runner opens the Console. Send your goal in **Agents → mainbot → Chat**.
 
-[Try a first task](sources/QUICK_START.md#give-mainbot-its-first-job) · [Architecture](sources/README.md#architecture) · [Remote access](sources/docs/guides/access.md)
+[Try a first task](sources/QUICK_START.md#give-mainbot-its-first-job) · [Architecture](sources/README.md#architecture) · [Linux service setup](sources/QUICK_START.md#linux-servers-and-existing-services) · [PostgreSQL settings](sources/QUICK_START.md#choose-a-database) · [Remote access](sources/docs/guides/access.md)
 
 For portable startup, copy \`.env.example\` to \`.env.local\`, configure the model and run \`node scripts/dev.mjs\` here. Portable startup keeps data under this directory; the global installation uses \`~/.jagent\`. Stop the launcher with Ctrl+C. To uninstall the global command, run \`sh scripts/uninstall.sh\` or \`scripts\\uninstall.cmd\`. Personal data is retained.
 

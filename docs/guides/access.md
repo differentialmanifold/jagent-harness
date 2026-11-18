@@ -19,7 +19,7 @@ java -jar examples/server-demo/target/server-demo-2.3.1.jar users create --name 
 java -jar examples/server-demo/target/server-demo-2.3.1.jar users list
 ```
 
-With the prebuilt application, replace the JAR path with `server/server.jar`. If the server was started by the launcher, first set `JAGENT_DATASOURCE_URL=jdbc:sqlite:data/agent-server.db`; direct Java startup defaults to `jdbc:sqlite:agent-server.db`.
+With the prebuilt application, replace the JAR path with `server/server.jar`. For SQLite, point `JAGENT_DATASOURCE_URL` at the same database file as the running Harness. For PostgreSQL, export the same JDBC URL, username, password and any custom application ID in this shell. Direct JAR commands read the process environment. [Database settings](../../QUICK_START.md#choose-a-database)
 
 The output file contains `JAGENT_USER_TOKEN`. Its permissions are restricted to the owner on POSIX systems. Deliver it privately to the user; do not commit it, paste it into chat, or distribute it with a public package. The server stores a hash, so it cannot display an existing token again.
 
@@ -62,6 +62,19 @@ Each browser sign-in expires automatically 30 days after authorization. In **Sys
 The server requires **that user's mainbot Runner to be online** before opening business pages or accepting browser business API requests. All browsers share this availability check, regardless of which Runner originally opened them. When mainbot's Runner disconnects, the Console displays **Waiting for mainbot** and keeps the sign-in. The page restores automatically when that Runner reconnects. Another Runner being online does not unlock it. Pausing an Agent does not lock the page, so you can still resume it.
 
 A normal Runner shutdown reports its disconnection. A crash or network loss is detected by the heartbeat lease (up to 65 seconds); the Console checks access every three seconds. Credentials, browser authorization and stored data remain intact. Runner/API credentials can still reconnect and manage execution while the browser is waiting.
+
+### Pair with a Linux service Runner
+
+Run `jagent pair` in an interactive terminal as the Runner service’s OS user, with its `JAGENT_STATE_DIR` if customized. Profiles belong to that user. If the service was given its token through the environment, supply it in the pairing context too. A new root or SSH shell can have a different home, environment and PATH.
+
+If there is no discoverable profile, an authorized operator with access to the existing Runner files can specify its connection explicitly. Use the code from your browser and the values from your service configuration:
+
+```sh
+jagent pair ABCD-2345 --server http://127.0.0.1:18181 \
+  --credentials /srv/jagent/runner-user.env --home /srv/jagent/runner-state
+```
+
+Use the **same API origin** the Runner registered against and the **same state root** it used with `--home`. The SDK locates the existing identity under that root by Harness origin and user. A public HTTPS address and a loopback HTTP address produce different identities even when they reach the same Harness. For `open --link`, `--console` controls the browser-facing address separately. Pairing reuses the existing identity while the Runner continues serving.
 
 ### First access without a desktop Runner
 

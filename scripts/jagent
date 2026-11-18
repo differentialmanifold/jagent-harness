@@ -7,9 +7,11 @@ app="$install_dir/releases/$(cat "$install_dir/current")"
 export JAGENT_STATE_DIR
 case "${1:-}" in
   --help|-h|help)
-    echo 'jagent                Start the local Harness, Console and Runner, or reopen the Console
-jagent server         Start the Harness and Console
-jagent runner         Start the Coding Runner (see jagent runner --help)
+    if [ -f "$app/distribution.json" ]; then
+      echo 'jagent                Start the local Harness, Console and Runner, or reopen the Console
+jagent server         Start the Harness and Console'
+    fi
+    echo 'jagent runner         Start the Coding Runner (see jagent runner --help)
 jagent open [--link]  Open the Console or print a single-use link
 jagent pair CODE      Approve a browser from its Runner machine'
     ;;

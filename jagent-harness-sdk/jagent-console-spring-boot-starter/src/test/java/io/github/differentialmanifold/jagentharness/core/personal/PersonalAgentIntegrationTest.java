@@ -345,6 +345,7 @@ class PersonalAgentIntegrationTest {
                             .findFirst()
                             .get();
             assertEquals(url, delivered.getImages().get(0).getUrl());
+            await(() -> delivered.getContent().equals(chat.state(origin.sessionId).answer));
             assertEquals(
                     ConversationImages.ids(delivered), chat.state(origin.sessionId).attachmentIds);
             assertThrows(

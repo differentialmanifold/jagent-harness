@@ -23,8 +23,8 @@ if not exist "%app%\distribution.json" (
 node "%app%\scripts\global.mjs" %*
 exit /b %ERRORLEVEL%
 :help
-echo jagent                   Start locally or reopen the Console
-echo jagent server            Start the Harness and Console
+if exist "%app%\distribution.json" echo jagent                   Start locally or reopen the Console
+if exist "%app%\distribution.json" echo jagent server            Start the Harness and Console
 echo jagent runner            Start the Coding Runner
 echo jagent open [--link]     Open the Console or print a single-use link
 echo jagent pair CODE         Approve a browser from its Runner machine

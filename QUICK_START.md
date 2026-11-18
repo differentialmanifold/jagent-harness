@@ -35,7 +35,32 @@ For a larger goal, open **mainbot → Tasks** to see the steps it tracks, what i
 | The Console says **Waiting for mainbot** | Bring the Runner bound to your mainbot back online. The signed-in page opens automatically when it reconnects. |
 | Stop and resume a local installation | Press **Ctrl+C** in the launch terminal. Run `jagent` again to reopen the same personal space. |
 
-The installer puts the launcher on your user PATH and copies the application under `~/.local/share/jagent` (Windows: `%LOCALAPPDATA%\JAgent`). It creates the model configuration on first install and keeps local Harness data in `~/.jagent`. To uninstall, stop the processes and run `sh scripts/uninstall.sh` or `scripts\uninstall.cmd` from the checkout or extracted ZIP. Personal data is retained. Use the same `JAGENT_INSTALL_DIR` if you chose a custom installation directory.
+The installer copies the application and sets up the launcher for the installing OS user under `~/.local/share/jagent` (Windows: `%LOCALAPPDATA%\JAgent`). The full package creates the model configuration on first install and keeps local Harness data in `~/.jagent`. To uninstall, stop the processes and run `sh scripts/uninstall.sh` or `scripts\uninstall.cmd` from the checkout or extracted ZIP. Personal data is retained. Use the same `JAGENT_INSTALL_DIR` if you chose a custom installation directory.
+
+## Linux servers and existing services
+
+Install under the account that will run JAgent. The **full ZIP** provides all commands. The **Coding Runner offline ZIP** provides `runner`, `open` and `pair` and requires only Java. If the Harness and Runner already run as services, installing the Runner ZIP gives that user the CLI; installation itself starts no processes. Use `jagent --help` to see the installed commands. For the package version, check `distribution.json` in the full ZIP or `coding/manifest.json` in the Runner ZIP.
+
+```sh
+sh scripts/install.sh
+# Works immediately, including over SSH with the default install directory:
+"$HOME/.local/share/jagent/bin/jagent" --help
+command -v java
+```
+
+Interactive Bash and Zsh sessions can use `jagent` on PATH after opening a new terminal. SSH commands and systemd units may skip shell startup files. For a unit, use the **absolute launcher path** in `ExecStart` and set its `PATH` to include Java (and Node.js for the full server). With a custom `JAGENT_INSTALL_DIR`, the launcher is under its `bin/` directory. For an all-in-one Linux host without a desktop, set `JAGENT_OPEN_BROWSER=false` in the full installation’s `.env.local` and run `jagent`. From your laptop, forward the Console with `ssh -L 5175:127.0.0.1:5175 user@linux-host`, visit `http://127.0.0.1:5175`, then approve the browser’s pairing code in an interactive shell on the Linux host. For a standalone Runner, pass `--no-browser`. [Pairing with a service Runner](docs/guides/access.md#pair-with-a-linux-service-runner)
+
+## Choose a database
+
+SQLite is the default for `jagent`, `jagent server` and the source launchers. For PostgreSQL, provision a database and a login role that owns its application schema and can create tables and indexes. Set the following **on the Harness host**, in `~/.jagent/.env.local` for the installed application, the checkout’s `.env.local` for source launchers, or the service environment for direct JAR startup:
+
+```dotenv
+JAGENT_DATASOURCE_URL=jdbc:postgresql://db.example.com:5432/jagent
+JAGENT_DATASOURCE_USERNAME=jagent
+JAGENT_DATASOURCE_PASSWORD=your-database-password
+```
+
+Start the server normally. Both drivers are bundled and the Harness initializes the tables for the selected database. Select the database before first startup. Switching an existing installation to an empty database starts a new user space; it does not migrate conversations or credentials. For a fresh global instance, set `JAGENT_STATE_DIR` in the launching shell to a new directory, place the model and database settings in its `.env.local`, and let the server issue its matching `data/user.env`.
 
 ## Use a remote Harness
 
@@ -123,7 +148,8 @@ In IntelliJ IDEA, import the root `pom.xml` and use the repository root as the w
 | `JAGENT_OPENAI_BASE_URL` | OpenAI-compatible API endpoint; required on the server |
 | `JAGENT_OPENAI_API_KEY` | Model API key, if required by the provider; server only |
 | `AGENT_BIND_ADDRESS` | Server bind address; `127.0.0.1` for local startup |
-| `JAGENT_DATASOURCE_URL` | SQLite URL; `jdbc:sqlite:agent-server.db` directly, `jdbc:sqlite:data/agent-server.db` with launchers |
+| `JAGENT_DATASOURCE_URL` | JDBC URL for SQLite or PostgreSQL. SQLite defaults: `jdbc:sqlite:agent-server.db` directly, `jdbc:sqlite:data/agent-server.db` with launchers |
+| `JAGENT_DATASOURCE_USERNAME`, `JAGENT_DATASOURCE_PASSWORD` | PostgreSQL login. Leave unset for default SQLite. |
 | `JAGENT_CONFIG_ROOT` | Server configuration root; `./data/server-config` |
 | `JAGENT_SERVER_URL` | Harness URL used by runner and frontend; `http://127.0.0.1:18181` |
 | `JAGENT_USER_TOKEN` | Harness-issued personal token; Runner/API clients only. Local startup reads `data/user.env` automatically. |
