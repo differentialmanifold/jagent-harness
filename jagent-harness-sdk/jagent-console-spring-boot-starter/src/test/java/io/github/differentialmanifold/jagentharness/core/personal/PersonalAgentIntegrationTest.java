@@ -248,6 +248,222 @@ class PersonalAgentIntegrationTest {
     }
 
     @Test
+    void textPlannerForwardsActualPixelsToProjectThenPeerAndPublishesSelectedImage()
+            throws Exception {
+        Profile owner = profile("Image coordinator"), peer = profile("Image reviewer");
+        Conversation origin = service.newConversation(owner.id, "Review the screenshot");
+        SessionRecord project = service.createProjectSession(owner.id, new CreateSessionRequest());
+        io.github.differentialmanifold.jagentharness.core.model.ModelProfile vision =
+                modelCatalog.require(null).copy();
+        vision.id = "pixel-review";
+        vision.model = "pixel-review";
+        vision.inputTypes.add("image");
+        modelCatalog.add(modelCatalog.configuration().revision, vision, null);
+        java.awt.image.BufferedImage tile =
+                new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        int color = new Random().nextInt(0x1000000);
+        tile.setRGB(0, 0, color);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(tile, "png", png);
+        String url =
+                "data:image/png;base64," + Base64.getEncoder().encodeToString(png.toByteArray());
+        // The scripted provider checks inputs and decodes the pixel, not the file name or prompt.
+        java.util.Deque<java.util.function.Function<ModelRequest, ModelResponse>> flow =
+                new ArrayDeque<>();
+        flow.add(
+                req -> {
+                    AgentMessage upload = req.getMessages().get(req.getMessages().size() - 1);
+                    assertTrue(upload.getImages().isEmpty());
+                    String ref = upload.getMessageId() + ":1";
+                    assertTrue(upload.getContent().contains(ref));
+                    com.fasterxml.jackson.databind.node.ObjectNode args =
+                            json.createObjectNode()
+                                    .put("action", "send")
+                                    .put("sessionId", project.getSessionId())
+                                    .put("text", "Inspect the pixel and return the image");
+                    args.putArray("attachmentIds").add(ref);
+                    return call("projects", args);
+                });
+        flow.add(req -> reply("Reviewing the project result."));
+        flow.add(
+                req -> {
+                    AgentMessage returned = req.getMessages().get(req.getMessages().size() - 1);
+                    assertTrue(returned.getImages().isEmpty());
+                    assertTrue(returned.getContent().contains("pixel=" + color));
+                    com.fasterxml.jackson.databind.node.ObjectNode args =
+                            json.createObjectNode()
+                                    .put("action", "send")
+                                    .put("agentId", peer.id)
+                                    .put("text", "Read the pixel independently");
+                    args.putArray("attachmentIds").add(returned.getMessageId() + ":1");
+                    return call("agents", args);
+                });
+        flow.add(req -> reply("Waiting for the independent reading."));
+        flow.add(
+                req -> {
+                    AgentMessage returned = req.getMessages().get(req.getMessages().size() - 1);
+                    assertTrue(returned.getContent().contains("pixel=" + color));
+                    AgentMessage original =
+                            req.getMessages().stream()
+                                    .filter(
+                                            m ->
+                                                    m.getContent() != null
+                                                            && m.getContent()
+                                                                    .startsWith("Review this tile"))
+                                    .findFirst()
+                                    .get();
+                    ModelResponse r = new ModelResponse();
+                    r.setContent(
+                            json.createObjectNode()
+                                    .put("userReply", "Verified pixel=" + color)
+                                    .set(
+                                            "attachmentIds",
+                                            json.createArrayNode()
+                                                    .add(original.getMessageId() + ":1"))
+                                    .toString());
+                    return r;
+                });
+        model.scripts.put(origin.sessionId, flow);
+        try {
+            service.send(
+                    owner.id,
+                    origin.sessionId,
+                    "Review this tile",
+                    null,
+                    null,
+                    Collections.singletonList(new MessageImage("tile.png", "image/png", url)));
+            await(
+                    () ->
+                            history.findMessages(origin.sessionId).stream()
+                                    .anyMatch(
+                                            m ->
+                                                    ("Verified pixel=" + color)
+                                                            .equals(m.getContent())));
+            AgentMessage delivered =
+                    history.findMessages(origin.sessionId).stream()
+                            .filter(m -> ("Verified pixel=" + color).equals(m.getContent()))
+                            .findFirst()
+                            .get();
+            assertEquals(url, delivered.getImages().get(0).getUrl());
+            assertEquals(
+                    ConversationImages.ids(delivered), chat.state(origin.sessionId).attachmentIds);
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () ->
+                            ConversationImages.resolve(
+                                    history,
+                                    project.getSessionId(),
+                                    ConversationImages.ids(delivered)));
+            assertTrue(
+                    history.findMessages(origin.sessionId).stream()
+                            .filter(m -> "tool".equals(m.getRole()))
+                            .noneMatch(m -> m.getContent().contains("base64,")));
+        } finally {
+            modelCatalog.remove(modelCatalog.configuration().revision, vision.id);
+            model.scripts.remove(origin.sessionId);
+        }
+    }
+
+    @Test
+    void attachesStoredProjectImageToPlainTextReplyWithoutRerunningTheProject() throws Exception {
+        Profile owner = profile("Screenshot owner");
+        Profile outsider = profile("Different owner");
+        Conversation origin = service.newConversation(owner.id, "Return an existing screenshot");
+        SessionRecord project = service.createProjectSession(owner.id, new CreateSessionRequest());
+        String session = project.getSessionId();
+        String url =
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvHkAAAAASUVORK5CYII=";
+        AgentMessage read = AgentMessage.tool(session, "call_read", "read", "capture.png");
+        read.setRunId("capture_run");
+        read.setTurnId("capture_turn");
+        read.setImages(
+                Collections.singletonList(new MessageImage("capture.png", "image/png", url)));
+        history.appendMessage(read);
+        String id = read.getMessageId() + ":1";
+        AgentMessage report =
+                AgentMessage.assistant(
+                        session, "Screenshot verified (" + id + ")", Collections.emptyList());
+        report.setRunId("capture_run");
+        report.setTurnId("report_turn");
+        history.appendMessage(report);
+        com.fasterxml.jackson.databind.node.ObjectNode attach =
+                json.createObjectNode().put("action", "attach_images").put("sessionId", session);
+        attach.putArray("attachmentIds").add(id);
+        ToolContext foreign =
+                new ToolContext(
+                        service.newConversation(outsider.id, "Other").sessionId,
+                        "foreign",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", outsider.id));
+        assertThrows(
+                PersonalAgentException.class,
+                () -> tools.get("projects", foreign).execute(foreign, attach));
+
+        java.util.Deque<java.util.function.Function<ModelRequest, ModelResponse>> flow =
+                new ArrayDeque<>();
+        flow.add(
+                req ->
+                        call(
+                                "projects",
+                                json.createObjectNode()
+                                        .put("action", "inspect")
+                                        .put("sessionId", session)));
+        flow.add(
+                req -> {
+                    AgentMessage inspected = req.getMessages().get(req.getMessages().size() - 1);
+                    assertTrue(inspected.getContent().contains("imageAttachments"));
+                    assertTrue(inspected.getContent().contains(id));
+                    assertFalse(inspected.getContent().contains("base64,"));
+                    return call("projects", attach);
+                });
+        flow.add(
+                req -> {
+                    assertTrue(
+                            req.getMessages()
+                                    .get(req.getMessages().size() - 1)
+                                    .getContent()
+                                    .contains("Selected for your next reply"));
+                    ModelResponse r = new ModelResponse();
+                    r.setContent("Here is the verified screenshot.");
+                    return r;
+                });
+        model.scripts.put(origin.sessionId, flow);
+        try {
+            Inbox first =
+                    service.send(
+                            owner.id,
+                            origin.sessionId,
+                            "Send that screenshot here.",
+                            null,
+                            null,
+                            Collections.emptyList());
+            await(() -> "DONE".equals(store.message(first.id).status));
+            List<AgentMessage> replies = history.findMessages(origin.sessionId);
+            AgentMessage finalReply = replies.get(replies.size() - 1);
+            assertEquals("Here is the verified screenshot.", finalReply.getContent());
+            assertEquals(url, finalReply.getImages().get(0).getUrl());
+            assertEquals(
+                    ConversationImages.ids(finalReply),
+                    store.message(first.id).answerAttachmentIds);
+            assertEquals(2, history.findMessages(session).size());
+            flow.add(req -> reply("A separate text answer"));
+            Inbox next =
+                    service.send(
+                            owner.id,
+                            origin.sessionId,
+                            "Another topic",
+                            null,
+                            null,
+                            Collections.emptyList());
+            await(() -> "DONE".equals(store.message(next.id).status));
+            assertTrue(store.message(next.id).answerAttachmentIds.isEmpty());
+        } finally {
+            model.scripts.remove(origin.sessionId);
+        }
+    }
+
+    @Test
     void delegationReturnsToOriginKeepsPrivacyAndRejectsCycles() throws Exception {
         Profile owner = profile("Coordinator"),
                 peer = profile("Mac specialist"),
@@ -989,11 +1205,20 @@ class PersonalAgentIntegrationTest {
         result.messages.add(
                 ChatMessage.tool(
                         pending.toolCalls.get(0).toolCallId, "SUCCEEDED", "native evidence"));
+        String screenshot =
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvHkAAAAASUVORK5CYII=";
+        Map<String, Object> image = new HashMap<>();
+        image.put("url", screenshot);
+        image.put("name", "capture.png");
+        image.put("mediaType", "image/png");
+        result.messages.get(0).images.add(image);
         result.clientTools = poll.job.request.clientTools;
         ChatResponse finalResult = chat.chat(result, null);
+        assertEquals(1, finalResult.attachmentIds.size());
         runners.complete(runner.runnerId, finalResult);
         await(() -> "DONE".equals(store.message(watch.id).status));
         assertTrue(store.message(watch.id).text.contains("Project evidence verified"));
+        assertEquals(screenshot, store.message(watch.id).images.get(0).getUrl());
     }
 
     @Test
@@ -2000,6 +2225,29 @@ class PersonalAgentIntegrationTest {
             ModelResponse response = new ModelResponse();
             AgentMessage last = request.getMessages().get(request.getMessages().size() - 1);
             boolean personal = request.getSystemPrompt().contains("Personal Agent:");
+            if ("pixel-review".equals(request.getModel())) {
+                MessageImage image = last.getImages().get(0);
+                try {
+                    byte[] data = Base64.getDecoder().decode(image.getUrl().split(",", 2)[1]);
+                    int pixel =
+                            javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(data))
+                                            .getRGB(0, 0)
+                                    & 0xffffff;
+                    String id = last.getMessageId() + ":1";
+                    assertTrue(last.getContent().contains(id));
+                    response.setContent(
+                            personal
+                                    ? "pixel=" + pixel
+                                    : "{\"userReply\":\"pixel="
+                                            + pixel
+                                            + "\",\"attachmentIds\":[\""
+                                            + id
+                                            + "\"]}");
+                    return response;
+                } catch (java.io.IOException e) {
+                    throw new IllegalArgumentException(e);
+                }
+            }
             if (personal) {
                 java.util.Deque<java.util.function.Function<ModelRequest, ModelResponse>> script =
                         scripts.get(last.getSessionId());
@@ -2062,6 +2310,16 @@ class PersonalAgentIntegrationTest {
                 } catch (Exception e) {
                     throw new IllegalStateException(e);
                 }
+            }
+            if (!personal
+                    && "remote_read".equals(last.getToolName())
+                    && last.getContent().contains("Image attachment ")) {
+                // A text-only worker can publish the original without claiming it inspected pixels.
+                response.setContent(
+                        "{\"userReply\":\"Project evidence verified\",\"attachmentIds\":[\""
+                                + last.getMessageId()
+                                + ":1\"]}");
+                return response;
             }
             if (!personal
                     && "user".equals(last.getRole())

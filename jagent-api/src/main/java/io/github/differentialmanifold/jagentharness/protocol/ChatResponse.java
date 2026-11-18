@@ -8,5 +8,10 @@ public class ChatResponse {
     public String runId;
     public String status;
     public String answer;
+
+    @com.fasterxml.jackson.annotation.JsonInclude(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+    public List<String> attachmentIds = new ArrayList<>();
+
     public List<ToolInvocation> toolCalls = new ArrayList<>();
 }

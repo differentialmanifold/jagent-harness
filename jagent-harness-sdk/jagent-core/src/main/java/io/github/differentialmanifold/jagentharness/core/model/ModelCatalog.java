@@ -109,12 +109,98 @@ public final class ModelCatalog {
                                 .findFirst()
                                 .orElse("");
             if (p.apiKey.length() > 8192) throw new IllegalArgumentException("API key is too long");
+            p.credentialsConfigured = !p.apiKey.isEmpty();
         }
         if (c.models.stream().noneMatch(p -> p.id.equals(c.defaultModelId) && p.enabled))
             throw new IllegalArgumentException("Choose an enabled default model");
         if (!store.save(c))
             throw new IllegalArgumentException("Model settings changed; reload before saving");
         return publicConfiguration();
+    }
+
+    /** Adds one model without replacing unrelated settings or changing the default. */
+    public Configuration add(long revision, ModelProfile model, String credentialsFrom) {
+        Configuration c = editable(revision);
+        if (model == null || c.models.stream().anyMatch(p -> Objects.equals(p.id, model.id)))
+            throw new IllegalArgumentException("Choose a new model ID");
+        ModelProfile added = model.copy();
+        if (credentialsFrom != null) {
+            ModelProfile source = find(configuration(), credentialsFrom);
+            if (!Objects.equals(source.provider, added.provider)
+                    || !Objects.equals(source.baseUrl, added.baseUrl))
+                throw new IllegalArgumentException(
+                        "Credentials can only be reused for the same provider and endpoint");
+            added.apiKey = source.apiKey;
+        }
+        c.models.add(added);
+        return save(c);
+    }
+
+    public Configuration update(long revision, ModelProfile model) {
+        Configuration c = editable(revision);
+        ModelProfile previous = find(c, model.id);
+        c.models.set(c.models.indexOf(previous), model.copy());
+        return save(c);
+    }
+
+    public Configuration remove(long revision, String id) {
+        Configuration c = editable(revision);
+        if (Objects.equals(id, c.defaultModelId))
+            throw new IllegalArgumentException("Choose another default before removing this model");
+        c.models.remove(find(c, id));
+        return save(c);
+    }
+
+    public Configuration selectDefault(long revision, String id) {
+        Configuration c = editable(revision);
+        find(c, id);
+        c.defaultModelId = id;
+        return save(c);
+    }
+
+    private Configuration editable(long revision) {
+        Configuration c = publicConfiguration();
+        if (revision != c.revision)
+            throw new IllegalArgumentException("Model settings changed; reload before saving");
+        return c;
+    }
+
+    private ModelProfile find(Configuration c, String id) {
+        return c.models.stream()
+                .filter(p -> Objects.equals(p.id, id))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Model not found: " + id));
+    }
+
+    /** A text connection check, shared by the Console and mainbot. */
+    public Map<String, Object> testConnection(String id) {
+        ModelProfile model = require(id);
+        ModelRequest request = new ModelRequest();
+        request.setModel(model.model);
+        request.setSystemPrompt("Reply briefly to confirm this connection works.");
+        request.setMessages(
+                Collections.singletonList(AgentMessage.user("connection-test", "Hello")));
+        request.setTools(Collections.emptyList());
+        ModelResponse response;
+        try {
+            response = provider(model).chat(request);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException(redact(e.getMessage(), model.apiKey));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("modelId", id);
+        out.put("reply", redact(response.getContent(), model.apiKey));
+        out.put("testedInputTypes", Collections.singletonList("text"));
+        out.put(
+                "note",
+                "Text connection tested. Configured image input support has not been verified.");
+        return out;
+    }
+
+    private String redact(String text, String secret) {
+        return text == null || secret == null || secret.isEmpty()
+                ? text
+                : text.replace(secret, "[redacted]");
     }
 
     private List<String> concat(List<String> a, List<String> b) {
@@ -146,6 +232,20 @@ public final class ModelCatalog {
                                 new IllegalArgumentException(
                                         "Configured model is unavailable: " + wanted))
                 .copy();
+    }
+
+    /** Select for one requested visual task; never change the configured default. */
+    public String visionModel(String reference) {
+        String explicit = resolveRequested(reference);
+        ModelProfile first = require(explicit);
+        if (first.inputTypes.contains("image")) return first.id;
+        if (explicit != null)
+            throw new IllegalArgumentException(
+                    "Requested model does not accept image input: " + first.id);
+        for (ModelProfile p : configuration().models)
+            if (p.enabled && p.inputTypes.contains("image")) return p.id;
+        throw new IllegalArgumentException(
+                "No enabled model accepts image input. Configure Image input in System Settings → Models.");
     }
 
     public Selection begin(String session, String run, String requested) {
@@ -217,7 +317,7 @@ public final class ModelCatalog {
             AgentMessage copy = m.copy();
             StringBuilder content = new StringBuilder(m.getContent() == null ? "" : m.getContent());
             content.append(
-                    "\n[Attachments retained in conversation history; the current model does not accept their input type. Report this input limitation and ask the user to select a suitable model; do not make claims about the attachment contents.]");
+                    "\n[Attachments retained in conversation history; the current model does not accept their input type. You can forward or return a listed attachment. Do not describe unseen pixels; use a visual run for interpretation.]");
             m.getImages()
                     .forEach(
                             image ->

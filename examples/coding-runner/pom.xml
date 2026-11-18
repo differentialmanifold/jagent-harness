@@ -3,7 +3,7 @@
   <parent>
     <groupId>io.github.differentialmanifold</groupId>
     <artifactId>jagent-harness</artifactId>
-    <version>2.3.0</version>
+    <version>2.3.1</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <artifactId>jagent-coding-runner</artifactId>
@@ -73,7 +73,13 @@
                 <copy file="${project.build.directory}/${project.build.finalName}.jar" tofile="${project.build.directory}/runners/coding/runner.jar" overwrite="true" />
                 <checksum file="${project.build.directory}/runners/coding/runner.jar" algorithm="SHA-256" property="runner.sha256" />
                 <echo file="${project.build.directory}/runners/coding/manifest.json" encoding="UTF-8">{"kind":"coding","version":"${project.version}","artifact":"runner.jar","sha256":"${runner.sha256}","javaVersion":8}</echo>
-                <zip destfile="${project.build.directory}/jagent-coding-runner-${project.version}-offline.zip" basedir="${project.build.directory}/runners" />
+                <zip destfile="${project.build.directory}/jagent-coding-runner-${project.version}-offline.zip">
+                  <fileset dir="${project.build.directory}/runners" includes="coding/runner.jar,coding/manifest.json" />
+                  <zipfileset dir="${project.basedir}/../../scripts" prefix="scripts" includes="install.sh,install.cmd,install.ps1,uninstall.sh,uninstall.cmd,uninstall.ps1,jagent,jagent.cmd" />
+                </zip>
+                <copy file="${project.build.directory}/jagent-coding-runner-${project.version}-offline.zip" tofile="${project.build.directory}/runners/coding/runner.zip" overwrite="true" />
+                <checksum file="${project.build.directory}/runners/coding/runner.zip" algorithm="SHA-256" property="archive.sha256" />
+                <echo file="${project.build.directory}/runners/coding/manifest.json" encoding="UTF-8">{"kind":"coding","version":"${project.version}","artifact":"runner.jar","sha256":"${runner.sha256}","javaVersion":8,"archive":"runner.zip","archiveSha256":"${archive.sha256}"}</echo>
               </target>
             </configuration>
           </execution>

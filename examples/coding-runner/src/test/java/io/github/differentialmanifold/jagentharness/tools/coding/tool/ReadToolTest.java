@@ -23,6 +23,28 @@ class ReadToolTest {
     @TempDir Path workspaceRoot;
 
     @Test
+    void readsPixelsBySignatureWithoutPuttingBase64InText() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ReadTool tool = new ReadTool(mapper, new WorkspacePathResolver());
+        java.awt.image.BufferedImage original =
+                new java.awt.image.BufferedImage(3, 2, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        original.setRGB(1, 1, 0x4a9362);
+        Path file = workspaceRoot.resolve("capture");
+        javax.imageio.ImageIO.write(original, "png", file.toFile());
+        ToolExecutionResult result =
+                tool.execute(toolContext(), arguments(mapper, "capture", null, null));
+        assertEquals("image", mapper.readTree(result.getContent()).get("type").asText());
+        assertFalse(result.getContent().contains("base64"));
+        assertEquals(
+                "data:image/png;base64,"
+                        + java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(file)),
+                result.images.get(0).get("url"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> tool.execute(toolContext(), arguments(mapper, "capture", 1, null)));
+    }
+
+    @Test
     void readsWorkspaceFile() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         ReadTool tool = new ReadTool(objectMapper, new WorkspacePathResolver());

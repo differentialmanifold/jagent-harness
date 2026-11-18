@@ -15,14 +15,14 @@ let stopping = false
 const distribution = existsSync(resolve(root, 'distribution.json')) ? JSON.parse(readFileSync(resolve(root, 'distribution.json'), 'utf8')) : null
 const version = distribution?.version || readFileSync(resolve(root, 'pom.xml'), 'utf8').match(/<version>([^<]+)<\/version>/)[1]
 const serverVersion = distribution?.version || readFileSync(resolve(root, 'examples/server-demo/pom.xml'), 'utf8').match(/<artifactId>server-demo<\/artifactId>\s*<version>([^<]+)<\/version>/)[1]
-export async function launch(component) {
-  const options = process.argv.slice(2)
+export async function launch(component, options = process.argv.slice(2)) {
+  const state = resolve(process.env.JAGENT_STATE_DIR || root)
   const supported = ['--skip-build', '--help', ...(component === 'client' || component === 'all' ? ['--mainbot'] : []), ...(component === 'all' ? ['--client-only'] : [])]
   if (options.includes('--help')) {
     console.log(`Start ${component === 'all' ? 'the harness server, coding runner, and frontend' : component === 'client' ? 'the coding runner only' : component + ' only'}.\nOptions: ${supported.join(', ')}\nConfiguration: .env.local (shell environment takes precedence).`)
     return
   }
-  const localEnv = resolve(root, '.env.local')
+  const localEnv = resolve(state, '.env.local')
   if (existsSync(localEnv)) {
     for (const [key, value] of Object.entries(parseEnv(readFileSync(localEnv, 'utf8')))) {
       if (process.env[key] === undefined) process.env[key] = value
@@ -30,16 +30,16 @@ export async function launch(component) {
   }
   const env = { ...process.env }
   const clientOnly = options.includes('--client-only')
-  const startServer = component === 'server' || (component === 'all' && !clientOnly)
+  const startServer = component === 'host' || component === 'server' || (component === 'all' && !clientOnly)
   const startClient = component === 'client' || component === 'all'
-  const startFrontend = component === 'frontend' || (component === 'all' && !clientOnly)
+  const startFrontend = component === 'host' || component === 'frontend' || (component === 'all' && !clientOnly)
   const serverPort = Number(env.AGENT_SERVER_PORT || 18181)
   const frontendPort = Number(env.JAGENT_CONSOLE_PORT || 5175)
   const serverUrl = env.JAGENT_SERVER_URL || `http://127.0.0.1:${serverPort}`
   let token = env.JAGENT_USER_TOKEN || ''
-  const credentialsFile = resolve(root, env.JAGENT_USER_CREDENTIALS || env.JAGENT_LOCAL_TOKEN_FILE || 'data/user.env')
+  const credentialsFile = resolve(state, env.JAGENT_USER_CREDENTIALS || env.JAGENT_LOCAL_TOKEN_FILE || 'data/user.env')
   const localServerUrl = `http://127.0.0.1:${serverPort}`
-  const runnerHome = resolve(root, env.JAGENT_RUNNER_HOME || 'data/coding-runner')
+  const runnerHome = resolve(state, env.JAGENT_RUNNER_HOME || 'data/coding-runner')
   const runnerJar = distribution ? 'runner/runner.jar' : `examples/coding-runner/target/jagent-coding-runner-${version}.jar`
   const sourceDirectory = resolve(root, env.JAGENT_SOURCE_WORKSPACE || (distribution ? 'sources' : '.'))
   const source = distribution && !env.JAGENT_SOURCE_WORKSPACE ? distribution : sourceInfo(sourceDirectory)
@@ -59,7 +59,7 @@ export async function launch(component) {
     })
   }
   function service(name, commandName, args, childEnv) {
-    const child = start(commandName, args, root, childEnv)
+    const child = start(commandName, args, state, childEnv)
     child.once('error', error => { console.error(`${name}: ${error.message}`); shutdown(1) })
     child.once('exit', code => { if (!stopping) { console.error(`${name} exited with code ${code}`); shutdown(code || 1) } })
   }
@@ -116,14 +116,29 @@ export async function launch(component) {
     }
     const [major, minor] = process.versions.node.split('.').map(Number)
     if (!((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22)) throw new Error('Node.js ^20.19 or >=22.12 is required')
-    if (startServer && (!env.JAGENT_MODEL || !env.JAGENT_OPENAI_BASE_URL)) throw new Error('Set JAGENT_MODEL and JAGENT_OPENAI_BASE_URL in .env.local; see .env.example')
+    if (component === 'all' && distribution && process.env.JAGENT_STATE_DIR && !clientOnly) {
+      // Reopen a running local installation without starting another server or polling loop.
+      let health
+      try {
+        const response = await fetch(localServerUrl + '/api/v1/health', { redirect: 'error', signal: AbortSignal.timeout(1500) })
+        if (response.ok) health = await response.json()
+      } catch {}
+      if (health?.status === 'ok' && health.store === 'jdbc') {
+        // Prefer the configured origin spelling: Runner profiles key on the exact origin.
+        const configured = new URL(serverUrl)
+        const sameLocalServer = ['127.0.0.1', 'localhost'].includes(configured.hostname) && configured.port === String(serverPort)
+        await command('java', ['-jar', resolve(root, runnerJar), 'open', '--server', sameLocalServer ? serverUrl : localServerUrl], state, env)
+        return
+      }
+    }
+    if (startServer && (!env.JAGENT_MODEL || !env.JAGENT_OPENAI_BASE_URL)) throw new Error('Set JAGENT_MODEL and JAGENT_OPENAI_BASE_URL in .env.local or the shell environment')
     if (startServer && startClient && new URL(serverUrl).origin !== new URL(localServerUrl).origin && new URL(serverUrl).origin !== `http://localhost:${serverPort}`) {
       throw new Error('JAGENT_SERVER_URL must match AGENT_SERVER_PORT for an all-in-one launch. Use --client-only to connect to a remote server.')
     }
     const ports = [...(startServer ? [serverPort] : []), ...(startFrontend ? [frontendPort] : [])]
     if (new Set(ports).size !== ports.length) throw new Error('Server and console ports must be distinct')
     for (const port of ports) await available(port)
-    if (startServer) mkdirSync(resolve(root, 'data'), { recursive: true })
+    if (startServer) mkdirSync(resolve(state, 'data'), { recursive: true })
     if (!distribution && !options.includes('--skip-build') && (startServer || startClient)) {
       const modules = [...(startServer ? ['examples/server-demo'] : []), ...((startServer || startClient) ? ['examples/coding-runner'] : [])]
       await command('mvn', ['-q', '-pl', modules.join(','), '-am', '-DskipTests', `-Dharness.source.revision=${source.revision}`, 'package'])
@@ -131,10 +146,10 @@ export async function launch(component) {
     if (startFrontend && !distribution && !existsSync(resolve(root, 'console/node_modules'))) await command('npm', ['ci'], resolve(root, 'console'))
     if (startServer) {
       console.log(`Starting Java Agent server at ${localServerUrl}`)
-      service('Agent server', 'java', ['-jar', distribution ? 'server/server.jar' : `examples/server-demo/target/server-demo-${serverVersion}.jar`], {
+      service('Agent server', 'java', ['-jar', resolve(root, distribution ? 'server/server.jar' : `examples/server-demo/target/server-demo-${serverVersion}.jar`)], {
         ...env, AGENT_SERVER_PORT: String(serverPort), JAGENT_DATASOURCE_URL: env.JAGENT_DATASOURCE_URL || 'jdbc:sqlite:data/agent-server.db',
         JAGENT_LOCAL_TOKEN_FILE: env.JAGENT_LOCAL_TOKEN_FILE || credentialsFile,
-        JAGENT_CONFIG_ROOT: env.JAGENT_CONFIG_ROOT || resolve(root, 'data/server-config'),
+        JAGENT_CONFIG_ROOT: env.JAGENT_CONFIG_ROOT || resolve(state, 'data/server-config'),
         JAGENT_RUNNER_DISTRIBUTION_DIR: env.JAGENT_RUNNER_DISTRIBUTION_DIR || resolve(root, distribution ? 'runners' : 'examples/coding-runner/target/runners')
       })
       await ready(localServerUrl)
@@ -142,13 +157,13 @@ export async function launch(component) {
     if (!token && existsSync(credentialsFile)) token = parseEnv(readFileSync(credentialsFile, 'utf8')).JAGENT_USER_TOKEN || ''
     const localHarness = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(serverUrl).hostname)
     const consoleUrl = env.JAGENT_CONSOLE_URL || (startFrontend || localHarness ? `http://127.0.0.1:${frontendPort}` : serverUrl)
-    const clientEnv = { ...env, JAGENT_USER_TOKEN: token, JAGENT_CONSOLE_URL: consoleUrl, JAGENT_SERVER_URL: serverUrl, JAGENT_CONSOLE_PORT: String(frontendPort) }
+    const clientEnv = { ...env, JAGENT_USER_TOKEN: token, JAGENT_USER_CREDENTIALS: credentialsFile, JAGENT_CONSOLE_URL: consoleUrl, JAGENT_SERVER_URL: serverUrl, JAGENT_CONSOLE_PORT: String(frontendPort) }
     // Model and database settings belong to the server, not the client or frontend.
     for (const key of Object.keys(clientEnv)) if (/^JAGENT_(OPENAI_|MODEL|DATASOURCE|TEMPERATURE|COMPACTION|CONTEXT|CONFIG_ROOT)/.test(key)) delete clientEnv[key]
     const frontendEnv = { ...clientEnv }
     delete frontendEnv.JAGENT_USER_TOKEN
     delete frontendEnv.JAGENT_USER_CREDENTIALS
-    if (startFrontend && distribution) service('Console', process.execPath, ['scripts/lib/console-server.mjs'], frontendEnv)
+    if (startFrontend && distribution) service('Console', process.execPath, [resolve(root, 'scripts/lib/console-server.mjs')], frontendEnv)
     if (startFrontend && !distribution) {
       const ui = start(win ? 'npm.cmd' : 'npm', ['run', 'dev', '--', '--port', String(frontendPort), '--host', env.JAGENT_CONSOLE_HOST || '127.0.0.1'], resolve(root, 'console'), frontendEnv)
       ui.once('error', error => { console.error(error.message); shutdown(1) })
@@ -164,7 +179,7 @@ export async function launch(component) {
       if (startFrontend) await ready(consoleUrl, '/api/v1/health')
       if (stopping) return
       console.log('Starting coding runner; select project directories and tools in the console')
-      service('Coding runner', 'java', ['-jar', runnerJar, '--home', runnerHome, 'serve', '--server', serverUrl, '--name', env.JAGENT_RUNNER_NAME || 'coding-local'], clientEnv)
+      service('Coding runner', 'java', ['-jar', resolve(root, runnerJar), '--home', runnerHome, 'serve', '--server', serverUrl, '--name', env.JAGENT_RUNNER_NAME || 'coding-local'], clientEnv)
       let identity
       await ready(serverUrl, '/api/v1/runners', runners => {
         const config = resolve(runnerStateDirectory(serverUrl, runnerHome, user.userId), 'config.json')

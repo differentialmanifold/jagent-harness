@@ -2,9 +2,12 @@ package io.github.differentialmanifold.jagentharness.core.personal;
 
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.differentialmanifold.jagentharness.core.message.ConversationImages;
+import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore.*;
 import io.github.differentialmanifold.jagentharness.core.project.CreateSessionRequest;
 import io.github.differentialmanifold.jagentharness.core.tool.*;
+import java.util.List;
 import java.util.function.Supplier;
 
 public final class ProjectsTool extends PersonalTool {
@@ -40,7 +43,7 @@ public final class ProjectsTool extends PersonalTool {
                 new String[] {"projects_create"});
         action(
                 "inspect",
-                "Read execution state and latest 40 messages; use beforeMessageId to paginate.",
+                "Read execution state and the latest 40 messages, including stored image references for attach_images. Use beforeMessageId to paginate.",
                 fields(
                         "sessionId",
                         text("Owned project session."),
@@ -48,6 +51,19 @@ public final class ProjectsTool extends PersonalTool {
                         text("Earlier-history cursor.")),
                 new String[] {"projects_inspect"},
                 "sessionId");
+        action(
+                "attach_images",
+                "Attach selected images from an owned Project session to your next reply in this chat. Use when the user wants the actual image. Works on stored tool results even if the Project only replied with a written description or the Runner is offline. No model or OCR required.",
+                fields(
+                        "sessionId",
+                        text("Owned Project session containing the original images."),
+                        "attachmentIds",
+                        array(
+                                text(
+                                        "Image reference from that Project (messageId:one-based index); get it from the Project report or inspect."))),
+                new String[] {},
+                "sessionId",
+                "attachmentIds");
         action(
                 "send",
                 "Submit work asynchronously. Attach taskId for tracked work. Dependencies must be DONE. Same-workspace operations are exclusive unless both runs declare readOnly. A result wakes this conversation automatically; finish the turn instead of polling.",
@@ -58,9 +74,17 @@ public final class ProjectsTool extends PersonalTool {
                         text("Goal, constraints, methods and completion checks."),
                         "taskId",
                         text("Optional owned task ID; acceptance criteria must be set."),
+                        "attachmentIds",
+                        array(text("Image reference from this conversation.")),
+                        "requiresVision",
+                        json.createObjectNode()
+                                .put("type", "boolean")
+                                .put(
+                                        "description",
+                                        "Select an image-capable model for visual inspection, including images to be read on the Runner. Defaults to true when forwarding images; set false for delivery only."),
                         "modelId",
                         text(
-                                "Exact configured model ID or name explicitly requested by the user for this run. Otherwise omit for the system default. Do not choose a model autonomously."),
+                                "Pass the exact model requested by the user. Otherwise omit: visual work uses an enabled image model; other work uses the default."),
                         "readOnly",
                         io.github.differentialmanifold.jagentharness.core.tool.support.ToolSchemas
                                 .booleanProperty(
@@ -111,6 +135,25 @@ public final class ProjectsTool extends PersonalTool {
             case "inspect":
                 return s.inspectProject(
                         id, required(args, "sessionId"), args.path("beforeMessageId").asText(null));
+            case "attach_images":
+                String session = required(args, "sessionId");
+                s.requireProject(id, session);
+                List<MessageImage> images =
+                        s.attachments(
+                                session, ConversationImages.readIds(args.get("attachmentIds")));
+                ConversationImages.ReplySelection selection =
+                        context.getAttribute(
+                                ConversationImages.ReplySelection.ATTRIBUTE,
+                                ConversationImages.ReplySelection.class);
+                if (selection == null)
+                    throw new IllegalStateException(
+                            "Images must be attached during an Agent conversation");
+                selection.select(images);
+                return json.createObjectNode()
+                        .put("attached", images.size())
+                        .put(
+                                "note",
+                                "Selected for your next reply in this chat. Reply normally with the caption or the Project's description. Do not copy IDs, paths or Base64 into the reply.");
             case "steer":
                 return s.steerProject(
                         id,
@@ -120,15 +163,25 @@ public final class ProjectsTool extends PersonalTool {
             case "stop":
                 return s.stopProject(id, required(args, "sessionId"), required(args, "runId"));
             default:
-                return s.submitProject(
-                        id,
-                        context.getSessionId(),
-                        required(args, "sessionId"),
-                        required(args, "text"),
-                        context.getAttribute("personalReplyTo", ReplyTarget.class),
-                        args.path("taskId").asText(null),
-                        args.path("readOnly").asBoolean(false),
-                        args.path("modelId").asText(null));
+                Inbox watch =
+                        s.submitProject(
+                                id,
+                                context.getSessionId(),
+                                required(args, "sessionId"),
+                                required(args, "text"),
+                                context.getAttribute("personalReplyTo", ReplyTarget.class),
+                                args.path("taskId").asText(null),
+                                args.path("readOnly").asBoolean(false),
+                                args.path("modelId").asText(null),
+                                io.github.differentialmanifold.jagentharness.core.message
+                                        .ConversationImages.readIds(args.get("attachmentIds")),
+                                args.path("requiresVision")
+                                        .asBoolean(args.path("attachmentIds").size() > 0));
+                return json.createObjectNode()
+                        .put("projectSessionId", watch.projectSessionId)
+                        .put("projectRunId", watch.projectRunId)
+                        .put("id", watch.id)
+                        .put("status", "ACCEPTED");
         }
     }
 }

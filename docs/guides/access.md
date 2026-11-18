@@ -15,8 +15,8 @@ For separate processes, start the server, frontend, then Runner. In IDEA, use th
 Run these commands **on the Harness host**, from the same working directory and with the same database configuration as the server. They do not start a web server or Agent execution loops.
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.3.0.jar users create --name Alice --output alice.env
-java -jar examples/server-demo/target/server-demo-2.3.0.jar users list
+java -jar examples/server-demo/target/server-demo-2.3.1.jar users create --name Alice --output alice.env
+java -jar examples/server-demo/target/server-demo-2.3.1.jar users list
 ```
 
 With the prebuilt application, replace the JAR path with `server/server.jar`. If the server was started by the launcher, first set `JAGENT_DATASOURCE_URL=jdbc:sqlite:data/agent-server.db`; direct Java startup defaults to `jdbc:sqlite:agent-server.db`.
@@ -30,7 +30,7 @@ Host the Console and `/api/` under one public origin. Forward `/api/` to the Har
 On the user's computer:
 
 ```sh
-java -jar jagent-coding-runner-2.3.0.jar \
+java -jar jagent-coding-runner-2.3.1.jar \
   --server http://harness.example.com \
   --credentials /path/to/alice.env
 ```
@@ -41,17 +41,52 @@ A source checkout can use `node scripts/start-client.mjs` with those variables. 
 
 The first authorized Runner becomes the user's mainbot environment. Later Runners leave that binding unchanged. Using the same user's token on another machine adds another Runner to the same personal space; different users have different tokens and spaces. Runner state is separated by server and stable user ID. Resetting a token preserves the identity and execution records.
 
-## Browser access
+## Access from another browser or device
 
-The Runner opens a short-lived, single-use Console link. The frontend removes the ticket from the address and exchanges it for an HttpOnly browser cookie. It never receives the long-lived User Token. A new browser must first be opened by the Runner; knowing the Harness address grants no personal access.
+To switch browsers on the same computer, use **System Settings → Devices → Add device → Copy link** in the signed-in browser, then paste the new link into the other browser within 60 seconds. A loopback Console address works for this. The address bar of an already signed-in page is not a sign-in link. Keep using the hostname in the new link: `localhost` and `127.0.0.1` have separate cookies.
 
-The browser session lasts up to 12 hours and requires its launching Runner to remain online. A normal Runner shutdown locks the page; a crash or network loss is detected by the heartbeat lease (up to 65 seconds). The Console checks access every three seconds. Agents and stored data are retained. Starting the same Runner restores access while the browser session is valid; otherwise restart it to open a fresh link. Use a separate browser profile for a different user on the same Harness.
+If you have access to the Runner machine, you can sign in even after every browser session expires:
+
+1. Visit the Console in the desired browser and click **Pair with a Runner**. It displays a command with a five-minute code.
+2. On the machine running your authenticated Runner, execute that command, for example `jagent pair K7MD-P4TX`. Check the browser, code, Harness and user in the terminal, then type `yes`.
+3. Return to the original browser. It signs in automatically and opens the workspace when mainbot is online.
+
+To open another browser on the same machine, `jagent open --link` prints a single-use link valid for 60 seconds. `jagent open` opens the default browser. Both commands reuse the existing Runner identity. For a standalone JAR, use `java -jar runner.jar open --link` or `java -jar runner.jar pair CODE`.
+
+Each successful Coding Runner registration records the Harness address, Console address, state directory, user ID and credential file path in a local profile. If multiple profiles match, the command lists their IDs; repeat it with `--profile <id>`. When the Runner used only `JAGENT_USER_TOKEN`, supply the same environment variable in the command's shell. A profile does not store that token. The browser making the pairing request holds the private claim in memory; refreshing the page requires a new code.
+
+For another computer or phone, open **System Settings → Devices → Add device** on an authorized browser. Scan the QR code with your phone or open the copied link on the other computer. The link expires after 60 seconds and can be used once. Each browser gets its own HttpOnly session cookie; it never receives the long-lived User Token. The new device needs no Runner. Use a Console network address reachable from that device, rather than `localhost`.
+
+Each browser sign-in expires automatically 30 days after authorization. In **System Settings → Devices**, **This browser** marks your current session. Other rows show **Browser** and a short session identifier. The timestamp is the automatic expiry in your local time zone. **Revoke access** ends another session immediately, and **Sign out** ends the current one. Pair again or use a fresh link after sign-out, revocation or expiry. Use a separate browser profile for a different Harness user.
+
+The server requires **that user's mainbot Runner to be online** before opening business pages or accepting browser business API requests. All browsers share this availability check, regardless of which Runner originally opened them. When mainbot's Runner disconnects, the Console displays **Waiting for mainbot** and keeps the sign-in. The page restores automatically when that Runner reconnects. Another Runner being online does not unlock it. Pausing an Agent does not lock the page, so you can still resume it.
+
+A normal Runner shutdown reports its disconnection. A crash or network loss is detected by the heartbeat lease (up to 65 seconds); the Console checks access every three seconds. Credentials, browser authorization and stored data remain intact. Runner/API credentials can still reconnect and manage execution while the browser is waiting.
+
+### First access without a desktop Runner
+
+An operator can generate a link on the Harness host, using the same database configuration as the running server:
+
+```sh
+java -jar examples/server-demo/target/server-demo-2.3.1.jar users link \
+  --id usr_example --console https://harness.example.com --output console-link.txt
+```
+
+Use the user ID from `users list` (`local` for the automatically created local user). With the prebuilt package, use `server/server.jar`. The private output file contains a single-use link valid for 60 seconds. Open it promptly on the intended browser. This does not reset the User Token or require a Runner on the browser's device. The user's mainbot Runner must still be connected to use the workspace.
+
+## Runner idle disconnection
+
+A running Runner exits normally after **24 consecutive hours both idle and disconnected from the Harness**. Retry delays increase up to 60 seconds with jitter. A successful poll or tool activity resets the idle-disconnection timer. Idle Runners stay running while the Harness is reachable; active work is not interrupted by this timeout. Authentication failures still end the connection immediately.
+
+Set `JAGENT_RUNNER_IDLE_DISCONNECT_TIMEOUT_SECONDS` or `--idle-disconnect-timeout <seconds>` to change the default `86400`; `0` keeps reconnecting indefinitely. The timeout applies to the running receiver; initial credential validation still needs a reachable Harness.
+
+Pending results are saved before exit. Restart with the same state directory and use the existing recovery workflow for interrupted work; do not replay a tool merely because delivery failed. Independent background processes launched by tools are not automatically removed. A stopped Runner requires local startup, a service manager, or SSH from another terminal. If a process supervisor is used, configure it to respect a normal exit rather than immediately restarting it.
 
 ## Reset or revoke access
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.3.0.jar users reset --id usr_example --output replacement.env
-java -jar examples/server-demo/target/server-demo-2.3.0.jar users revoke --id usr_example
+java -jar examples/server-demo/target/server-demo-2.3.1.jar users reset --id usr_example --output replacement.env
+java -jar examples/server-demo/target/server-demo-2.3.1.jar users revoke --id usr_example
 ```
 
 Use the actual ID from `users list`; the automatically created local user's ID is `local`. Resetting preserves data, invalidates the previous token and browser sessions, and re-enables a revoked user. Update every Runner using that token. Revocation prevents further authenticated access; it does not delete the user's data. If `data/user.env` is lost, reset `local` explicitly. Startup never silently replaces an existing credential.

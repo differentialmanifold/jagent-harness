@@ -1,7 +1,7 @@
 package io.github.differentialmanifold.jagentharness.core.message;
 
 /**
- * An image attached to a user message.
+ * An image attached to a conversation message or a tool result.
  *
  * <p>The URL may be an HTTP(S) URL or a {@code data:image/...;base64,...} URL. Web-facing
  * integrations should apply their own trust and size limits before creating an instance.

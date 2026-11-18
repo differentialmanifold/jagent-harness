@@ -2,131 +2,120 @@
 
 [Project overview](README.md) · [Documentation](docs/README.md)
 
-The coding demo has three independent processes: the harness server, a coding runner with built-in tools, and the web frontend. Both the runner and frontend connect to the server. Only the runner accesses the local workspace.
+Start locally and give **mainbot** one small job. The full application runs the Harness, web Console and Coding Runner on your computer. The Harness creates your personal mainbot and its first chat. The first authenticated Runner binds to mainbot and provides its execution environment.
 
-## Prerequisites
+## Install and start
 
-Install **JDK 8+**, **Maven 3.6.3+**, and **Node.js 22.12+** (Node 20.19 is also supported). Make sure `java`, `mvn`, `node`, and `npm` are on your terminal's `PATH`. You need an OpenAI-compatible model endpoint. SQLite is included.
+1. **Get the full application.** Use an extracted `jagent-<version>.zip` with Java 8+ and Node.js 22.12+ on your PATH. The same installer works from a Git checkout with a JDK 8+, Maven 3.6.3+ and Node.js 22.12+. SQLite is included. [Release packages](https://github.com/differentialmanifold/jagent-harness/releases) · [Source checkout](#run-from-source)
+2. **Install the command.** From the extracted directory or repository root, run `sh scripts/install.sh` on macOS/Linux or `scripts\install.cmd` on Windows. Open a new terminal after installation.
+3. **Configure the model.** Edit `~/.jagent/.env.local` (Windows: `%USERPROFILE%\.jagent\.env.local`). Set the model ID and the base URL supplied by your OpenAI-compatible provider. Set the key if your provider requires one.
+
+   ```dotenv
+   JAGENT_MODEL=your-model-name
+   JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
+   JAGENT_OPENAI_API_KEY=your-api-key
+   ```
+
+4. **Run `jagent`.** Keep the terminal open. The Runner opens a signed-in Console at `http://127.0.0.1:5175`. Select **Agents → mainbot → Chat**.
+
+## Give mainbot its first job
+
+> Make a release checklist in a new workspace. Write two items to CHECKLIST.md, “Run tests” and “Write release notes”. Mark “Run tests” complete, read the file back, and tell me its path and what is still open.
+
+In **mainbot → Projects**, open the Project conversation to see the tools writing and reading the file on your Runner. In **mainbot → Chat**, look for the path and the open item, “Write release notes”. Follow up with “Mark the release notes complete and check the file again.” The update should refer to the same file.
+
+For a larger goal, open **mainbot → Tasks** to see the steps it tracks, what it is waiting for, and the results it has reviewed. The [personal Agent walkthrough](docs/guides/agents.md) includes a longer example. To direct the tools yourself, open **Projects** and choose your own workspace. [Project guide](docs/guides/projects.md)
+
+## Return to your workspace
+
+| Situation | What to do |
+| --- | --- |
+| Open the Console again | On the Runner machine, run `jagent open`, or `jagent open --link` to get a one-time link for another browser. |
+| Sign in from a phone or another computer | Visit the Console at a reachable address, select **Pair with a Runner**, then run `jagent pair CODE` **on the Runner machine** and confirm. |
+| The Console says **Waiting for mainbot** | Bring the Runner bound to your mainbot back online. The signed-in page opens automatically when it reconnects. |
+| Stop and resume a local installation | Press **Ctrl+C** in the launch terminal. Run `jagent` again to reopen the same personal space. |
+
+The installer puts the launcher on your user PATH and copies the application under `~/.local/share/jagent` (Windows: `%LOCALAPPDATA%\JAgent`). It creates the model configuration on first install and keeps local Harness data in `~/.jagent`. To uninstall, stop the processes and run `sh scripts/uninstall.sh` or `scripts\uninstall.cmd` from the checkout or extracted ZIP. Personal data is retained. Use the same `JAGENT_INSTALL_DIR` if you chose a custom installation directory.
+
+## Use a remote Harness
+
+Run `jagent server` on the host with the model configuration. Publish the Console and its `/api/` proxy at an address the execution machine can reach. Have the Harness operator issue a personal credential file. On the machine with the files and tools, install the Coding Runner offline ZIP using the same installer (Java 8+ is sufficient), then run:
+
+```sh
+jagent runner --server https://harness.example.com --credentials /path/to/my-user.env
+```
+
+The Runner connects outbound. If the browser-facing Console has a different address, add `--console <url>`. Keep mainbot’s Runner online to access its workspace from any authorized browser. See [personal access and remote deployment](docs/guides/access.md) for credentials, HTTP/HTTPS, reverse-proxy settings and pairing.
+
+## Run from source
+
+Install Git, JDK 8+, Maven 3.6.3+ and Node.js 22.12+ (Node 20.19 is also supported). To run directly from the checkout:
 
 ```sh
 git clone https://github.com/differentialmanifold/jagent-harness.git
 cd jagent-harness
-```
-
-Choose either the launchers or the manual steps below.
-
-## Start with launchers
-
-Copy `.env.example` to `.env.local` and set only your model connection:
-
-```sh
 cp .env.example .env.local
 ```
 
-```dotenv
-JAGENT_MODEL=your-model-name
-JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
-JAGENT_OPENAI_API_KEY=your-api-key
-```
+Set the model connection in the checkout's `.env.local` as above, then run `node scripts/dev.mjs`. The Runner opens the same mainbot experience and registers this checkout for source-based help. This launcher keeps its database and user credential under the checkout’s `data/` directory. An extracted full application also supports this portable launcher with its bundled source.
 
-Start everything:
+<details>
+<summary>Start components separately or with desktop shortcuts</summary>
 
-```sh
-node scripts/dev.mjs
-```
+Run each component in its own terminal. Start the Runner after the Harness and frontend are ready.
 
-Or use a separate terminal for each part, in this order:
+| Component | Command | Windows shortcut | macOS shortcut |
+| --- | --- | --- | --- |
+| All three | `node scripts/dev.mjs` | `scripts/dev.cmd` | `scripts/dev.command` |
+| Harness | `node scripts/start-server.mjs` | `scripts/start-server.cmd` | `scripts/start-server.command` |
+| Web Console | `node scripts/start-frontend.mjs` | `scripts/start-frontend.cmd` | `scripts/start-frontend.command` |
+| Coding Runner | `node scripts/start-client.mjs --mainbot` | `scripts/start-client.cmd` | `scripts/start-client.command` |
 
-| Part | Command | Address |
-| --- | --- | --- |
-| Harness server | `node scripts/start-server.mjs` | `http://127.0.0.1:18181` |
-| Web frontend | `node scripts/start-frontend.mjs` | `http://127.0.0.1:5175`, with `/api` forwarded to the server |
-| Coding runner | `node scripts/start-client.mjs --mainbot` | Opens your Console; no listening port |
+The Java launchers build the needed modules. Pass `--skip-build` to reuse existing JARs. `--mainbot` on the client launcher also registers the checkout for mainbot’s source help.
 
-The Runner opens the Console automatically. Talk to **mainbot**, created for your personal identity. The first Runner binds to it; subsequent Runners keep that binding unchanged. The server writes local credentials to `data/user.env`, which the launcher reads automatically. The all-in-one launcher also registers this checkout for source-based help; separate startup can use `--mainbot` for that setup. Restarts preserve your identity, conversations and settings.
+</details>
 
-The runner includes all seven coding tools. Choose an existing workspace or leave it empty for a new project directory. Select enabled tools per project in the frontend. Selected tools run with Full access, without approval prompts.
+<details>
+<summary>Start manually without launchers, or run the Java processes in IntelliJ IDEA</summary>
 
-Each launcher starts only its own component. Java launchers build the required modules; `--skip-build` reuses existing JARs. The runner launcher registers with the server before starting its receive loop. The frontend launcher installs npm dependencies when missing and does not require Java or Maven. It can start before the server is ready.
-
-Avoid building the same checkout from multiple terminals simultaneously. Use `--help` for options. **Ctrl+C** stops only the processes started by that launcher.
-
-### Double-click shortcuts
-
-After configuring `.env.local`, use the matching shortcut:
-
-| Start | Windows | macOS |
-| --- | --- | --- |
-| Everything | `scripts/dev.cmd` | `scripts/dev.command` |
-| Server | `scripts/start-server.cmd` | `scripts/start-server.command` |
-| Coding runner | `scripts/start-client.cmd` | `scripts/start-client.command` |
-| Frontend | `scripts/start-frontend.cmd` | `scripts/start-frontend.command` |
-
-Each shortcut finds the repository root automatically. Keep its terminal open while running. The required commands must be on `PATH`. If an archive loses executable permissions on macOS, run `chmod +x scripts/*.command` once.
-
-## Run a prebuilt application
-
-Download `jagent-<version>.zip` from a release and extract it. Install Java 8+ and Node.js 22.12+, copy `.env.example` to `.env.local`, and configure the model as above. Run `node scripts/dev.mjs` or the included Windows/macOS shortcut. Open **http://127.0.0.1:5175**.
-
-The package contains the server, Coding Runner, built Console and matching source. It needs no Git, Maven or npm download at runtime. The Console uses a small Node.js static server and API proxy; model connectivity is still required. mainbot can inspect the bundled source through its ordinary Project tools. Keep the package's `data/` directory when restarting.
-
-## Start manually without launchers
-
-Start with the local defaults: server on **18181**, frontend on **5175**, and a runner that connects to the local server automatically. Only the model connection needs configuration. Run all commands from the repository root.
-
-### 1. Build once
+From the repository root, build once:
 
 ```sh
 mvn -DskipTests package
 npm ci --prefix console
 ```
 
-### 2. Terminal 1: server
+Use three terminals with the repository root as the working directory. Direct Java startup reads the model settings from the environment.
 
-Set your model name, API endpoint, and API key, then start the server:
+**1. Harness** — set the provider values and start the server. Wait until it reports that it has started.
 
 ```sh
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-java -jar examples/server-demo/target/server-demo-2.3.0.jar
+java -jar examples/server-demo/target/server-demo-2.3.1.jar
 ```
 
-Omit the API key if your model endpoint does not require one. Wait for the server to report that it has started. SQLite storage is created automatically as `agent-server.db` in the working directory.
-
-### 3. Terminal 2: frontend
+**2. Web Console**
 
 ```sh
 npm --prefix console run dev
 ```
 
-### 4. Terminal 3: runner
+**3. Coding Runner** — it reads the server-generated `data/user.env` and opens your browser.
 
 ```sh
-java -jar examples/coding-runner/target/jagent-coding-runner-2.3.0.jar
+java -jar examples/coding-runner/target/jagent-coding-runner-2.3.1.jar
 ```
 
-No arguments or extra environment variables are needed. The Runner reads the server-generated `data/user.env`, authenticates, and opens **http://127.0.0.1:5175** with your mainbot ready to chat. Choose project directories in the Console. To enable source-based help, optionally set the absolute JAgentHarness source directory in mainbot's **Configuration → General & instructions**. Keep all three terminals running; **Ctrl+C** stops each process.
+In IntelliJ IDEA, import the root `pom.xml` and use the repository root as the working directory. Run `ServerDemoApplication.main()` with the model environment variables, start the web Console as above, then run `RunnerMain.main()` with no arguments. For source-based help with a manual launch, select the checkout in **mainbot → Configuration → General & instructions**.
 
-These manual Java commands do not load `.env.local`. If you previously configured custom addresses or a token in your shell, those settings override the defaults. Remote deployment and other optional settings are listed in [Configuration reference](#configuration-reference).
-
-### Run the Java processes in IntelliJ IDEA
-
-Import the root `pom.xml` as a Maven project. Use the repository root as the working directory for both Java run configurations. Run `ServerDemoApplication.main()` with the model environment variables above, start the frontend with the npm command, then run `RunnerMain.main()` with no program arguments. Only the server needs model credentials.
-
-## Try a conversation
-
-Open **http://127.0.0.1:5175**, add a project, and select the online runner as the execution target (**coding-local** with launchers, or your machine name with manual startup). Give the project a name and leave the workspace empty to create a new directory automatically, or select an existing repository. New projects enable all registered client tools by default. Try: “Create a hello.txt file with a greeting, then read it back.”
-
-Open **Projects → Configuration → Tools** to configure a project’s Runner tools. **Client tools** lets you change the current project's enabled tools and inspect their schemas. Changes apply to the next run; selecting no client tools keeps local execution disabled. Skills and virtual files are stored and executed through server capabilities. A project using **Server tools only** does not need a runner.
-
-## Try personal Agents
-
-Open **Agents** and follow the [hands-on Agent guide](docs/guides/agents.md) ([简体中文](docs/guides/agents.zh-CN.md)). Talk to **mainbot** and send the guide's short TODO request. It is the initial primary chat entry point; its Runner is the default for Agents you create. No workspace setup is needed. Memory, Skills, and follow-up tasks are optional next steps. Use the same running services; no extra packages or browser tests are needed. Feishu is optional.
-
-For everyday use, continue with [Projects](docs/guides/projects.md) or [Personal Agents](docs/guides/agents.md). [Configuration and Skills](docs/guides/configuration.md) explains defaults and project/Agent settings. All feature guides and integration references are listed in the [documentation index](docs/README.md).
+</details>
 
 ## Configuration reference
+
+<details>
+<summary>Model, addresses, storage and Runner settings</summary>
 
 | Variable | Purpose / default |
 | --- | --- |
@@ -148,21 +137,10 @@ For everyday use, continue with [Projects](docs/guides/projects.md) or [Personal
 | `JAGENT_RUNNER_DISTRIBUTION_DIR` | Server-side offline Runner packages; `./data/runners` directly, build output with launchers. See [local distribution](examples/coding-runner/README.md#distribute-inside-your-network). |
 | `JAGENT_SOURCE_WORKSPACE` | Optional source directory on the launcher’s Runner; defaults to the checkout root or the packaged `sources/` directory |
 | `JAGENT_RUNNER_HOME` | Runner identity and journal; `data/coding-runner` in launchers |
+| `JAGENT_RUNNER_IDLE_DISCONNECT_TIMEOUT_SECONDS` | Exit after consecutive idle disconnection; `86400` (24 hours), `0` keeps reconnecting |
 | `JAGENT_RUNNER_NAME` | Display name; machine hostname for direct startup, `coding-local` in launchers |
 | `JAGENT_RG_PATH` | Optional path to ripgrep; search tools also have a Java fallback |
 
 The standalone runner defaults to `~/.jagent-runner` unless `--home` or `JAGENT_RUNNER_HOME` is provided. One identity represents one terminal and can serve multiple project directories. The SDK keeps a separate identity and journal for each server and user under that home; do not copy an identity to another terminal. See [Runner state](examples/coding-runner/README.md#state-cancellation-and-recovery).
 
-### Connect to a remote server
-
-Deploy the Harness and frontend on the remote host. The operator issues a user credential; only the Runner needs to run on your computer:
-
-```sh
-export JAGENT_SERVER_URL='http://harness.example.com'
-export JAGENT_USER_CREDENTIALS='/path/to/my-user.env'
-node scripts/start-client.mjs
-```
-
-The Runner opens your remote Console automatically. Set `JAGENT_CONSOLE_URL` if its browser-facing address differs. HTTP is accepted with a warning; HTTPS is recommended because HTTP exposes credentials and tool traffic to interception or modification.
-
-See [Personal access and remote deployment](docs/guides/access.md) for issuing credentials, multiple users, revocation, proxy configuration and browser access. The remote frontend must forward each browser's cookie; it must not inject a shared server token.
+</details>

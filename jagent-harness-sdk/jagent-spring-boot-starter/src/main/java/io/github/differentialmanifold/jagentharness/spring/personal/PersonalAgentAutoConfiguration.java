@@ -64,8 +64,39 @@ public class PersonalAgentAutoConfiguration {
             ObjectProvider<PersonalAgentService> services,
             PersonalAgentStore store,
             ObjectMapper json,
-            PersonalAgentKnowledge knowledge) {
-        return new PersonalAgentTools(services::getObject, store, json, knowledge);
+            PersonalAgentKnowledge knowledge,
+            HarnessOperations management) {
+        return new PersonalAgentTools(services::getObject, store, json, knowledge)
+                .withManagement(management);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public HarnessOperations harnessOperations(
+            ObjectProvider<ModelCatalog> models,
+            ObjectProvider<PersonalAgentService> agents,
+            ObjectProvider<PersonalAgentStore> stores,
+            ObjectProvider<PersonalAgentKnowledge> knowledge,
+            ObjectProvider<PersonalAgentTools> tools,
+            ObjectProvider<ProjectService> projects,
+            ObjectProvider<io.github.differentialmanifold.jagentharness.core.runner.RunnerService>
+                    runners,
+            ObjectProvider<KnowledgeFileStore> files,
+            ObjectProvider<SessionManager> sessions,
+            ObjectMapper json) {
+        HarnessOperations operations = new HarnessOperations();
+        ModelManagement.register(operations, models::getObject, json);
+        AgentManagement.register(
+                operations,
+                agents::getObject,
+                stores::getObject,
+                knowledge::getObject,
+                tools::getObject,
+                json);
+        ProjectManagement.register(
+                operations, projects::getObject, runners::getObject, agents::getObject, json);
+        KnowledgeManagement.register(operations, files::getObject, sessions::getObject);
+        return operations;
     }
 
     @Bean

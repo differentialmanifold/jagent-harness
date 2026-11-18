@@ -34,6 +34,21 @@ class ModelCatalogTest {
     }
 
     @Test
+    void visualWorkHonorsExplicitChoicesAndNeverChangesTheDefault() {
+        ModelCatalog c = catalog();
+        assertThrows(IllegalArgumentException.class, () -> c.visionModel(null));
+        addVisual(c);
+        assertEquals("visual", c.visionModel(null));
+        assertEquals("visual", c.visionModel("visual"));
+        assertThrows(IllegalArgumentException.class, () -> c.visionModel("normal"));
+        assertEquals("normal", c.require(null).id);
+        ModelCatalogStore.Configuration cfg = c.publicConfiguration();
+        cfg.models.get(1).enabled = false;
+        c.save(cfg);
+        assertThrows(IllegalArgumentException.class, () -> c.visionModel(null));
+    }
+
+    @Test
     void callerSelectionsStayWithinTheirRun() {
         ModelCatalog c = catalog();
         addVisual(c);
@@ -108,5 +123,105 @@ class ModelCatalogTest {
         assertEquals("visual", c.current("s", "old").model.model);
         assertEquals("visual-v2", c.begin("s", "new", null).model.model);
         assertThrows(IllegalArgumentException.class, () -> c.save(old));
+    }
+
+    @Test
+    void individualEditsPreserveOtherModelsDefaultKeysAndRunningSnapshots() throws Exception {
+        ModelCatalog c = catalog();
+        addVisual(c);
+        c.begin("s", "running", "visual");
+        ModelProfile added = profile("new-vision");
+        added.baseUrl = "https://model.example/v1";
+        added.inputTypes.add("image");
+        long revision = c.publicConfiguration().revision;
+        ModelCatalogStore.Configuration after = c.add(revision, added, "visual");
+        assertEquals("normal", after.defaultModelId);
+        assertEquals(3, after.models.size());
+        assertEquals("private-secret", c.require("new-vision").apiKey);
+        assertFalse(json.writeValueAsString(after).contains("private-secret"));
+        assertEquals("", added.apiKey, "The caller's object must not receive a stored key");
+        ModelProfile edit = after.models.get(2);
+        edit.name = "Readable name";
+        c.update(after.revision, edit);
+        assertEquals("private-secret", c.require("new-vision").apiKey);
+        assertEquals("private-secret", c.require("visual").apiKey);
+        ModelProfile stale = edit;
+        assertThrows(IllegalArgumentException.class, () -> c.update(after.revision, stale));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> c.remove(c.publicConfiguration().revision, "normal"));
+        edit = c.publicConfiguration().models.get(2);
+        edit.baseUrl = "https://another.example/v1";
+        ModelCatalogStore.Configuration moved = c.update(c.publicConfiguration().revision, edit);
+        assertEquals("", c.require("new-vision").apiKey);
+        assertFalse(moved.models.get(2).credentialsConfigured);
+        ModelProfile stolen = profile("wrong-endpoint");
+        stolen.baseUrl = "https://another.example/v1";
+        assertThrows(IllegalArgumentException.class, () -> c.add(moved.revision, stolen, "visual"));
+        ModelCatalogStore.Configuration selected = c.selectDefault(moved.revision, "new-vision");
+        c.remove(selected.revision, "visual");
+        assertEquals("visual", c.current("s", "running").model.id);
+        assertEquals("new-vision", c.require(null).id);
+    }
+
+    @Test
+    void fallbackCatalogAlsoIsolatesUsers() {
+        ModelCatalog c = catalog();
+        try (io.github.differentialmanifold.jagentharness.core.identity.UserContext ignored =
+                io.github.differentialmanifold.jagentharness.core.identity.UserContext.enter(
+                        "alice")) {
+            addVisual(c);
+            c.begin("s", "run", "visual");
+        }
+        try (io.github.differentialmanifold.jagentharness.core.identity.UserContext ignored =
+                io.github.differentialmanifold.jagentharness.core.identity.UserContext.enter(
+                        "bob")) {
+            assertEquals(1, c.publicConfiguration().models.size());
+            assertThrows(IllegalArgumentException.class, () -> c.current("s", "run"));
+        }
+    }
+
+    @Test
+    void connectionTestReportsItsActualCoverageAndRedactsProviderResponses() {
+        ModelProfile bootstrap = profile("vision");
+        bootstrap.apiKey = "connection-secret";
+        bootstrap.inputTypes.add("image");
+        io.github.differentialmanifold.jagentharness.core.provider.ModelProvider provider =
+                new io.github.differentialmanifold.jagentharness.core.provider.ModelProvider() {
+                    public String getName() {
+                        return "test";
+                    }
+
+                    public io.github.differentialmanifold.jagentharness.core.provider.ModelResponse
+                            chat(
+                                    io.github.differentialmanifold.jagentharness.core.provider
+                                                    .ModelRequest
+                                            request) {
+                        assertEquals("Hello", request.getMessages().get(0).getContent());
+                        assertTrue(request.getMessages().get(0).getImages().isEmpty());
+                        io.github.differentialmanifold.jagentharness.core.provider.ModelResponse
+                                response =
+                                        new io.github.differentialmanifold.jagentharness.core
+                                                .provider.ModelResponse();
+                        response.setContent("Provider replied connection-secret");
+                        return response;
+                    }
+                };
+        ModelCatalog c =
+                new ModelCatalog(new InMemoryModelCatalogStore(), bootstrap, p -> provider);
+        Map<String, Object> result = c.testConnection("vision");
+        assertEquals(Collections.singletonList("text"), result.get("testedInputTypes"));
+        assertFalse(result.toString().contains("connection-secret"));
+        ModelCatalog broken =
+                new ModelCatalog(
+                        new InMemoryModelCatalogStore(),
+                        bootstrap,
+                        p -> {
+                            throw new IllegalArgumentException("Bad credential connection-secret");
+                        });
+        assertFalse(
+                assertThrows(IllegalArgumentException.class, () -> broken.testConnection("vision"))
+                        .getMessage()
+                        .contains("connection-secret"));
     }
 }

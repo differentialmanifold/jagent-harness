@@ -20,10 +20,10 @@
 mvn -pl examples/coding-runner -am package
 ```
 
-将 `examples/coding-runner/target/jagent-coding-runner-2.3.0.jar` 复制到目标机器。在环境变量中将 `JAGENT_USER_TOKEN` 设置为Harness 签发的用户凭据，然后执行：
+将 `examples/coding-runner/target/jagent-coding-runner-2.3.1.jar` 复制到目标机器。在环境变量中将 `JAGENT_USER_TOKEN` 设置为Harness 签发的用户凭据，然后执行：
 
 ```sh
-java -jar jagent-coding-runner-2.3.0.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.3.1.jar --server https://agent.example.com --name linux-dev
 ```
 
 打开 Web 前端，添加项目并选择 **linux-dev**，工作目录留空时会在 `~/.jagent/workspaces/user/` 下自动创建项目目录，也可以浏览选择已有目录。一个 Runner 代表一台执行终端，可以服务多个工作目录不同的项目。
@@ -32,7 +32,7 @@ java -jar jagent-coding-runner-2.3.0.jar --server https://agent.example.com --na
 
 工具使用所属操作系统账户的文件和进程权限运行；工作区是工作目录，不是操作系统沙箱。需要隔离时，请使用权限适当的账户或容器。Bash 工具需要本地 Shell，Windows 上需要 Git Bash。搜索优先使用 ripgrep，不可用时使用 Java 实现，也可通过 `JAGENT_RG_PATH` 指定 ripgrep 路径。Runner 启动时会打印检测到的搜索引擎，**Projects → Configuration → Tools → Client tools** 中的 `find` 和 `grep` 旁会显示这份启动快照。每次搜索结果记录实际使用的引擎，包括运行中的回退。
 
-Runner 所在机器不需要模型密钥，也不监听端口。远程 HTTP 也允许使用，但会提示凭据和工具流量未加密；推荐使用 HTTPS。可以通过进程管理工具让 `serve` 持续运行；按 Ctrl+C 停止进程。
+Runner 所在机器不需要模型密钥，也不监听端口。远程 HTTP 也允许使用，但会提示凭据和工具流量未加密；推荐使用 HTTPS。可以通过进程管理工具让 `serve` 持续运行；按 Ctrl+C 停止进程。运行中的 Runner 连续空闲且断联 24 小时后正常退出；在线空闲和执行中的任务不会触发退出。通过 `--idle-disconnect-timeout <秒数>` 或 `JAGENT_RUNNER_IDLE_DISCONNECT_TIMEOUT_SECONDS` 配置，默认 `86400`，`0` 表示持续重连。退出后需重新启动，身份和已保存结果保留。
 
 ## 在内网分发
 
@@ -41,10 +41,10 @@ Runner 所在机器不需要模型密钥，也不监听端口。远程 HTTP 也�
 ```text
 target/runners/coding/runner.jar
 target/runners/coding/manifest.json
-target/jagent-coding-runner-2.3.0-offline.zip
+target/jagent-coding-runner-2.3.1-offline.zip
 ```
 
-清单包含版本、SHA-256 和 Java 要求。ZIP 内包含 `coding/` 目录。把该目录复制到 Harness 进程工作目录下的 `data/runners/`，或者配置 `harness.console.runner-distribution-directory`（server-demo 对应 `JAGENT_RUNNER_DISTRIBUTION_DIR`）。JAR 和清单要一起更新。例如在仓库根目录执行：
+清单包含版本、SHA-256 和 Java 要求。服务端分发时，将生成的 `target/runners/coding` 目录复制到 Harness 进程工作目录下的 `data/runners/`，或者配置 `harness.console.runner-distribution-directory`（server-demo 对应 `JAGENT_RUNNER_DISTRIBUTION_DIR`）。JAR、清单和安装 ZIP 应一起更新。例如在仓库根目录执行：
 
 ```sh
 mkdir -p data/runners
@@ -56,6 +56,7 @@ cp -R examples/coding-runner/target/runners/coding data/runners/
 服务端提供以下文件下载，沿用现有 API Token 认证：
 
 ```text
+GET /api/v1/distributions/runners/coding/runner.zip
 GET /api/v1/distributions/runners/coding/manifest.json
 GET /api/v1/distributions/runners/coding/runner.jar
 ```
@@ -63,6 +64,8 @@ GET /api/v1/distributions/runners/coding/runner.jar
 需要认证时携带已配置的 Bearer Token。下载后按清单校验 SHA-256，再运行 `java -jar runner.jar --server <目标机器能访问的Harness地址>`。文件未安装返回 404，安装包损坏或清单不匹配返回 503。扩展新机器不依赖 GitHub、Maven 或源码。目标仍需 Java 8+；隔离网络中没有 Java 时，也应提前准备运行时。
 
 目标不能直接下载时，可由已有 Runner 获取两个文件，再通过 SCP 传过去。内置 `runner-setup` Skill 会指导个人 Agent 完成这一流程，不增加部署工具。
+
+安装全局命令时，服务端应分发生成的完整 `target/runners/coding/` 目录（包含 `runner.zip`）。通过已认证的接口下载 ZIP，核对清单中的 `archiveSha256`，解压并运行 `sh scripts/install.sh` 或 `scripts\install.cmd`。新开终端执行 `jagent runner --server <地址> --credentials <凭据文件>`。在这台机器上，`jagent open --link` 可为其他浏览器生成登录链接，`jagent pair 配对码` 可批准网页发起的配对。
 
 ### Harness 只能从本地访问时
 
@@ -101,7 +104,7 @@ ssh -NT -o ExitOnForwardFailure=yes -R 127.0.0.1:18182:127.0.0.1:18181 user@targ
 需要恢复中断任务中的待回传结果时，先停止 `serve`，检查会话和本地实际执行效果，再显式提交已保存的结果：
 
 ```sh
-java -jar jagent-coding-runner-2.3.0.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.3.1.jar recover --server https://agent.example.com --session ses_example
 ```
 
 恢复时使用原来的状态目录和可执行文件版本；工作目录和工具清单取自已保存的任务。缺失或未完成的结果以 `UNKNOWN` 回传；模型收到结果后可能发起新的工具调用。恢复完成后重新启动 `serve`。

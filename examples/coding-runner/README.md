@@ -20,10 +20,10 @@ Build from the repository root, or use a prepared offline Coding Runner package:
 mvn -pl examples/coding-runner -am package
 ```
 
-Copy `examples/coding-runner/target/jagent-coding-runner-2.3.0.jar` to the target machine. Set `JAGENT_USER_TOKEN` to your Harness-issued user token, then:
+Copy `examples/coding-runner/target/jagent-coding-runner-2.3.1.jar` to the target machine. Set `JAGENT_USER_TOKEN` to your Harness-issued user token, then:
 
 ```sh
-java -jar jagent-coding-runner-2.3.0.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.3.1.jar --server https://agent.example.com --name linux-dev
 ```
 
 Open the web frontend wherever it is hosted, add a project, and choose **linux-dev**. Leave the workspace empty for a new directory under `~/.jagent/workspaces/user/`, or browse an existing directory on that terminal. One runner can execute work for multiple projects with different directories.
@@ -32,7 +32,7 @@ New projects enable all seven tools by default. Project tools can be changed in 
 
 Tools run with the OS account's file and process permissions; the workspace is a working directory, not an OS sandbox. Use an account or container with suitable permissions. Bash needs a local shell; Windows requires Git Bash. Search uses ripgrep when available and falls back to Java. `JAGENT_RG_PATH` can select a ripgrep executable. The runner logs the detected search backend at startup; **Projects → Configuration → Tools → Client tools** shows that startup snapshot beside `find` and `grep`. Each search result reports the backend actually used, including any later fallback.
 
-No model key is needed on this machine. The runner listens on no port. HTTPS is recommended; plain HTTP to a non-loopback server is accepted with a warning at startup. A process supervisor can run `serve` unattended; Ctrl+C stops it.
+No model key is needed on this machine. The runner listens on no port. HTTPS is recommended; plain HTTP to a non-loopback server is accepted with a warning at startup. A process supervisor can run `serve` unattended; Ctrl+C stops it. While running, it exits normally after 24 consecutive hours idle and disconnected from the Harness. Online idleness and active work do not trigger this exit. Set `--idle-disconnect-timeout <seconds>` or `JAGENT_RUNNER_IDLE_DISCONNECT_TIMEOUT_SECONDS` (`86400` by default; `0` keeps reconnecting). Restart it explicitly after an idle exit; saved identity and results are retained.
 
 ## Distribute inside your network
 
@@ -41,10 +41,10 @@ Prepare the package once. `mvn -pl examples/coding-runner -am package` produces:
 ```text
 target/runners/coding/runner.jar
 target/runners/coding/manifest.json
-target/jagent-coding-runner-2.3.0-offline.zip
+target/jagent-coding-runner-2.3.1-offline.zip
 ```
 
-The manifest records the version, SHA-256 and Java requirement. The ZIP contains the `coding/` directory. Copy that directory to `data/runners/` relative to the Harness process working directory, or set `harness.console.runner-distribution-directory` (`JAGENT_RUNNER_DISTRIBUTION_DIR` in server-demo). Copy both files together. For example, from the repository root:
+The manifest records the version, SHA-256 and Java requirement. For server-side distribution, copy the generated `target/runners/coding` directory to `data/runners/` relative to the Harness process working directory, or set `harness.console.runner-distribution-directory` (`JAGENT_RUNNER_DISTRIBUTION_DIR` in server-demo). Keep the manifest, JAR and installer ZIP together. For example, from the repository root:
 
 ```sh
 mkdir -p data/runners
@@ -56,6 +56,7 @@ The development launchers build this package and point the server directly at `e
 The Harness serves the installed files, using the same API token authentication as its other APIs:
 
 ```text
+GET /api/v1/distributions/runners/coding/runner.zip
 GET /api/v1/distributions/runners/coding/manifest.json
 GET /api/v1/distributions/runners/coding/runner.jar
 ```
@@ -63,6 +64,8 @@ GET /api/v1/distributions/runners/coding/runner.jar
 Download with the configured Bearer token when required, verify the SHA-256 from the manifest, then run `java -jar runner.jar --server <reachable-harness-url>`. Files missing from the server return 404; a corrupt or mismatched package returns 503. Downloads are local to this deployment: adding machines needs neither GitHub, Maven nor a source checkout. The target still needs Java 8+; prepare a runtime in the isolated network if it is not installed.
 
 If the target cannot download directly, an existing Runner can fetch and SCP the two files. The built-in `runner-setup` Skill guides a personal Agent through that process without adding a deployment tool.
+
+For the global CLI, distribute the entire generated `target/runners/coding/` directory (including `runner.zip`). Download the ZIP through the authenticated distribution endpoint, verify `archiveSha256` in the manifest, extract it and run `sh scripts/install.sh` or `scripts\install.cmd`. Run `jagent runner --server <url> --credentials <file>`. On this machine, `jagent open --link` opens access in a second browser and `jagent pair CODE` approves a browser pairing request.
 
 ### When the Harness is only reachable locally
 
@@ -101,7 +104,7 @@ Jobs can be delivered again after a disconnect. The runner journals acceptance b
 To recover pending results after interruption, stop `serve`, inspect the conversation and local effects, and explicitly submit the saved results:
 
 ```sh
-java -jar jagent-coding-runner-2.3.0.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.3.1.jar recover --server https://agent.example.com --session ses_example
 ```
 
 Use the same home and executable version. The saved job supplies its project workspace and tool selection. Missing or unfinished results are reported as `UNKNOWN`; the model may issue new calls after receiving them. Restart `serve` afterwards.

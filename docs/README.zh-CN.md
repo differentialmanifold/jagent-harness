@@ -2,22 +2,23 @@
 
 [项目介绍](../README.zh-CN.md) · [Quick start](../QUICK_START.md) · [English](README.md)
 
-你可以直接在 **Project** 中工作，也可以将目标交给持续存在的 **Agent**，由它规划、追踪并通过 Project 完成任务。两层都在服务端运行；**Runner** 在实际工作环境执行本地工具；**Console** 是连接服务端的网页界面。
+第一个 Runner 接入后，就可以和自己的 **mainbot** 对话。把目标告诉它，它可以创建 Project、跟踪长程任务，再回到原对话交付结果。
 
 ## 从这里开始
 
-1. 按 [Quick start](../QUICK_START.md) 配置模型并启动服务，支持脚本、手动命令和 IDEA。
-2. 选择[直接使用 Project](guides/projects.md)，或跟随 [Agent 上手指南](guides/agents.zh-CN.md) 提出一个目标。
-3. 按需了解下面的功能。飞书、MCP 和外部 Agent 接入都不是首次运行的前提。
+1. 按[快速启动（英文）](../QUICK_START.md)运行程序，给 mainbot 发第一个请求。
+2. 跟随[个人 Agent 指南](guides/agents.zh-CN.md)，在 Projects 和 Tasks 中查看 mainbot 的工作。你也可以[自己操作 Project](guides/projects.md)。
+3. 按[接入指南](guides/access.md)将其他浏览器或机器连接到同一个用户空间。
 
 ## 使用功能
 
 | 想做什么 | 阅读文档 | 界面入口 |
 | --- | --- | --- |
-| 在终端的代码和文件上开展工作 | [项目与会话](guides/projects.md) | Projects → Chat |
 | 交给 Agent 规划、执行并验证任务 | [个人 Agent](guides/agents.zh-CN.md) | Agents → Chat、Tasks、Projects |
+| 在终端的代码和文件上开展工作 | [项目与会话](guides/projects.md) | Projects → Chat |
 | 记住偏好、沉淀可复用经验 | [记忆与学习](guides/knowledge.md) | Agents → Knowledge |
 | 配置指引、虚拟文件、Skills 和工具 | [配置与 Skills](guides/configuration.md) | Project / Agent → Configuration；System Settings |
+| 让 mainbot 配置模型、管理 Console 资源 | [mainbot 管理能力（英文）](guides/configuration.md#ask-mainbot-to-configure-jagentharness) | mainbot → Chat |
 | 随 Skill 按需加载 MCP 工具 | [Skills 与 MCP](guides/skills-and-mcp.zh-CN.md) | 项目配置或 System Settings → MCP Servers |
 | 通过飞书与 Agent 交流 | [飞书连接](guides/feishu.md) | Agents → Configuration → Channels |
 | 让其他 AI 助手直接调用 JAgent | [外部 Agent 接入](guides/external-agents.md) | 无需操作 UI；会话也显示在 Agents → Chat |

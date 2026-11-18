@@ -26,6 +26,21 @@ public interface UserStore extends UserDirectory {
 
     boolean valid(Access access);
 
+    /** Null credentialHash is reserved for local operator commands. */
+    Access createTicket(String userId, String credentialHash);
+
+    List<Device> devices(String userId);
+
+    void revokeDevice(String userId, String deviceId);
+
+    boolean startPair(String code, String claim, String browser, long expiresAt);
+
+    String pairingBrowser(String code);
+
+    boolean pendingPair(String claim);
+
+    boolean approvePair(String code, String userId, String credentialHash);
+
     final class User {
         public String userId, name;
         public boolean active;
@@ -35,5 +50,12 @@ public interface UserStore extends UserDirectory {
     final class Access {
         public String secret, kind, userId, runnerId, credentialHash;
         public long expiresAt;
+    }
+
+    /** Public browser-session metadata. Never expose a usable session secret. */
+    final class Device {
+        public String id;
+        public long expiresAt;
+        public boolean current;
     }
 }

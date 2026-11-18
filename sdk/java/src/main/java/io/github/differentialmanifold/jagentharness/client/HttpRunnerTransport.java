@@ -123,14 +123,35 @@ final class HttpRunnerTransport implements RunnerExchange {
             Object body,
             io.github.differentialmanifold.jagentharness.core.agent.StopSignal stop)
             throws IOException {
+        return management(method, path, body, stop, 10000, 35000);
+    }
+
+    void disconnectRunner(String runnerId) throws IOException {
+        management(
+                "POST",
+                "/api/v1/runners/" + runnerId + "/disconnect",
+                java.util.Collections.emptyMap(),
+                io.github.differentialmanifold.jagentharness.core.agent.StopSignal.none(),
+                1000,
+                1000);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode management(
+            String method,
+            String path,
+            Object body,
+            io.github.differentialmanifold.jagentharness.core.agent.StopSignal stop,
+            int connectTimeout,
+            int readTimeout)
+            throws IOException {
         stop.throwIfAborted();
         HttpURLConnection c = (HttpURLConnection) new URL(endpoint, path).openConnection();
         c.setRequestMethod(method);
         for (java.util.Map.Entry<String, String> h : headers.entrySet())
             c.setRequestProperty(h.getKey(), h.getValue());
         c.setInstanceFollowRedirects(false);
-        c.setConnectTimeout(10000);
-        c.setReadTimeout(35000);
+        c.setConnectTimeout(connectTimeout);
+        c.setReadTimeout(readTimeout);
         c.setRequestProperty("Accept", "application/json");
         if (token != null && !token.isEmpty())
             c.setRequestProperty("Authorization", "Bearer " + token);

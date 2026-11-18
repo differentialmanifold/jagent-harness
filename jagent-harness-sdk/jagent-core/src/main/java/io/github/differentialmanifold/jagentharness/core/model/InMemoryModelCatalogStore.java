@@ -1,31 +1,38 @@
 package io.github.differentialmanifold.jagentharness.core.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.identity.UserState;
 import java.util.*;
 
 /** Fallback for applications that supply no persistent store. */
 public final class InMemoryModelCatalogStore implements ModelCatalogStore {
     private final ObjectMapper json = new ObjectMapper();
-    private Configuration configuration;
-    private final Map<List<String>, Selection> selections = new HashMap<>();
+    private final UserState<State> users = new UserState<>(State::new);
+
+    private static final class State {
+        Configuration configuration;
+        final Map<List<String>, Selection> selections = new HashMap<>();
+    }
 
     public synchronized Configuration configuration() {
-        return copy(configuration, Configuration.class);
+        return copy(users.get().configuration, Configuration.class);
     }
 
     public synchronized boolean save(Configuration c) {
-        if (c.revision != (configuration == null ? 0 : configuration.revision)) return false;
-        configuration = copy(c, Configuration.class);
-        configuration.revision++;
+        State state = users.get();
+        if (c.revision != (state.configuration == null ? 0 : state.configuration.revision))
+            return false;
+        state.configuration = copy(c, Configuration.class);
+        state.configuration.revision++;
         return true;
     }
 
     public synchronized Selection selection(String session, String run) {
-        return copy(selections.get(Arrays.asList(session, run)), Selection.class);
+        return copy(users.get().selections.get(Arrays.asList(session, run)), Selection.class);
     }
 
     public synchronized void select(String session, String run, Selection selected) {
-        selections.put(Arrays.asList(session, run), copy(selected, Selection.class));
+        users.get().selections.put(Arrays.asList(session, run), copy(selected, Selection.class));
     }
 
     private <T> T copy(T value, Class<T> type) {

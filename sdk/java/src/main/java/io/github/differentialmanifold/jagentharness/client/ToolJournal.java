@@ -33,14 +33,24 @@ final class ToolJournal {
                 result.has("content")
                         ? RunnerFiles.JSON.convertValue(result.get("content"), Object.class)
                         : "Execution was interrupted; the outcome is unknown";
+        ToolExecutionResult recovered;
         switch (result.path("status").asText()) {
             case "SUCCEEDED":
-                return ToolExecutionResult.success(content);
+                recovered = ToolExecutionResult.success(content);
+                break;
             case "FAILED":
-                return ToolExecutionResult.failure(content);
+                recovered = ToolExecutionResult.failure(content);
+                break;
             default:
-                return ToolExecutionResult.unknown(content);
+                recovered = ToolExecutionResult.unknown(content);
         }
+        return result.has("images")
+                ? recovered.withImages(
+                        RunnerFiles.JSON.convertValue(
+                                result.get("images"),
+                                new com.fasterxml.jackson.core.type.TypeReference<
+                                        List<Map<String, Object>>>() {}))
+                : recovered;
     }
 
     ToolDefinition wrap(ToolDefinition tool) {
@@ -86,6 +96,7 @@ final class ToolJournal {
                 Map<String, Object> value = new LinkedHashMap<>();
                 value.put("status", result.status);
                 value.put("content", result.content);
+                if (!result.images.isEmpty()) value.put("images", result.images);
                 record.put("result", value);
                 record.put("state", "FINISHED");
                 RunnerFiles.save(file, record);

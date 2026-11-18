@@ -16,7 +16,7 @@ Applications may set `.version("1.2.3")` and `.buildRevision("commit-or-build-id
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>2.3.0</version>
+  <version>2.3.1</version>
 </dependency>
 ```
 
@@ -60,7 +60,7 @@ try (AgentRunner runner = AgentRunner.builder(
 
 Open the frontend, create a project, and select **My device**. The SDK registers the tool descriptions, receives work, executes your tool implementation, and returns results through the authenticated internal `/api/v1/runners/chat` protocol. Frontends submit work through `/api/v1/chat`. Tool code stays in your application.
 
-`serve()` blocks the calling thread. An existing application can run it on a worker thread and call `close()` during shutdown. The SDK does not install JVM shutdown hooks or terminate the process. A standalone application should connect its shutdown lifecycle to `close()`; the [coding CLI](../../examples/coding-runner/src/main/java/io/github/differentialmanifold/jagentharness/runner/RunnerMain.java) demonstrates this.
+`serve()` blocks the calling thread until closed or the idle-disconnection timeout expires. The default is 24 hours continuously idle and disconnected. Configure `.idleDisconnectTimeout(Duration.ofHours(24))` (`java.time.Duration`), or `Duration.ZERO` to keep reconnecting indefinitely. Successful polling and task activity reset the timer; active work is not interrupted. Retry delays are capped at 60 seconds. Saved results and identity remain available after exit. An existing application can run it on a worker thread and call `close()` during shutdown. The SDK does not install JVM shutdown hooks or terminate the process. A standalone application should connect its shutdown lifecycle to `close()`; the [coding CLI](../../examples/coding-runner/src/main/java/io/github/differentialmanifold/jagentharness/runner/RunnerMain.java) demonstrates this.
 
 The path passed to `builder` is a state root, not a working directory for tools. Each server and stable user identity gets its own `servers/<SHA-256 of server URL>/users/<userId>/` directory containing the runner identity, execution records, and lock. A trailing slash is ignored. Reconnecting to the same URL reuses its identity; different URLs can run concurrently under one root. Use a separate root for another device. The local default user retains the base server directory. The User Token is not saved in Runner state. `runner.stateDirectory()` resolves the directory for tools that also persist local state.
 

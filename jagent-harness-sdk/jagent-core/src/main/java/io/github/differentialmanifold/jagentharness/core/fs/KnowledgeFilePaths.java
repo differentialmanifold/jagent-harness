@@ -42,6 +42,22 @@ public final class KnowledgeFilePaths {
         return normalize(prefix);
     }
 
+    /** Editable Console knowledge; service configuration files use their own services. */
+    public static String editable(String path) {
+        String normalized = normalize(path);
+        if ("AGENTS.md".equals(normalized)) return normalized;
+        if (!normalized.startsWith("skills/"))
+            throw new IllegalArgumentException("Unsupported knowledge file path: " + path);
+        String[] parts = normalized.split("/");
+        if (parts.length < 3)
+            throw new IllegalArgumentException(
+                    "Skill file path must be under skills/{skill}/: " + normalized);
+        if ("SKILL.md".equals(parts[parts.length - 1]) && parts.length != 3)
+            throw new IllegalArgumentException(
+                    "SKILL.md must be directly under skills/{skill}/: " + normalized);
+        return normalized;
+    }
+
     public static String fileName(String path) {
         String normalized = normalize(path);
         int index = normalized.lastIndexOf('/');

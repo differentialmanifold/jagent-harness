@@ -22,7 +22,13 @@ class ToolJournalTest {
         ToolContext context =
                 new ToolContext("session", "run", "turn").forToolCall("call", "write");
         JsonNode args = json.createObjectNode().put("text", "one");
-        assertEquals("SUCCEEDED", wrapped.execute(context, args).status);
+        ToolExecutionResult first = wrapped.execute(context, args);
+        assertEquals("SUCCEEDED", first.status);
+        assertEquals(
+                first.images,
+                RunnerConversation.toolMessage(
+                                "call", new ToolJournal(root).read("session", "call"))
+                        .images);
         assertEquals("SUCCEEDED", journal.wrap(tool(effects)).execute(context, args).status);
         assertEquals(1, effects.get());
         assertThrows(
@@ -63,7 +69,11 @@ class ToolJournalTest {
 
             public ToolExecutionResult execute(ToolContext context, JsonNode args) {
                 effects.incrementAndGet();
-                return ToolExecutionResult.success("done");
+                return ToolExecutionResult.success("done")
+                        .withImages(
+                                Collections.singletonList(
+                                        Collections.singletonMap(
+                                                "url", "data:image/png;base64,iVBORw0KGgo=")));
             }
         };
     }

@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.identity.*;
+import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentException;
 import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentService;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerInfo;
@@ -9,10 +10,12 @@ import java.util.*;
 import javax.servlet.http.*;
 
 /**
- * Browser sessions are distinct from user tokens and require their launching Runner to be online.
+ * Browser identity is independent of execution; workspace access requires the user's mainbot
+ * Runner.
  */
 public final class UserAccessService {
     static final String COOKIE = "jagent_session", ATTRIBUTE = UserAccessService.class.getName();
+    static final int SESSION_SECONDS = 30 * 24 * 60 * 60;
     final UserStore users;
     private final RunnerService runners;
     private final PersonalAgentService agents;
@@ -24,33 +27,28 @@ public final class UserAccessService {
     }
 
     public UserStore.Access browserTicket(String token, String runner, String secret) {
+        UserStore.User user = runnerUser(token, runner, secret);
+        try (UserContext ignored = UserContext.enter(user.userId)) {
+            agents.bindMainbotIfUnbound(runner);
+            return users.createTicket(user.userId, Credentials.hash(token));
+        }
+    }
+
+    UserStore.User runnerUser(String token, String runner, String secret) {
         UserStore.User user = users.authenticate(token);
         if (user == null) throw unauthorized();
         try (UserContext ignored = UserContext.enter(user.userId)) {
             runners.authenticate(runner, secret);
-            RunnerInfo info = runners.require(runner);
-            if (!online(info))
-                throw new ProtocolException(
-                        401, "RUNNER_OFFLINE", "Start your local Runner to open the console");
-            agents.bindMainbotIfUnbound(runner);
-            UserStore.Access a = new UserStore.Access();
-            a.secret = Credentials.token("jht_");
-            a.kind = "ticket";
-            a.userId = user.userId;
-            a.runnerId = runner;
-            a.credentialHash = Credentials.hash(token);
-            a.expiresAt = System.currentTimeMillis() + 60000;
-            users.saveAccess(a);
-            return a;
+            return user;
         }
     }
 
     public UserStore.Access exchange(String ticket) {
         UserStore.Access a = users.consumeTicket(ticket);
-        if (a == null || !runnerOnline(a)) throw unauthorized();
+        if (a == null) throw unauthorized();
         a.secret = Credentials.token("jhs_");
         a.kind = "browser";
-        a.expiresAt = System.currentTimeMillis() + 12 * 60 * 60 * 1000L;
+        a.expiresAt = System.currentTimeMillis() + SESSION_SECONDS * 1000L;
         users.saveAccess(a);
         return a;
     }
@@ -64,15 +62,26 @@ public final class UserAccessService {
     }
 
     public boolean valid(UserStore.Access a) {
-        return users.valid(a) && runnerOnline(a);
+        return users.valid(a);
     }
 
-    private boolean runnerOnline(UserStore.Access a) {
-        try (UserContext ignored = UserContext.enter(a.userId)) {
-            return online(runners.require(a.runnerId));
+    public boolean workspaceReady(String userId) {
+        try (UserContext ignored = UserContext.enter(userId)) {
+            String runner = agents.require(PersonalAgentService.MAINBOT_ID).runnerId;
+            return runner != null && online(runners.require(runner));
         } catch (ProtocolException e) {
+            if (e.status != 404) throw e;
+            return false;
+        } catch (PersonalAgentException e) {
+            if (e.kind != PersonalAgentException.Kind.NOT_FOUND) throw e;
             return false;
         }
+    }
+
+    public UserStore.Access requireBrowser(HttpServletRequest req) {
+        UserStore.Access a = browser(req);
+        if (a == null || !valid(a)) throw unauthorized();
+        return a;
     }
 
     private boolean online(RunnerInfo info) {
@@ -83,7 +92,7 @@ public final class UserAccessService {
         return new ProtocolException(
                 401,
                 "UNAUTHORIZED",
-                "Start your local Runner with a valid user token, then open the console from that Runner");
+                "Open a fresh access link from your Runner or an authorized browser");
     }
 
     static String bearer(HttpServletRequest req) {

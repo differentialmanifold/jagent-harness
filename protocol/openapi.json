@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "JAgent conversation API",
-    "version": "2.3.0",
+    "version": "2.3.1",
     "description": "Conversation and Runner SDK contract. Personal Agent delegation is documented separately in skills/jagent/references/api.md."
   },
   "servers": [
@@ -29,7 +29,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "jagent_session",
-        "description": "Runner-authorized browser session. Requires its Runner online."
+        "description": "Independent browser authorization (up to 30 days). Business access additionally requires the user's mainbot Runner online."
       }
     }
   },
@@ -918,7 +918,7 @@
             "description": "Success"
           },
           "401": {
-            "description": "Invalid credential or offline Runner"
+            "description": "Invalid or expired credential"
           }
         },
         "security": [
@@ -930,13 +930,39 @@
     },
     "/access/status": {
       "get": {
-        "summary": "Check the current browser session and its Runner lease",
+        "summary": "Return browser authentication and mainbotOnline availability separately",
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Browser identity is retained while mainbot is offline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "authenticated",
+                    "mainbotOnline",
+                    "insecure"
+                  ],
+                  "properties": {
+                    "authenticated": {
+                      "type": "boolean"
+                    },
+                    "mainbotOnline": {
+                      "type": "boolean"
+                    },
+                    "insecure": {
+                      "type": "boolean"
+                    },
+                    "user": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
-            "description": "Invalid credential or offline Runner"
+            "description": "Invalid or expired credential"
           }
         },
         "security": []
@@ -944,13 +970,13 @@
     },
     "/access/browser": {
       "post": {
-        "summary": "Issue a 60-second, single-use browser ticket for an online Runner",
+        "summary": "Issue a 60-second, single-use user browser ticket from an authenticated Runner",
         "responses": {
           "200": {
             "description": "Success"
           },
           "401": {
-            "description": "Invalid credential or offline Runner"
+            "description": "Invalid or expired credential"
           }
         },
         "security": [
@@ -978,6 +1004,266 @@
         ]
       }
     },
+    "/access/pair/start": {
+      "post": {
+        "summary": "Request a five-minute browser pairing code and a private claim secret",
+        "security": [],
+        "parameters": [
+          {
+            "name": "X-JAgent-Console",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "claim",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cross-origin request or missing Console header"
+          },
+          "429": {
+            "description": "Too many outstanding pairing requests"
+          }
+        }
+      }
+    },
+    "/access/pair/info": {
+      "post": {
+        "summary": "Inspect the browser requesting approval from this Runner",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Runner-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "browser"
+                  ],
+                  "properties": {
+                    "browser": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Expired, unknown or already used"
+          },
+          "401": {
+            "description": "Invalid Runner credentials"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access/pair/approve": {
+      "post": {
+        "summary": "Approve a browser code for the authenticated Runner user",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Runner-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Runner-Secret",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "browser"
+                  ],
+                  "properties": {
+                    "browser": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Expired, unknown or already used"
+          },
+          "401": {
+            "description": "Invalid Runner credentials"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access/pair/poll": {
+      "post": {
+        "summary": "Poll with the private claim and receive the browser session cookie once approved",
+        "security": [],
+        "parameters": [
+          {
+            "name": "X-JAgent-Console",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "accepted"
+                  ],
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Expired, unknown or already used"
+          },
+          "403": {
+            "description": "Cross-origin request or missing Console header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claim"
+                ],
+                "properties": {
+                  "claim": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/access/exchange": {
       "post": {
         "summary": "Exchange a browser ticket for an HttpOnly session cookie",
@@ -986,7 +1272,7 @@
             "description": "Success"
           },
           "401": {
-            "description": "Invalid credential or offline Runner"
+            "description": "Invalid or expired credential"
           }
         },
         "security": [],
@@ -1051,6 +1337,118 @@
           {
             "name": "X-Runner-Secret",
             "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/access/devices": {
+      "get": {
+        "summary": "List this user's authorized browsers",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Non-secret identifier; cannot be used as a cookie"
+                      },
+                      "current": {
+                        "type": "boolean"
+                      },
+                      "expiresAt": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired browser authorization"
+          },
+          "403": {
+            "description": "Cross-origin mutation denied"
+          }
+        }
+      }
+    },
+    "/access/devices/link": {
+      "post": {
+        "summary": "Create a 60-second, single-use link for another browser",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticket": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired browser authorization"
+          },
+          "403": {
+            "description": "Cross-origin mutation denied"
+          }
+        }
+      }
+    },
+    "/access/devices/{id}": {
+      "delete": {
+        "summary": "Revoke one browser session belonging to this user",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid or expired browser authorization"
+          },
+          "403": {
+            "description": "Cross-origin mutation denied"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string"

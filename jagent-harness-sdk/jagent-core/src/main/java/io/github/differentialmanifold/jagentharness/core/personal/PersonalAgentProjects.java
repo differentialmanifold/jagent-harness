@@ -123,6 +123,16 @@ final class PersonalAgentProjects {
     public Map<String, Object> inspect(String agent, String session, String before) {
         requireProject(agent, session);
         Map<String, Object> out = projects.inspect(session, before);
+        // A scoped reference can be used by attach_images; the model never needs image bytes in
+        // text.
+        Map<String, String> images = new LinkedHashMap<>();
+        for (Object row : (List<?>) out.get("messages")) {
+            AgentMessage message = (AgentMessage) row;
+            List<String> ids = ConversationImages.ids(message);
+            for (int i = 0; i < ids.size(); i++)
+                images.put(ids.get(i), message.getImages().get(i).getName());
+        }
+        if (!images.isEmpty()) out.put("imageAttachments", images);
         try {
             out.put("state", runs.state(session));
         } catch (ProtocolException missing) {
@@ -139,7 +149,9 @@ final class PersonalAgentProjects {
             ReplyTarget replyTo,
             String taskId,
             boolean readOnly,
-            String modelId) {
+            String modelId,
+            List<MessageImage> images,
+            boolean requiresVision) {
         conversation(agent, conversation);
         SessionRecord project = requireProject(agent, session);
         Card task = taskId == null ? null : plans.require(agent, taskId);
@@ -184,6 +196,8 @@ final class PersonalAgentProjects {
         watch.replyTo = replyTo;
         watch.modelId = task == null ? agents.requestedModel(agent, conversation) : task.modelId;
         watch.projectModelId = modelId;
+        watch.images = images;
+        watch.requiresVision = requiresVision;
         watch.status = "WAITING";
         watch.text = text(text, "text", 32000);
         watch.createdAt = System.currentTimeMillis();
@@ -224,7 +238,17 @@ final class PersonalAgentProjects {
             request.modelId = watch.projectModelId;
             request.sessionId = watch.projectSessionId;
             request.runId = watch.projectRunId;
-            request.messages = Collections.singletonList(ChatMessage.user(input));
+            if (watch.requiresVision) agents.workModel(watch.projectModelId, true);
+            ChatMessage work = ChatMessage.user(input);
+            for (MessageImage image : watch.images) {
+                Map<String, Object> part = new LinkedHashMap<>();
+                part.put("name", image.getName());
+                part.put("mediaType", image.getMediaType());
+                part.put("url", image.getUrl());
+                if (image.getDetail() != null) part.put("detail", image.getDetail());
+                work.images.add(part);
+            }
+            request.messages = Collections.singletonList(work);
             runs.submit(request, null)
                     .result()
                     .whenComplete(
@@ -232,17 +256,34 @@ final class PersonalAgentProjects {
                                     (result, error) ->
                                             finishWatch(
                                                     watch,
+                                                    error == null ? result : null,
                                                     error == null
                                                             ? resultText(result)
                                                             : "Project execution interrupted: "
                                                                     + error.getMessage())));
         } catch (RuntimeException e) {
-            finishWatch(watch, "Could not submit project work: " + e.getMessage());
+            finishWatch(watch, null, "Could not submit project work: " + e.getMessage());
         }
     }
 
-    private void finishWatch(Inbox watch, String result) {
+    private void finishWatch(Inbox watch, ChatResponse response, String result) {
         synchronized (agents) {
+            watch.requiresVision = false; // The returning planner retains its original model.
+            watch.images = Collections.emptyList();
+            if (response != null
+                    && "COMPLETED".equals(response.status)
+                    && response.attachmentIds != null
+                    && !response.attachmentIds.isEmpty()) {
+                try {
+                    watch.images =
+                            agents.projectReplyImages(
+                                    watch.projectSessionId,
+                                    watch.projectRunId,
+                                    response.attachmentIds);
+                } catch (IllegalArgumentException invalid) {
+                    result = "Image delivery failed: " + invalid.getMessage();
+                }
+            }
             watch.text =
                     "Project result for session "
                             + watch.projectSessionId
@@ -250,6 +291,11 @@ final class PersonalAgentProjects {
                             + watch.projectRunId
                             + ".\n"
                             + bounded(result, 24000)
+                            + (watch.images.isEmpty()
+                                            && response != null
+                                            && "COMPLETED".equals(response.status)
+                                    ? "\nNo image was attached to the Project reply. If the user requested an image saved in Project history, use projects.attach_images with its Project reference (use projects.inspect if needed), then reply normally."
+                                    : "")
                             + (watch.taskId == null
                                     ? ""
                                     : "\nTask: "
@@ -296,12 +342,13 @@ final class PersonalAgentProjects {
             ChatResponse execution = runs.execution(watch.projectSessionId, watch.projectRunId);
             if (execution != null
                     && !Arrays.asList("RUNNING", "REQUIRES_ACTION").contains(execution.status))
-                finishWatch(watch, resultText(execution));
+                finishWatch(watch, execution, resultText(execution));
             else if (execution == null) {
                 if (!watch.dispatchStarted) dispatch(watch);
                 else
                     finishWatch(
                             watch,
+                            null,
                             "Submission outcome is unknown. Inspect history and the environment before deciding whether to retry.");
             }
         }

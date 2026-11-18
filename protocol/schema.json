@@ -194,6 +194,13 @@
     "ChatResponse": {
       "type": "object",
       "properties": {
+        "attachmentIds": {
+          "description": "Selected images in the persisted assistant reply in this session.",
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}:[1-4]$" }
+        },
         "sessionId": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]{1,128}$"

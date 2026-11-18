@@ -1,5 +1,6 @@
 package io.github.differentialmanifold.jagentharness.core.message;
 
+import io.github.differentialmanifold.jagentharness.protocol.ImageFormat;
 import java.util.*;
 
 /** Shared image validation for conversation requests and queued run inputs. */
@@ -7,7 +8,7 @@ public final class ImageInputValidator {
     private ImageInputValidator() {}
 
     public static final int MAX_IMAGES = 4;
-    public static final int MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    public static final int MAX_IMAGE_BYTES = ImageFormat.MAX_BYTES;
     public static final int MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
     private static final int MAX_IMAGE_NAME_LENGTH = 255;
 
@@ -56,7 +57,7 @@ public final class ImageInputValidator {
             if (decodedBytes == 0 || decodedBytes > MAX_IMAGE_BYTES) {
                 throw new IllegalArgumentException("Each image must be at most 10 MB");
             }
-            if (!hasImageSignature(mediaType, decoded)) {
+            if (!mediaType.equals(ImageFormat.detect(decoded))) {
                 throw new IllegalArgumentException(
                         "Image data does not match its declared PNG, JPEG, WebP, or GIF format");
             }
@@ -87,38 +88,6 @@ public final class ImageInputValidator {
             }
         }
         return null;
-    }
-
-    private static boolean hasImageSignature(String mediaType, byte[] data) {
-        if ("image/png".equals(mediaType)) {
-            return startsWith(data, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
-        }
-        if ("image/jpeg".equals(mediaType)) {
-            return startsWith(data, 0xff, 0xd8, 0xff);
-        }
-        if ("image/gif".equals(mediaType)) {
-            return startsWith(data, 0x47, 0x49, 0x46, 0x38, 0x37, 0x61)
-                    || startsWith(data, 0x47, 0x49, 0x46, 0x38, 0x39, 0x61);
-        }
-        return "image/webp".equals(mediaType)
-                && startsWith(data, 0x52, 0x49, 0x46, 0x46)
-                && startsWithAt(data, 8, 0x57, 0x45, 0x42, 0x50);
-    }
-
-    private static boolean startsWith(byte[] data, int... signature) {
-        return startsWithAt(data, 0, signature);
-    }
-
-    private static boolean startsWithAt(byte[] data, int offset, int... signature) {
-        if (data == null || offset < 0 || data.length - offset < signature.length) {
-            return false;
-        }
-        for (int index = 0; index < signature.length; index++) {
-            if ((data[offset + index] & 0xff) != signature[index]) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static String normalizedImageName(String name, String mediaType, int index) {

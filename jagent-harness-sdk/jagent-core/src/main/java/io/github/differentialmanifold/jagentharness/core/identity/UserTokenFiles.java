@@ -11,6 +11,10 @@ public final class UserTokenFiles {
     private UserTokenFiles() {}
 
     public static void write(Path file, String id, String token) throws IOException {
+        writePrivate(file, "# JAgentHarness user: " + id + "\nJAGENT_USER_TOKEN=" + token + "\n");
+    }
+
+    public static void writePrivate(Path file, String content) throws IOException {
         file = file.toAbsolutePath();
         Files.createDirectories(file.getParent());
         Path temp = Files.createTempFile(file.getParent(), ".user-", ".tmp");
@@ -19,10 +23,7 @@ public final class UserTokenFiles {
                 Files.setPosixFilePermissions(temp, PosixFilePermissions.fromString("rw-------"));
             } catch (UnsupportedOperationException ignored) {
             }
-            Files.write(
-                    temp,
-                    ("# JAgentHarness user: " + id + "\nJAGENT_USER_TOKEN=" + token + "\n")
-                            .getBytes(StandardCharsets.UTF_8));
+            Files.write(temp, content.getBytes(StandardCharsets.UTF_8));
             try {
                 Files.move(
                         temp,

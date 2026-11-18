@@ -1,48 +1,39 @@
 # JAgentHarness
 
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](README.zh-CN.md) · [Quick start](QUICK_START.md) · [Documentation](docs/README.md)
 
-[Quick start](QUICK_START.md) · [Documentation](docs/README.md)
-
-**Give an Agent a goal. Execute the work where your tools live.**
-
-Work directly in a Project, or give a persistent Agent a goal to plan, track and follow through. JAgentHarness runs both layers on the server, while a lightweight Runner executes native tools where your files and applications live.
+JAgentHarness gives each user **mainbot**, a personal Agent that remembers previous work and can see a goal through across conversations. Tell it what you want in the web Console or through Feishu. When a task needs files or commands, mainbot creates or reuses a Project, reviews the result and reports back in your chat.
 
 ## Architecture
 
-![Agent plans and tracks tasks; Project sessions carry out the work. Both run their agent loops on the server and share conversation and virtual file storage. A lightweight Runner executes native tools on the target machine.](assets/architecture.svg)
+![The Harness runs mainbot and its Project sessions. mainbot plans and reviews work. A Runner connects from the target machine to execute the Project’s local tool calls.](assets/architecture.svg)
 
-- **Agent plans and tracks; Project carries out the work.** The Agent breaks a goal into tasks, tracks dependencies and progress, and uses Project sessions to investigate, implement and verify. Project results and scheduled checks bring it back to review evidence and adjust the plan. Users can also work directly in Projects.
-- **Agent loops in the cloud; native tools on the terminal.** Agent and Project share the server Harness. Project sessions use a lightweight Runner to execute tools in the target environment and return results, so that environment needs no model SDK or server framework.
-
-The shared Harness provides model calls, context management and server tools, backed by unified conversation and virtual file storage.
-
-## What you can do
-
-| Capability | Get started |
+| Part | What it does |
 | --- | --- |
-| Work directly with files and tools in project conversations | [Projects](docs/guides/projects.md) |
-| Delegate a goal; let an Agent plan, track tasks and verify results | [Personal Agents](docs/guides/agents.md) |
-| Retain preferences and turn verified methods into reusable Skills | [Memory and learning](docs/guides/knowledge.md) |
-| Configure instructions, Skills, native tools and optional MCP tools | [Configuration](docs/guides/configuration.md) |
-| Talk to an Agent from Feishu or another AI assistant | [Feishu](docs/guides/feishu.md) · [External Agent access](docs/guides/external-agents.md) |
+| **mainbot** | Keeps memory across chats. For a longer goal, it tracks steps and dependencies, checks progress, and uses Project results to decide what to do next. |
+| **Project** | Gives the work a workspace, tools and sessions. mainbot can use separate sessions to investigate, implement and verify. Open **mainbot → Projects** to inspect the commands and results yourself. You can also create a Project and work in it directly. |
+| **Runner** | Brings tools to the machine that owns the files or device. The Coding Runner reads files, edits code and runs shell commands there. It connects outbound to the Harness, which handles model calls and stores conversations and virtual files. |
 
-Start with [Quick start](QUICK_START.md). The [documentation index](docs/README.md) maps every guide to its purpose and Console entry.
+Project results and scheduled checks bring mainbot back to a task while the Harness and Runner are running. It can also delegate across machines. For example, mainbot on a Linux Runner can ask an Agent bound to a Mac Runner to run an Xcode build, then use the build output to continue the original task. Each Agent works through its own Projects.
 
-## Three parts, one protocol
+## Try mainbot
 
-| Part | Responsibility | Implementation |
-| --- | --- | --- |
-| **Agent Harness** | Personal Agents and project sessions; shared model calls, context, database state, and server tools | Java libraries with a [server example](examples/server-demo/README.md) |
-| **Runner** | Scenario-specific native tools, execution permissions, and result delivery | [Client SDK](sdk/java/README.md) with a ready-to-run [coding distribution](examples/coding-runner/README.md) |
-| **Frontend** | Agent and project chats, tasks, knowledge, and configuration through server APIs | [Web Console](console/README.md), hosted on the server or client machine |
+1. Install the full application with `sh scripts/install.sh` on macOS/Linux or `scripts\install.cmd` on Windows. Use an extracted application ZIP or build from this checkout. See [prerequisites and model settings](QUICK_START.md#install-and-start).
+2. Set your model connection in `~/.jagent/.env.local`, open a new terminal and run `jagent`. The local Runner opens the Console. Your **Agents → mainbot → Chat** is ready.
+3. Send a request you can verify:
 
-The Runner ships with its tools and connects over outbound HTTP long polling; no inbound port is needed. Implement `ToolDefinition` to add a new scenario. Frontends use the server APIs wherever they are hosted. Projects using only server tools can run without a Runner.
+   > Make a release checklist in a new workspace. Write two items to CHECKLIST.md, “Run tests” and “Write release notes”. Mark “Run tests” complete, read the file back, and tell me its path and what is still open.
+
+Look for the path and the remaining item in **Chat**. Open **Projects** within mainbot to see the file operations. Then ask in the same chat, “Mark the release notes complete and check the file again.” mainbot can return to that workspace. For a multi-step example, see the [personal Agent guide](docs/guides/agents.md).
+
+## Other ways to use mainbot
+
+- **Ask about your installation.** With the all-in-one launcher, mainbot can inspect the bundled source or checkout through a Project. It can also manage supported settings, such as adding a model or installing a Skill. [Configuration](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
+- **Keep the files on another machine.** Host the Harness and Console together and run a lightweight Runner on your laptop or server. A second browser can pair with the same personal workspace. [Remote deployment and browser pairing](docs/guides/access.md)
+- **Choose another interface.** Connect Feishu for messages and progress updates, or let another assistant use the Agent API. [Feishu](docs/guides/feishu.md) · [External Agent access](docs/guides/external-agents.md)
 
 <details>
-<summary>Runner conversation flow</summary>
-
-For a conversation bound to a runner, long polling delivers the conversation task. Tool calls and results then travel through ordinary chat requests in the same session, while the frontend receives one continuous event stream.
+<summary>Direct Project chat and the Runner protocol</summary>
 
 ```mermaid
 sequenceDiagram
@@ -68,53 +59,6 @@ sequenceDiagram
     S-->>UI: Send the final result and close SSE
 ```
 
-The tool-call exchange repeats as needed. The runner keeps polling during local execution to receive cancellation. Custom frontends use the same public server APIs; all local tool execution goes through the assigned Runner.
-
 </details>
 
-Each user has their own mainbot and private workspace. Local startup handles credentials automatically; remote Runners use a Harness-issued User Token. [Personal access and remote deployment](docs/guides/access.md).
-
-## Try it locally
-
-Install **JDK 8+**, **Maven 3.6.3+**, and **Node.js 22.12+**. An OpenAI-compatible model endpoint is required; SQLite is included.
-
-```sh
-git clone https://github.com/differentialmanifold/jagent-harness.git
-cd jagent-harness
-cp .env.example .env.local
-```
-
-Set the model in `.env.local`:
-
-```dotenv
-JAGENT_MODEL=your-model-name
-JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
-JAGENT_OPENAI_API_KEY=your-api-key
-```
-
-Start all three parts:
-
-```sh
-node scripts/dev.mjs
-```
-
-Open **http://127.0.0.1:5175** and choose an entry point:
-
-- **Let an Agent work:** open **Agents → mainbot**, which is created and connected automatically by the all-in-one launcher. Send a goal in its Chat; it can create its own project and workspace. Follow the [short Agent example](docs/guides/agents.md) for a ready-to-use request and what to look for.
-- **Work in your own project:** add a project, select **coding-local**, then browse or enter a workspace on that terminal. Ask:
-
-> Read the README in this workspace and summarize the project.
-
-The server drives the conversation while the runner reads the local file. All seven coding tools are available by default. Select which tools a project can use in **Projects → Configuration → Tools → Client tools**; selected tools run with **Full access**, without approval prompts. One runner can serve multiple project directories. **Ctrl+C** stops the demo.
-
-See [Quick start](QUICK_START.md) for independent startup, manual commands, remote machines, and Windows/macOS shortcuts.
-
-## Documentation and development
-
-- [Documentation index](docs/README.md): feature guides, UI locations and integration references.
-- [Server integration](jagent-harness-sdk/README.md), [Java client SDK](sdk/java/README.md), [Console hosting](console/README.md) and [HTTP/JSON protocol](protocol/README.md): extend or deploy the parts you need.
-- [Development guide](CONTRIBUTING.md): source layout, checks and where documentation belongs when adding a feature.
-
-This source tree targets `2.3.0`. Run `mvn install` before building a separate Maven consumer against local changes. The current host supports a single server instance and application-level authentication; platform permissions remain the runner's responsibility.
-
-[MIT License](LICENSE).
+[Server libraries](jagent-harness-sdk/README.md) · [Java Runner SDK](sdk/java/README.md) · [HTTP protocol](protocol/README.md) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)

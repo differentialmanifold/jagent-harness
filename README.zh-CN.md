@@ -1,48 +1,39 @@
 # JAgentHarness
 
-[English](README.md) | **简体中文**
+[English](README.md) | **简体中文** · [快速启动（英文）](QUICK_START.md) · [文档导航](docs/README.zh-CN.md)
 
-[快速启动](QUICK_START.md) · [文档导航](docs/README.zh-CN.md)
-
-**把目标交给 Agent，让工具在实际工作环境中执行。**
-
-你可以直接在 Project 中工作，也可以把目标交给持续存在的 Agent，由它规划、追踪并推进任务。JAgentHarness 在服务端运行这两层能力，通过轻量 Runner 在文件和应用所在的终端执行原生工具。
+JAgentHarness 为每位用户提供一个 **mainbot**。它是可以长期对话的个人 Agent，能记住之前的工作，在多次对话之间持续推进同一个目标。你可以在网页或飞书里直接告诉它想完成什么。需要读文件、改代码或运行命令时，mainbot 会创建或复用 Project，检查执行结果，再回到原对话向你汇报。
 
 ## 整体架构
 
-![Agent 负责规划和任务追踪，Project 会话推进具体工作。两层的 Agent Loop 均运行在服务端，共用会话与虚拟文件存储；轻量 Runner 在目标终端执行原生工具。](assets/architecture.zh-CN.svg)
+![服务端 Harness 运行 mainbot 和 Project 会话。mainbot 负责规划与检查，Project 通过目标机器主动连接的 Runner 调用本地工具。](assets/architecture.zh-CN.svg)
 
-- **Agent 规划与追踪，Project 推进具体工作。** Agent 将目标拆成任务，跟踪依赖和进度，通过 Project 会话调查、实现与验证。项目结果与定时检查促使它审查证据、调整计划。用户也可以直接操作 Project。
-- **Agent Loop 在云端，原生工具在终端。** Agent 与 Project 共用服务端 Harness，项目会话通过轻量 Runner 在目标环境执行工具并回传结果，执行环境无需嵌入模型 SDK 或服务端框架。
-
-共享 Harness 提供模型调用、上下文管理和服务端工具，以统一的会话与虚拟文件存储作为支撑。
-
-## 可以做什么
-
-| 能力 | 从这里开始 |
+| 组成 | 职责 |
 | --- | --- |
-| 在项目会话中直接操作文件和工具 | [项目指南](docs/guides/projects.md) |
-| 交给 Agent 一个目标，由它规划、追踪任务并验证结果 | [个人 Agent](docs/guides/agents.zh-CN.md) |
-| 记住偏好，将已验证的方法沉淀为可复用 Skill | [记忆与学习](docs/guides/knowledge.md) |
-| 配置指引、Skills、原生工具和可选的 MCP 工具 | [配置指南](docs/guides/configuration.md) |
-| 通过飞书或其他 AI 助手与 Agent 交流 | [飞书](docs/guides/feishu.md) · [外部 Agent 接入](docs/guides/external-agents.md) |
+| **mainbot** | 跨对话保留记忆。遇到复杂目标时，它可以拆解任务、记录依赖、主动检查进度，并根据 Project 返回的结果调整下一步。 |
+| **Project** | 为具体工作提供工作目录、工具和会话。mainbot 可以分别开会话做调研、实现和验证。打开 **mainbot → Projects** 就能查看命令和结果。你也可以自己创建 Project，直接在项目里工作。 |
+| **Runner** | 部署在文件或设备所在的机器上。Coding Runner 在那里读写文件、执行 Shell 命令，并主动连接 Harness 回传结果。模型调用、会话历史和虚拟文件存储由服务端负责。 |
 
-首次使用从 [Quick start](QUICK_START.md) 开始。[文档导航](docs/README.zh-CN.md) 按使用目的列出功能指南、界面入口和集成参考。
+只要 Harness 和 Runner 持续运行，项目结果或定时检查就能唤醒 mainbot，让它继续跟进。任务需要另一台机器时，它还可以委托其他 Agent。例如，绑定 Linux Runner 的 mainbot 可以请绑定 Mac Runner 的 Agent 执行 Xcode 构建，拿到结果后继续推进原任务。每个 Agent 都通过自己的 Project 开展工作。
 
-## 三个部分，一套协议
+## 第一次和 mainbot 对话
 
-| 部分 | 职责 | 当前实现 |
-| --- | --- | --- |
-| **Agent Harness** | 个人 Agent 与项目会话，共享模型调用、上下文、数据库存储和服务端工具 | Java 库与[服务端示例](examples/server-demo/README.md) |
-| **Runner** | 场景原生工具、执行权限及结果回传 | [客户端 SDK](sdk/java/README.md)，并提供开箱即用的 [Coding 发行包](examples/coding-runner/README.zh-CN.md) |
-| **交互前端** | 通过服务端接口管理 Agent 与项目对话、任务、知识和配置 | [Web Console](console/README.md)，可部署在服务端或客户端 |
+1. 在完整应用 ZIP 的解压目录或源码仓库中安装。macOS/Linux 运行 `sh scripts/install.sh`，Windows 运行 `scripts\install.cmd`。环境要求和模型配置见[快速启动](QUICK_START.md#install-and-start)。
+2. 在 `~/.jagent/.env.local` 填好模型配置，新开终端运行 `jagent`。本地 Runner 会打开网页，进入 **Agents → mainbot → Chat** 即可对话。
+3. 发一个能当场核对结果的请求：
 
-Runner 自带工具，通过主动发起的 HTTP 长轮询连接服务端，无需开放入站端口。新场景通过实现 `ToolDefinition` 扩展工具。前端无论部署在哪里，都使用服务端 API。仅使用服务端工具的项目无需 Runner。
+   > 帮我在新工作目录准备一份发布清单。把“运行测试”和“写发布说明”写入 CHECKLIST.md，勾选“运行测试”，再读回文件，告诉我文件路径和剩下的一项。
+
+在 **Chat** 里看文件路径和待办项，在 mainbot 的 **Projects** 里看实际读写过程。然后在原对话里说：“把发布说明也勾上，再检查一次文件。”mainbot 可以回到同一工作目录继续。想看它如何跟进更长的任务，可以接着做[个人 Agent 示例](docs/guides/agents.zh-CN.md)。
+
+## 还能怎样使用 mainbot
+
+- **询问或配置 JAgentHarness。** 一键启动会为 mainbot 登记配套源码。你可以让它通过 Project 查代码解释运行原理，也可以让它添加模型、安装 Skill 等。[配置指南](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
+- **让文件留在实际工作机器上。** Harness 和网页可部署在远程服务器，笔记本或另一台服务器只运行轻量 Runner。其他浏览器配对后也能进入同一个用户空间。[远程部署与浏览器配对](docs/guides/access.md)
+- **换一种交互入口。** 连接飞书即可收发消息和进展，也可以让其他 AI 助手通过接口使用 Agent。[飞书接入](docs/guides/feishu.md) · [外部 Agent 接入](docs/guides/external-agents.md)
 
 <details>
-<summary>Runner 对话执行流程</summary>
-
-绑定 Runner 的会话通过长轮询派发整次对话任务。后续工具调用与结果通过同一会话中的普通对话请求往返，前端持续接收一条连贯的事件流。
+<summary>直接在 Project 聊天时，Runner 如何执行工具</summary>
 
 ```mermaid
 sequenceDiagram
@@ -68,53 +59,6 @@ sequenceDiagram
     S-->>UI: 推送完成结果，结束 SSE
 ```
 
-工具调用与结果回传可以重复多轮。执行本地工具期间，Runner 继续长轮询以接收取消指令。自定义前端使用同一套公开服务端接口，本地工具统一由项目绑定的 Runner 执行。
-
 </details>
 
-每个用户都有自己的 mainbot、项目和会话。个人本地启动自动处理凭据；远程 Runner 使用 Harness 签发的用户 Token 接入，无需网页登录。[个人身份与远程部署](docs/guides/access.md)。
-
-## 快速体验
-
-安装 **JDK 8+**、**Maven 3.6.3+** 和 **Node.js 22.12+**，准备一个兼容 OpenAI 的模型接口。示例自带 SQLite，无需安装数据库服务。
-
-```sh
-git clone https://github.com/differentialmanifold/jagent-harness.git
-cd jagent-harness
-cp .env.example .env.local
-```
-
-在 `.env.local` 中配置模型：
-
-```dotenv
-JAGENT_MODEL=your-model-name
-JAGENT_OPENAI_BASE_URL=https://your-provider.example/v1
-JAGENT_OPENAI_API_KEY=your-api-key
-```
-
-启动三个部分：
-
-```sh
-node scripts/dev.mjs
-```
-
-打开 **http://127.0.0.1:5175**，选择一种方式开始：
-
-- **让 Agent 自主推进：** 打开 **Agents → mainbot**，一键启动已自动创建它并绑定 Coding Runner。在 Chat 中提出目标，它可以自行创建项目和工作目录。[简短的 Agent 示例](docs/guides/agents.zh-CN.md) 提供可直接发送的要求和观察指引。
-- **操作自己的项目：** 添加项目，选择 **coding-local**，浏览或输入该终端上的工作目录，然后发送：
-
-> 阅读工作区中的 README，总结这个项目。
-
-服务端推进对话，Runner 在目标机器读取文件。新项目默认启用全部七个 coding 工具；在 **Projects → Configuration → Tools → Client tools** 中修改项目工具选择，已选工具以 **Full access** 模式执行，不弹出审批。一个 Runner 可以服务多个不同目录的项目。按 **Ctrl+C** 停止示例。
-
-独立启动、手动命令、远程终端和 Windows/macOS 快捷方式见 [Quick start](QUICK_START.md)（英文）。
-
-## 文档与开发
-
-- [文档导航](docs/README.zh-CN.md)：查找功能指南、界面入口和集成参考；尚无中文版本的指南标为英文。
-- [服务端集成](jagent-harness-sdk/README.md)、[Java 客户端 SDK](sdk/java/README.md)、[Console 部署](console/README.md)、[HTTP/JSON 协议](protocol/README.md)：按需部署与扩展。
-- [开发指南](CONTRIBUTING.md)：源码结构、验证命令，以及新增功能时文档应该放在哪里。
-
-本源码树的目标版本为 `2.3.0`。使用本地修改构建独立 Maven 项目前，请先运行 `mvn install`。当前服务端支持单实例部署和应用级身份验证，终端权限由 Runner 控制。
-
-[MIT License](LICENSE)。
+[服务端库](jagent-harness-sdk/README.md) · [Java Runner SDK](sdk/java/README.md) · [HTTP 协议](protocol/README.md) · [开发指南](CONTRIBUTING.md) · [MIT 许可证](LICENSE)

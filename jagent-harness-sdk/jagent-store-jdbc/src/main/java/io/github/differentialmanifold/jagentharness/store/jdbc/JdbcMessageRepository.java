@@ -34,6 +34,18 @@ public class JdbcMessageRepository implements MessageRepository {
     }
 
     @Override
+    public AgentMessage findMessage(String sessionId, String messageId) {
+        List<AgentMessage> messages =
+                jdbcTemplate.query(
+                        "select * from messages where application_id = ? and session_id = ? and message_id = ?",
+                        mapper(),
+                        applicationId(),
+                        sessionId,
+                        messageId);
+        return messages.isEmpty() ? null : messages.get(0);
+    }
+
+    @Override
     public void appendAll(List<AgentMessage> messages) {
         JdbcTransactions.write(jdbcTemplate)
                 .execute(

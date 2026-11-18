@@ -14,6 +14,13 @@ abstract class PersonalTool implements ToolDefinition {
     final Supplier<PersonalAgentService> services;
     final PersonalAgentStore store;
     final ObjectMapper json;
+    private final ObjectWriter modelOutput;
+
+    private abstract static class ImageSummary {
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        abstract String getUrl();
+    }
+
     private final String name, description;
     private final Map<String, Action> actions = new LinkedHashMap<>();
 
@@ -28,6 +35,13 @@ abstract class PersonalTool implements ToolDefinition {
         this.services = services;
         this.store = store;
         this.json = json;
+        this.modelOutput =
+                json.copy()
+                        .addMixIn(
+                                io.github.differentialmanifold.jagentharness.core.message
+                                        .MessageImage.class,
+                                ImageSummary.class)
+                        .writer();
     }
 
     static String identity(PersonalAgentStore store, AgentContext context) {
@@ -65,7 +79,12 @@ abstract class PersonalTool implements ToolDefinition {
         return true;
     }
 
+    boolean supports(Profile profile) {
+        return true;
+    }
+
     final ToolDefinition forProfile(Profile profile) {
+        if (!supports(profile)) return null;
         Set<String> allowed = new LinkedHashSet<>();
         for (String action : actions.keySet()) if (enabled(profile, action)) allowed.add(action);
         if (allowed.isEmpty()) return null;
@@ -152,6 +171,8 @@ abstract class PersonalTool implements ToolDefinition {
             throw new IllegalArgumentException(
                     "Only this Agent's conversations can use personal tools");
         Profile p = services.get().require(id);
+        if (!supports(p))
+            throw new IllegalArgumentException("This tool is not available to this Agent");
         if (!p.enabled) throw new IllegalArgumentException("Agent is paused");
         if (args == null || !args.isObject())
             throw new IllegalArgumentException("Arguments must be an object");
@@ -163,7 +184,8 @@ abstract class PersonalTool implements ToolDefinition {
         if (!enabled(p, action)) throw new IllegalArgumentException("This operation is disabled");
         validate(args, contract);
         context.getStopSignal().throwIfAborted();
-        return ToolExecutionResult.of(json.writeValueAsString(run(id, context, action, args)));
+        return ToolExecutionResult.of(
+                modelOutput.writeValueAsString(run(id, context, action, args)));
     }
 
     private void validate(JsonNode args, Action a) {
@@ -178,41 +200,8 @@ abstract class PersonalTool implements ToolDefinition {
                             if (schema == null)
                                 throw new IllegalArgumentException(
                                         "Unexpected field for this action: " + field.getKey());
-                            validateValue(field.getValue(), schema, field.getKey());
+                            ToolSchemas.validate(field.getValue(), schema, field.getKey());
                         });
-    }
-
-    private void validateValue(JsonNode value, JsonNode schema, String path) {
-        String type = schema.path("type").asText();
-        if (value.isNull()
-                || ("string".equals(type) && !value.isTextual())
-                || ("integer".equals(type) && !value.isIntegralNumber())
-                || ("boolean".equals(type) && !value.isBoolean())
-                || ("array".equals(type) && !value.isArray())
-                || ("object".equals(type) && !value.isObject()))
-            throw new IllegalArgumentException("Invalid field type: " + path);
-        if (schema.has("enum")) {
-            boolean found = false;
-            for (JsonNode option : schema.get("enum")) if (option.equals(value)) found = true;
-            if (!found) throw new IllegalArgumentException("Invalid choice: " + path);
-        }
-        if (value.isArray())
-            for (JsonNode item : value) validateValue(item, schema.path("items"), path + "[]");
-        if (value.isObject()) {
-            for (JsonNode key : schema.path("required"))
-                if (!value.hasNonNull(key.asText()))
-                    throw new IllegalArgumentException(
-                            "Missing required field: " + path + "." + key.asText());
-            value.fields()
-                    .forEachRemaining(
-                            field -> {
-                                JsonNode child = schema.path("properties").get(field.getKey());
-                                if (child == null)
-                                    throw new IllegalArgumentException(
-                                            "Unexpected field: " + path + "." + field.getKey());
-                                validateValue(field.getValue(), child, path + "." + field.getKey());
-                            });
-        }
     }
 
     final ObjectNode array(JsonNode item) {

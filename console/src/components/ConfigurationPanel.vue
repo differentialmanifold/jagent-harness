@@ -47,6 +47,7 @@
           <h3>System</h3>
           <button :class="['configuration-nav-item', { active: activeItem === 'system-models' }]" @click="navigate('system-models')">Models</button>
           <button :class="['configuration-nav-item', { active: activeItem === 'system-runners' }]" @click="navigate('system-runners')">Runners</button>
+          <button v-if="personalAccess" :class="['configuration-nav-item', { active: activeItem === 'system-devices' }]" @click="navigate('system-devices')">Devices</button>
         </section>
         <section v-if="mode === 'project'" class="configuration-nav-group">
           <h3>Project</h3>
@@ -116,6 +117,7 @@
       <div class="configuration-resource">
         <ModelsPanel v-if="activeItem === 'system-models'" ref="activePanelRef" @changed="$emit('changed')" />
         <RunnersPanel v-else-if="activeItem === 'system-runners'" />
+        <DevicesPanel v-else-if="activeItem === 'system-devices'" />
         <section v-else-if="activeItem === 'general'" class="project-general">
           <template v-if="selectedProject">
             <h3>{{ selectedProject.name }}</h3>
@@ -171,7 +173,7 @@
 </template>
 
 <script setup>
-import { computed, markRaw, ref, watch } from 'vue'
+import { computed, inject, markRaw, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { ArrowRight, CaretBottom, Close, Connection, Document, Files, FolderOpened, Menu, SetUp, View } from '@element-plus/icons-vue'
 import BuiltInToolsPanel from './BuiltInToolsPanel.vue'
@@ -180,6 +182,9 @@ import KnowledgePanel from './KnowledgePanel.vue'
 import McpPanel from './McpPanel.vue'
 import ModelsPanel from './ModelsPanel.vue'
 import RunnersPanel from './RunnersPanel.vue'
+import DevicesPanel from './DevicesPanel.vue'
+
+const personalAccess = inject('personalAccess', ref(false))
 
 const props = defineProps({
   mode: { type: String, default: 'project' },
@@ -230,6 +235,7 @@ const scopeTitle = computed(() => {
 const resourceTitle = computed(() => ({
   'system-models': 'Models',
   'system-runners': 'Runners',
+  'system-devices': 'Devices',
   general: 'General',
   'final-prompt': 'Runtime Context',
   'agent-rules': 'Instructions',
@@ -240,6 +246,7 @@ const resourceTitle = computed(() => ({
 const resourceSubtitle = computed(() => {
   if (activeItem.value === 'system-models') return 'Default model, available capabilities and connection settings.'
   if (activeItem.value === 'system-runners') return 'Execution environments, tools and availability.'
+  if (activeItem.value === 'system-devices') return 'Access your personal workspace across computers and phones.'
   const projectName = selectedProject.value?.name || 'the selected project'
   if (activeItem.value === 'general') return 'Project identity and execution environment.'
   if (activeResource.value === 'final-prompt') return `Model, available tools, Skills and prompt for a chat in ${projectName}.`

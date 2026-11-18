@@ -7,6 +7,7 @@ import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.io.*;
 import java.net.URL;
 import java.nio.file.*;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -31,9 +32,13 @@ public final class AgentRunner implements AutoCloseable {
     private final Consumer<String> console;
     private final String consoleUrl;
     private final boolean userIdentity;
+    private final String userId;
+    private final Consumer<String> onRegistered;
+    private final RunnerReconnect reconnect;
     private volatile boolean registeredOnce;
     private boolean running;
     private boolean released;
+    private boolean disconnectReported;
     private volatile Thread receiver;
 
     /** Creates a runner whose identity and journal are isolated by server under the state root. */
@@ -59,11 +64,7 @@ public final class AgentRunner implements AutoCloseable {
     }
 
     public String consoleLink() throws IOException {
-        String ticket =
-                http.management("POST", "/api/v1/access/browser", Collections.emptyMap())
-                        .path("ticket")
-                        .asText();
-        return RunnerFiles.serverUrl(consoleUrl) + "/#jagent-ticket=" + ticket;
+        return RunnerConsole.link(http, consoleUrl);
     }
 
     private AgentRunner(Builder b) throws IOException {
@@ -71,6 +72,7 @@ public final class AgentRunner implements AutoCloseable {
         console = b.console;
         consoleUrl = b.consoleUrl == null ? b.server : b.consoleUrl;
         userIdentity = b.userIdentity;
+        reconnect = new RunnerReconnect(b.idleDisconnectTimeout);
         String server = RunnerFiles.serverUrl(b.server);
         URL origin = new URL(server);
         if ("http".equals(origin.getProtocol())
@@ -83,13 +85,16 @@ public final class AgentRunner implements AutoCloseable {
         for (ToolDefinition tool : b.tools)
             if (!names.add(tool.getName()))
                 throw new IllegalArgumentException("Duplicate tool: " + tool.getName());
-        String userId = null;
-        if (b.userIdentity)
-            userId =
-                    new HttpRunnerTransport(server, b.token)
-                            .management("GET", "/api/v1/access/identity", null)
-                            .path("userId")
-                            .asText();
+        onRegistered = b.onRegistered;
+        userId =
+                b.userIdentity
+                        ? new HttpRunnerTransport(server, b.token)
+                                .management("GET", "/api/v1/access/identity", null)
+                                .path("userId")
+                                .asText()
+                        : null;
+        if (b.expectedUser != null && !b.expectedUser.equals(userId))
+            throw new IOException("Credential belongs to a different Runner profile");
         home = stateDirectory(server, b.home, userId);
         toolContext = b.toolContext;
         workspaces = b.workspaces;
@@ -128,24 +133,29 @@ public final class AgentRunner implements AutoCloseable {
         return info.runnerId;
     }
 
-    /** Registers tools and receives jobs on the calling thread until close is called. */
+    /** Receives jobs until closed or the configured idle disconnection timeout expires. */
     public void serve() throws Exception {
         begin();
         try {
             boolean registered = false;
-            int failures = 0;
             while (!closing.isAborted()) {
+                if (reconnect.expired(active.isEmpty())) {
+                    report(
+                            "Runner idle disconnect timeout reached; exiting. Restart this Runner to reconnect.");
+                    break;
+                }
                 try {
                     if (!registered) {
                         http.management("POST", "/api/v1/runners", info, closing);
                         registered = true;
+                        if (!registeredOnce && onRegistered != null) onRegistered.accept(userId);
                         registeredOnce = true;
                         if (userIdentity && console != null) {
                             try {
                                 console.accept(consoleLink());
                             } catch (Exception e) {
                                 report(
-                                        "Console could not be opened; restart the runner to open it after the frontend is ready");
+                                        "Console could not be opened. Request a fresh sign-in link when the Console is available.");
                             }
                         }
                         report("Runner " + info.name + " online: " + info.runnerId);
@@ -164,7 +174,7 @@ public final class AgentRunner implements AutoCloseable {
                                             null,
                                             closing),
                                     RunnerPoll.class);
-                    failures = 0;
+                    reconnect.connected();
                     for (String cancelled : poll.cancelledRuns) {
                         Active run = active.get(cancelled);
                         if (run != null) run.signal.stop();
@@ -174,6 +184,7 @@ public final class AgentRunner implements AutoCloseable {
                         validateTarget(poll.job);
                         Active run = new Active(poll.job);
                         if (active.putIfAbsent(run.job.request.runId, run) != null) continue;
+                        reconnect.activity();
                         try {
                             worker.submit(
                                     () -> {
@@ -186,6 +197,7 @@ public final class AgentRunner implements AutoCloseable {
                                         } finally {
                                             run.executor = null;
                                             active.remove(run.job.request.runId, run);
+                                            reconnect.activity();
                                             releaseIfClosed();
                                         }
                                     });
@@ -201,8 +213,9 @@ public final class AgentRunner implements AutoCloseable {
                     if (e instanceof AgentHttpException
                             && (((AgentHttpException) e).status == 401
                                     || ((AgentHttpException) e).status == 403)) throw e;
-                    report("Connection interrupted; reconnecting (" + (++failures) + ")");
-                    Thread.sleep(Math.min(10000, 500L * (1L << Math.min(failures, 4))));
+                    int failures = reconnect.failed(active.isEmpty());
+                    report("Connection interrupted; reconnecting (" + failures + ")");
+                    Thread.sleep(reconnect.delayMillis());
                 }
             }
         } catch (InterruptedException e) {
@@ -239,8 +252,7 @@ public final class AgentRunner implements AutoCloseable {
             ToolJournal journal = new ToolJournal(home.resolve("results"));
             for (ToolInvocation call : pending.toolCalls) {
                 ToolExecutionResult result = journal.read(session, call.toolCallId);
-                request.messages.add(
-                        ChatMessage.tool(call.toolCallId, result.status, result.content));
+                request.messages.add(RunnerConversation.toolMessage(call.toolCallId, result));
             }
             http.management(
                     "POST",
@@ -386,24 +398,27 @@ public final class AgentRunner implements AutoCloseable {
             throw new IllegalStateException("Runner is closed or already running");
         running = true;
         receiver = Thread.currentThread();
+        disconnectReported = false;
+        reconnect.connected();
     }
 
     private synchronized void end() {
-        if (userIdentity && registeredOnce) {
-            try {
-                http.management(
-                        "POST",
-                        "/api/v1/runners/" + info.runnerId + "/disconnect",
-                        Collections.emptyMap());
-            } catch (IOException ignored) {
-                /* An interrupted connection expires through its heartbeat lease. */
-            }
-        }
+        reportDisconnection();
         running = false;
         receiver = null;
         // No receiver remains to deliver cancellation if serve exits with an error.
         for (Active run : active.values()) run.signal.stop();
         releaseIfClosed();
+    }
+
+    private synchronized void reportDisconnection() {
+        if (!userIdentity || !registeredOnce || disconnectReported) return;
+        disconnectReported = true;
+        try {
+            http.disconnectRunner(info.runnerId);
+        } catch (IOException ignored) {
+            /* An unreachable Harness expires the heartbeat lease instead. */
+        }
     }
 
     /** Stops polling and signals all active runs. Does not install JVM shutdown hooks. */
@@ -419,6 +434,8 @@ public final class AgentRunner implements AutoCloseable {
         if (receiving != null && receiving != Thread.currentThread()) receiving.interrupt();
         // Already accepted jobs still record their cancelled/unknown outcomes.
         worker.shutdown();
+        // JVM shutdown hooks must finish the bounded notification before returning.
+        reportDisconnection();
         releaseIfClosed();
     }
 
@@ -463,6 +480,16 @@ public final class AgentRunner implements AutoCloseable {
         private final Path home;
         private String token = "";
         private boolean userIdentity;
+        private String expectedUser;
+        private Duration idleDisconnectTimeout = Duration.ofHours(24);
+        private Consumer<String> onRegistered;
+
+        /** Called after the first successful registration, with the authenticated user ID. */
+        public Builder onRegistered(Consumer<String> callback) {
+            onRegistered = callback;
+            return this;
+        }
+
         private Consumer<String> console;
         private String consoleUrl;
         private String name = "Java runner";
@@ -490,8 +517,25 @@ public final class AgentRunner implements AutoCloseable {
 
         /** Server-issued personal credential; state is isolated by server and stable user ID. */
         public Builder userToken(String token) {
+            return userToken(token, null);
+        }
+
+        /** Pin a remembered connection to its stable Harness user ID. */
+        public Builder userToken(String token, String expectedUser) {
+            this.expectedUser = expectedUser;
             this.token = Objects.requireNonNull(token);
             this.userIdentity = true;
+            return this;
+        }
+
+        /**
+         * Consecutive idle disconnection before serve returns. Default: 24 hours; zero disables it.
+         */
+        public Builder idleDisconnectTimeout(Duration timeout) {
+            idleDisconnectTimeout = Objects.requireNonNull(timeout);
+            if (timeout.isNegative())
+                throw new IllegalArgumentException("Idle disconnect timeout must not be negative");
+            timeout.toNanos(); // Reject overflowing values before allocating any resources.
             return this;
         }
         /** Optional desktop integration. The SDK itself never launches a browser. */

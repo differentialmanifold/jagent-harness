@@ -33,7 +33,7 @@ export JAGENT_SERVER_URL='https://agent.example.com'
 npm --prefix console run preview
 ```
 
-Vite dev and preview bind to loopback by default. Use `-- --host 0.0.0.0` only when intentionally exposing them on another interface. HTTP is accepted with a non-blocking notice; HTTPS is recommended. The browser exchanges a one-time Runner ticket for its own session, and the page locks when that Runner goes offline. See [personal access](../docs/guides/access.md).
+Vite dev and preview bind to loopback by default. Use `-- --host 0.0.0.0` only when intentionally exposing them on another interface. HTTP is accepted with a non-blocking notice; HTTPS is recommended. Browsers exchange one-time links from a Runner, an authorized browser, or an operator for independent sessions. **System Settings → Devices** adds and revokes browsers. Business pages wait for the user's mainbot Runner; sign-in survives its disconnection. See [personal access](../docs/guides/access.md).
 
 ## Other frontends
 

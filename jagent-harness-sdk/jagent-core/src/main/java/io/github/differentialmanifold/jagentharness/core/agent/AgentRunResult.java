@@ -28,6 +28,16 @@ public class AgentRunResult {
     private String runId;
     private String firstTurnId;
     private String lastTurnId;
+    private java.util.List<String> attachmentIds = new java.util.ArrayList<>();
+
+    public java.util.List<String> getAttachmentIds() {
+        return attachmentIds;
+    }
+
+    public void setAttachmentIds(java.util.List<String> ids) {
+        attachmentIds = ids;
+    }
+
     private String answer;
     private int turnCount;
 

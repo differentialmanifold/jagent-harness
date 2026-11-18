@@ -6,11 +6,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import io.github.differentialmanifold.jagentharness.protocol.ImageFormat;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.ContentHashing;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.ToolArguments;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.ToolSchemas;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.WorkspacePathResolver;
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +23,11 @@ import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ReadTool implements ToolDefinition {
 
@@ -41,7 +49,7 @@ public class ReadTool implements ToolDefinition {
 
     @Override
     public String getDescription() {
-        return "Read UTF-8 text lines and the complete file's SHA-256 content hash. Relative paths resolve from the workspace; absolute paths are allowed. Supports offset and limit for reading a specific line range.";
+        return "Read a PNG, JPEG, GIF or WebP as an image attachment, or read UTF-8 text lines with the file's SHA-256 hash. Relative paths resolve from the workspace; absolute paths are allowed. Text supports offset and limit for reading a specific line range.";
     }
 
     @Override
@@ -72,6 +80,49 @@ public class ReadTool implements ToolDefinition {
                     "File not found: " + pathResolver.relative(context, path));
         }
 
+        try (InputStream input = new BufferedInputStream(Files.newInputStream(path))) {
+            input.mark(12);
+            byte[] header = new byte[12];
+            int count = 0;
+            while (count < header.length) {
+                int n = input.read(header, count, header.length - count);
+                if (n < 0) break;
+                count += n;
+            }
+            String mediaType = ImageFormat.detect(java.util.Arrays.copyOf(header, count));
+            if (mediaType != null) {
+                if (arguments.has("offset") || arguments.has("limit"))
+                    throw new IllegalArgumentException("Line ranges apply only to text files");
+                if (Files.size(path) > ImageFormat.MAX_BYTES)
+                    throw new IllegalArgumentException("Each image must be at most 10 MB");
+                input.reset();
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = input.read(buffer)) != -1) {
+                    context.getStopSignal().throwIfAborted();
+                    if (bytes.size() + n > ImageFormat.MAX_BYTES)
+                        throw new IllegalArgumentException("Each image must be at most 10 MB");
+                    bytes.write(buffer, 0, n);
+                }
+                Map<String, Object> image = new LinkedHashMap<>();
+                image.put("name", path.getFileName().toString());
+                image.put("mediaType", mediaType);
+                image.put(
+                        "url",
+                        "data:"
+                                + mediaType
+                                + ";base64,"
+                                + Base64.getEncoder().encodeToString(bytes.toByteArray()));
+                ObjectNode result =
+                        objectMapper
+                                .createObjectNode()
+                                .put("type", "image")
+                                .put("path", pathResolver.relative(context, path));
+                return ToolExecutionResult.success(result)
+                        .withImages(Collections.singletonList(image));
+            }
+        }
         int offset = arguments.path("offset").asInt(1);
         int limit = arguments.path("limit").asInt(DEFAULT_LIMIT);
         if (offset < 1) {
@@ -133,7 +184,7 @@ public class ReadTool implements ToolDefinition {
 
     private IllegalArgumentException unsupportedTextFile(Path path) {
         return new IllegalArgumentException(
-                "Read tool supports UTF-8 text files only: " + path.getFileName());
+                "Read tool supports UTF-8 text, PNG, JPEG, WebP and GIF: " + path.getFileName());
     }
 
     private static class ReadSlice {

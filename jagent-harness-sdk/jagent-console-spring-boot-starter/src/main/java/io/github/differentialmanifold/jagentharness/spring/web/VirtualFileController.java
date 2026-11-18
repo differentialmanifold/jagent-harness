@@ -167,27 +167,7 @@ public class VirtualFileController {
     }
 
     private void validateKnowledgePath(String path) {
-        String normalized = KnowledgeFilePaths.normalize(path);
-        if ("AGENTS.md".equals(normalized)) {
-            return;
-        }
-        if (normalized.startsWith("skills/")) {
-            validateSkillFilePath(normalized);
-            return;
-        }
-        throw new IllegalArgumentException("Unsupported knowledge file path: " + path);
-    }
-
-    private void validateSkillFilePath(String normalized) {
-        String[] parts = normalized.split("/");
-        if (parts.length < 3) {
-            throw new IllegalArgumentException(
-                    "Skill file path must be under skills/{skill}/: " + normalized);
-        }
-        if ("SKILL.md".equals(parts[parts.length - 1]) && parts.length != 3) {
-            throw new IllegalArgumentException(
-                    "SKILL.md must be directly under skills/{skill}/: " + normalized);
-        }
+        KnowledgeFilePaths.editable(path);
     }
 
     private String normalizeSkillPath(String path) {
@@ -195,7 +175,7 @@ public class VirtualFileController {
         if (!normalized.startsWith("skills/")) {
             throw new IllegalArgumentException("Unsupported knowledge file path: " + path);
         }
-        validateSkillFilePath(normalized);
+        KnowledgeFilePaths.editable(normalized);
         return normalized;
     }
 
