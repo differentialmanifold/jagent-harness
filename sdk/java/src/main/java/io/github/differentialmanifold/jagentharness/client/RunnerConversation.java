@@ -100,14 +100,17 @@ final class RunnerConversation {
                         value = ToolExecutionResult.unknown(error.toString());
                     }
                 }
-                ChatMessage message =
-                        ChatMessage.tool(call.toolCallId, value.status, value.content);
-                message.images.addAll(value.images);
-                next.messages.add(message);
+                next.messages.add(toolMessage(call.toolCallId, value));
                 // The server emits the terminal event once it accepts the durable result.
             }
             current = next;
         }
+    }
+
+    static ChatMessage toolMessage(String callId, ToolExecutionResult result) {
+        ChatMessage message = ChatMessage.tool(callId, result.status, result.content);
+        message.images.addAll(result.images);
+        return message;
     }
 
     private void emit(

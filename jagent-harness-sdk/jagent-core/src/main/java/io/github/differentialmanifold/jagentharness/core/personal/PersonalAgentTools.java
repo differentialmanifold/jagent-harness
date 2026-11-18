@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 public class PersonalAgentTools implements ToolProvider, SystemPromptContributor {
     private final PersonalAgentStore store;
     private final List<PersonalTool> tools;
+    private final Supplier<PersonalAgentService> services;
+    private final ObjectMapper json;
 
     public PersonalAgentTools(
             Supplier<PersonalAgentService> services,
@@ -20,6 +22,8 @@ public class PersonalAgentTools implements ToolProvider, SystemPromptContributor
             ObjectMapper json,
             PersonalAgentKnowledge knowledge) {
         this.store = store;
+        this.services = services;
+        this.json = json;
         tools =
                 new ArrayList<>(
                         Arrays.asList(
@@ -29,6 +33,11 @@ public class PersonalAgentTools implements ToolProvider, SystemPromptContributor
                                 new MemoryTool(services, store, json, knowledge),
                                 new SkillsTool(services, store, json, knowledge),
                                 new HistoryTool(services, store, json, knowledge)));
+    }
+
+    public PersonalAgentTools withManagement(HarnessOperations operations) {
+        if (operations != null) tools.add(new HarnessTool(services, store, json, operations));
+        return this;
     }
 
     public Collection<ToolDefinition> listTools(AgentContext context) {
@@ -41,7 +50,10 @@ public class PersonalAgentTools implements ToolProvider, SystemPromptContributor
     }
 
     public List<Map<String, Object>> catalog(Profile profile) {
-        return tools.stream().map(t -> t.catalog(profile)).collect(Collectors.toList());
+        return tools.stream()
+                .filter(t -> t.supports(profile))
+                .map(t -> t.catalog(profile))
+                .collect(Collectors.toList());
     }
 
     public String contribute(PromptContext context) {
@@ -57,10 +69,10 @@ public class PersonalAgentTools implements ToolProvider, SystemPromptContributor
                 + "A project saying done is not acceptance. Inspect test results and save evidence references before marking DONE, using a fresh session when useful. Preserve acceptance criteria while fixing failures; explain requirement changes and reopen affected tasks. Use steer/stop for obsolete work and confirm it stopped before replacement. Cancel obsolete tasks explicitly.\n"
                 + "Use agents discover to reuse a suitable colleague, then agents send with necessary context and verifiable checks. Replies wake this conversation; verify them before accepting completion. Do not delegate back through the ancestry chain. Runners do not share local paths; exchange repository URLs, commits or explicit artifacts.\n"
                 + "Create another Agent for a separate persistent role or memory, a Project for a repository, and a session for work within it. Agents may share a Runner; agents create defaults to your own Runner. Agent identities do not isolate OS access or resolve ownership, permission or workspace write conflicts.\n"
-                + "Model choice belongs to the user. Omit modelId unless the user explicitly requested a model; pass that exact ID or name, asking for clarification if unknown or ambiguous.\n"
-                + "Tools are usable directly from their schemas. Load relevant skills for specialized workflows; pass applicable methods to projects, which do not inherit your private skills. Save durable facts/preferences in memory, verified methods in skills, and current work in tasks. Never save credentials.\n"
+                + "Honor an explicitly requested model. Otherwise omit modelId. For visual work, inspect the actual image here if supported, or send it to a project session or colleague with requiresVision=true. Use a project to read Runner files. To deliver a Project image in this chat, use projects.attach_images with its Project reference, even after a text-only report, then give the description in your normal reply. Forward attachmentIds, not file paths or Base64. Do not substitute OCR for visual inspection.\n"
+                + "Use the current tool schemas over remembered capability limits. Load relevant skills for specialized workflows; pass applicable methods to projects, which do not inherit your private skills. Save durable facts/preferences in memory, verified methods in skills, and current work in tasks. Never save credentials.\n"
                 + (PersonalAgentService.MAINBOT_ID.equals(id)
-                        ? "For JAgentHarness behavior, setup or failures, load jagent-help first. Load runner-setup for Runner deployment or lifecycle work.\n"
+                        ? "For JAgentHarness behavior, setup or failures, load jagent-help first. Use harness to manage this user's settings and resources when requested; describe operations on demand. User-requested model configuration is allowed, without changing the default for an individual task. Load runner-setup for Runner deployment or lifecycle work.\n"
                         : "For JAgentHarness support or a new Runner environment, use agents discover to find mainbot and delegate the issue with relevant evidence.\n")
                 + (p.runnerId == null
                         ? "Your Runner is not configured yet. You can chat, but environment work must wait for an operator to bind a Runner.\n"

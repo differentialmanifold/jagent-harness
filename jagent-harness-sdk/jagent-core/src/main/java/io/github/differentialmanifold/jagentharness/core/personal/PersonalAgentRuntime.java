@@ -380,6 +380,7 @@ final class PersonalAgentRuntime {
                             : "[" + m.source + "]\n" + m.text;
             String runId = PersonalAgentService.messageRunId(m);
             AgentMessage inputMessage = AgentMessage.user(m.sessionId, input);
+            if (m.requiresVision) agents.workModel(m.modelId, true);
             inputMessage.setImages(m.images);
             Map<String, Object> origin = new LinkedHashMap<>();
             boolean peerMessage = "AGENT".equals(m.source) || "AGENT_REPLY".equals(m.source);
@@ -401,6 +402,9 @@ final class PersonalAgentRuntime {
                                     .attribute("personalAgentId", m.agentId)
                                     .attribute("personalReplyTo", m.replyTo)
                                     .attribute("personalEventSource", m.source)
+                                    .attribute(
+                                            ConversationImages.ReplySelection.ATTRIBUTE,
+                                            new ConversationImages.ReplySelection())
                                     .finalAnswerMapper(
                                             raw ->
                                                     PersonalAgentReply.decode(
@@ -434,6 +438,7 @@ final class PersonalAgentRuntime {
                                     .build());
             m.status = "COMPLETED".equals(result.getStatus()) ? "DONE" : "FAILED";
             m.answer = result.getAnswer() == null ? "" : result.getAnswer();
+            m.answerAttachmentIds = result.getAttachmentIds();
             m.delivered = m.replyTo == null || ("DONE".equals(m.status) && m.answer.isEmpty());
             if (!"DONE".equals(m.status)) {
                 m.error =

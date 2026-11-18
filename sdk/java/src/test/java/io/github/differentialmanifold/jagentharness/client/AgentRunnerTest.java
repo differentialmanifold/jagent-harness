@@ -10,6 +10,7 @@ import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -61,6 +62,111 @@ class AgentRunnerTest {
                         assertEquals(1, server.registrationCalls.get());
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    void idleDisconnectionExitsNormallyAndPreservesIdentity() throws Exception {
+        try (Server server = new Server()) {
+            server.unavailable = true;
+            List<String> logs = new CopyOnWriteArrayList<>();
+            String id;
+            try (AgentRunner runner =
+                    AgentRunner.builder(server.url(), home)
+                            .tools(
+                                    Collections.singletonList(
+                                            tool((c, a) -> ToolExecutionResult.success("ok"))))
+                            .idleDisconnectTimeout(Duration.ofMillis(80))
+                            .onStatus(logs::add)
+                            .build()) {
+                id = runner.runnerId();
+                Future<?> serving =
+                        server.threads.submit(
+                                () -> {
+                                    runner.serve();
+                                    return null;
+                                });
+                serving.get(4, TimeUnit.SECONDS);
+                assertTrue(
+                        logs.stream().anyMatch(line -> line.contains("idle disconnect timeout")));
+            }
+            try (AgentRunner restored =
+                    AgentRunner.builder(server.url(), home)
+                            .tools(
+                                    Collections.singletonList(
+                                            tool((c, a) -> ToolExecutionResult.success("ok"))))
+                            .idleDisconnectTimeout(Duration.ZERO)
+                            .build()) {
+                assertEquals(id, restored.runnerId());
+                Future<?> serving =
+                        server.threads.submit(
+                                () -> {
+                                    restored.serve();
+                                    return null;
+                                });
+                assertThrows(TimeoutException.class, () -> serving.get(300, TimeUnit.MILLISECONDS));
+                restored.close();
+                serving.get(3, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    @Test
+    void disconnectionDoesNotInterruptActiveToolAndPendingResultSurvivesExit() throws Exception {
+        CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger effects = new AtomicInteger();
+        ToolDefinition tool =
+                tool(
+                        (context, args) -> {
+                            started.countDown();
+                            assertTrue(release.await(5, TimeUnit.SECONDS));
+                            assertFalse(context.getStopSignal().isAborted());
+                            effects.incrementAndGet();
+                            return ToolExecutionResult.success("effect completed");
+                        });
+        try (Server server = new Server();
+                AgentRunner runner =
+                        AgentRunner.builder(server.url(), home)
+                                .tools(Collections.singletonList(tool))
+                                .idleDisconnectTimeout(Duration.ofMillis(80))
+                                .build()) {
+            server.job = job(runner.runnerId(), tool);
+            server.jobs.add(server.job);
+            Future<?> serving =
+                    server.threads.submit(
+                            () -> {
+                                runner.serve();
+                                return null;
+                            });
+            try {
+                assertTrue(started.await(3, TimeUnit.SECONDS));
+                server.unavailable = true;
+                assertThrows(TimeoutException.class, () -> serving.get(350, TimeUnit.MILLISECONDS));
+                release.countDown();
+                serving.get(5, TimeUnit.SECONDS);
+                assertEquals(1, effects.get());
+                assertTrue(Files.exists(runner.stateDirectory().resolve("jobs/r.json")));
+                Path results = runner.stateDirectory().resolve("results");
+                try (java.util.stream.Stream<Path> paths = Files.walk(results)) {
+                    assertTrue(
+                            paths.filter(Files::isRegularFile)
+                                    .anyMatch(
+                                            path -> {
+                                                try {
+                                                    return new String(
+                                                                    Files.readAllBytes(path),
+                                                                    StandardCharsets.UTF_8)
+                                                            .contains("effect completed");
+                                                } catch (IOException e) {
+                                                    throw new UncheckedIOException(e);
+                                                }
+                                            }),
+                            "The unacknowledged tool result must be durable before an idle exit");
+                }
+            } finally {
+                release.countDown();
+                runner.close();
             }
         }
     }
@@ -564,6 +670,7 @@ class AgentRunnerTest {
         final AtomicReference<RunnerInfo> registration = new AtomicReference<>();
         final AtomicBoolean cancelled = new AtomicBoolean();
         RunnerJob job;
+        volatile boolean unavailable;
         int registrationFailure;
         final AtomicInteger registrationFailures = new AtomicInteger();
         final AtomicInteger registrationCalls = new AtomicInteger();
@@ -574,6 +681,10 @@ class AgentRunnerTest {
                     "/api/v1/",
                     exchange -> {
                         try {
+                            if (unavailable) {
+                                exchange.sendResponseHeaders(503, -1);
+                                return;
+                            }
                             String path = exchange.getRequestURI().getPath();
                             Object result = Collections.emptyMap();
                             if (path.equals("/api/v1/runners")) {

@@ -16,6 +16,11 @@ public class DefaultSessionStore implements SessionStore {
     }
 
     @Override
+    public AgentMessage findMessage(String sessionId, String messageId) {
+        return messageRepository.findMessage(sessionId, messageId);
+    }
+
+    @Override
     public SessionRecord requireSession(String sessionId) {
         SessionRecord session = sessionRepository.findBySessionId(sessionId);
         if (session == null) {

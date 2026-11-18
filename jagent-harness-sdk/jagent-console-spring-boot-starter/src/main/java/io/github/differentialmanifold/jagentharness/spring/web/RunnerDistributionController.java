@@ -31,7 +31,9 @@ public class RunnerDistributionController {
     @GetMapping("/{kind}/{file}")
     public ResponseEntity<Resource> download(@PathVariable String kind, @PathVariable String file) {
         if (!kind.matches("[a-z][a-z0-9-]{0,63}")
-                || !("manifest.json".equals(file) || "runner.jar".equals(file))) throw missing();
+                || !("manifest.json".equals(file)
+                        || "runner.jar".equals(file)
+                        || "runner.zip".equals(file))) throw missing();
         Path directory = root.resolve(kind);
         if (!Files.isRegularFile(directory.resolve("manifest.json"))
                 || !Files.isRegularFile(directory.resolve("runner.jar"))) throw missing();
@@ -49,12 +51,20 @@ public class RunnerDistributionController {
                     || info.path("javaVersion").asInt() < 8
                     || !sha256(jar).equals(info.path("sha256").asText())) throw invalid();
             Path selected = "runner.jar".equals(file) ? jar : manifest;
+            if ("runner.zip".equals(file)) {
+                Path archive = directory.resolve("runner.zip");
+                if (!Files.isRegularFile(archive)) throw missing();
+                selected = archive.toRealPath();
+                if (!selected.startsWith(realRoot)
+                        || !sha256(selected).equals(info.path("archiveSha256").asText()))
+                    throw invalid();
+            }
             return ResponseEntity.ok()
                     .cacheControl(CacheControl.noStore())
                     .contentType(
-                            "runner.jar".equals(file)
-                                    ? MediaType.APPLICATION_OCTET_STREAM
-                                    : MediaType.APPLICATION_JSON)
+                            "manifest.json".equals(file)
+                                    ? MediaType.APPLICATION_JSON
+                                    : MediaType.APPLICATION_OCTET_STREAM)
                     .contentLength(Files.size(selected))
                     .header(
                             HttpHeaders.CONTENT_DISPOSITION,

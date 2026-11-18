@@ -175,6 +175,8 @@ public class ConversationService {
             response.runId = running.runId;
             response.status = "RUNNING";
             response.toolCalls.clear();
+            response.attachmentIds.clear();
+            response.answer = null;
         }
         return response;
     }
@@ -203,6 +205,7 @@ public class ConversationService {
                 if (Objects.equals(event.getRunId(), message.getRunId())
                         && AgentMessage.ROLE_ASSISTANT.equals(message.getRole())) {
                     response.answer = message.getContent();
+                    response.attachmentIds = ConversationImages.ids(message);
                     break;
                 }
             }
@@ -226,6 +229,7 @@ public class ConversationService {
         response.runId = result.getRunId();
         response.status = result.getStatus();
         response.answer = result.getAnswer();
+        response.attachmentIds = result.getAttachmentIds();
         List<AgentMessage> history = sessions.findExecutionMessages(response.sessionId);
         Map<String, ToolCall> pending = ConversationHistory.pendingTools(history);
         for (ToolCall call : result.getToolCalls()) {

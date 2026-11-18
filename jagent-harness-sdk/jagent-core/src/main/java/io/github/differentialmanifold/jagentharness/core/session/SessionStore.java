@@ -11,6 +11,12 @@ public interface SessionStore {
 
     List<AgentMessage> findMessages(String sessionId);
 
+    default AgentMessage findMessage(String sessionId, String messageId) {
+        for (AgentMessage m : findMessages(sessionId))
+            if (messageId.equals(m.getMessageId())) return m;
+        return null;
+    }
+
     default List<AgentMessage> findExecutionMessages(String sessionId) {
         return ConversationHistory.executionTail(findMessages(sessionId));
     }

@@ -6,7 +6,7 @@ Use this protocol to connect a custom application or language SDK to JAgentHarne
 
 Java tool contracts and protocol DTOs are provided by `io.github.differentialmanifold:jagent-api`. The JSON protocol remains independent of Java.
 
-Reference materials: [OpenAPI](openapi.json), [JSON Schema](schema.json), and [fixtures](fixtures/). The API prefix is `/api/v1`. The standard server requires `Authorization: Bearer <user-token>` for API clients. Browsers use a Runner-authorized session cookie; see [personal access](../docs/guides/access.md).
+Reference materials: [OpenAPI](openapi.json), [JSON Schema](schema.json), and [fixtures](fixtures/). The API prefix is `/api/v1`. The standard server requires `Authorization: Bearer <user-token>` for API clients. Browsers use individually revocable session cookies; business APIs return `503 MAINBOT_OFFLINE` while the user's mainbot Runner is offline, without signing the browser out; see [personal access](../docs/guides/access.md).
 
 The JSON files in `fixtures/` are protocol test samples: user messages, tool results, responses, stream events, runner registration, and polling. `schema.test.mjs` checks them against the JSON Schema during CI and release validation. They are not runtime configuration or installed tool implementations. Run `npm ci --prefix protocol` and `npm test --prefix protocol` from the repository root to validate them.
 
@@ -155,3 +155,9 @@ Registration also accepts optional `version` (Runner application version), `buil
 `GET /api/v1/access/identity` validates a User Token and returns its stable user ID. Runner registration uses this identity; clients cannot choose another owner. `POST /api/v1/access/browser` additionally requires `X-Runner-Id` and `X-Runner-Secret`, and issues a 60-second single-use ticket for an online Runner. A same-origin Console posts it to `/api/v1/access/exchange` with `X-JAgent-Console: 1` to obtain an HttpOnly cookie. `GET /api/v1/access/status` reports whether that browser session and Runner are still valid. `POST /api/v1/runners/{id}/disconnect` ends the Runner's online lease on clean shutdown.
 
 User credentials are issued by the deployment operator. There is no public user registration endpoint. Both HTTP and HTTPS work; remote HTTP is unencrypted and receives a warning. Long-lived tokens must not be included in URLs or frontend assets.
+
+## Browser devices
+
+`GET /api/v1/access/status` returns separate `authenticated` and `mainbotOnline` flags. Browser sessions last up to 30 days and survive Runner disconnection. Authenticated browsers can list `GET /api/v1/access/devices`, create a single-use 60-second ticket with `POST /api/v1/access/devices/link`, and revoke a session with `DELETE /api/v1/access/devices/{id}`. Device IDs are non-secret identifiers, not usable cookies. Access management remains available while mainbot is offline. These browser endpoints require the session cookie and same-origin mutation checks; Runner credentials continue to work independently of mainbot availability.
+
+A completed `ChatResponse` may include `attachmentIds` for images selected in the final answer. Each reference identifies a stored message and a one-based image index **in that session**. A Runner preserves these IDs on job completion; it does not resend image bytes in the completion receipt. Web clients display the final assistant message’s `images` from session history.

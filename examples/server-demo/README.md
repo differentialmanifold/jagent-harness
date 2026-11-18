@@ -16,7 +16,7 @@ For local source builds, run `mvn install` in the framework root first. From thi
 
 ```sh
 mvn package
-java -jar target/server-demo-2.3.0.jar
+java -jar target/server-demo-2.3.1.jar
 ```
 
 Provide `JAGENT_MODEL`, `JAGENT_OPENAI_BASE_URL`, and `JAGENT_OPENAI_API_KEY` as process environment variables. Direct JAR launches do not read the framework's `.env.local`.
@@ -34,3 +34,5 @@ SQLite is the only database dependency in this example. Its pool keeps five conn
 This host enables Personal Agents and includes the optional Feishu SDK. Follow the [Agent guide](../../docs/guides/agents.md) to try a goal, or the [Feishu guide](../../docs/guides/feishu.md) to connect a channel later.
 
 For feature flags, learning settings and storage requirements in your own host, see [Personal Agent settings](../../jagent-harness-sdk/README.md#personal-agent-settings). The demo is intended for one active server process per database application ID.
+
+For additional browsers or headless first access, see [device access and operator links](../../docs/guides/access.md#access-from-another-computer-or-phone).

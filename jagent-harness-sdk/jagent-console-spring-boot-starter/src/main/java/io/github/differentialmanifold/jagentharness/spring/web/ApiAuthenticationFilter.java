@@ -40,9 +40,11 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
             String path = req.getRequestURI();
             res.setHeader("Cache-Control", "no-store");
             if (path.equals("/api/v1/access/status")
+                    || path.equals("/api/v1/access/pair/start")
+                    || path.equals("/api/v1/access/pair/poll")
                     || path.equals("/api/v1/access/exchange")
                     || path.equals("/api/v1/health")) {
-                if (path.endsWith("/exchange") && !sameOrigin(req)) {
+                if ((path.endsWith("/exchange") || path.contains("/pair/")) && !sameOrigin(req)) {
                     reject(res, 403, "CSRF", "Cross-origin access is not allowed");
                     return;
                 }
@@ -73,6 +75,15 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
                 reject(res, 403, "CSRF", "Cross-origin access is not allowed");
                 return;
             }
+            boolean accessManagement = path.startsWith("/api/v1/access/");
+            if (browser != null && !accessManagement && !access.workspaceReady(user.userId)) {
+                reject(
+                        res,
+                        503,
+                        "MAINBOT_OFFLINE",
+                        "Waiting for mainbot: start its Runner to access your workspace");
+                return;
+            }
             final io.github.differentialmanifold.jagentharness.core.identity.UserStore.Access
                     session = browser;
             final String acceptedToken = bearer;
@@ -80,12 +91,16 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
                     () ->
                             session == null
                                     ? access.users.authenticate(acceptedToken) != null
-                                    : access.valid(session);
+                                    : access.valid(session)
+                                            && (accessManagement
+                                                    || access.workspaceReady(session.userId));
             req.setAttribute(UserAccessService.ATTRIBUTE, valid);
             try (io.github.differentialmanifold.jagentharness.core.identity.UserContext ignored =
                     io.github.differentialmanifold.jagentharness.core.identity.UserContext.enter(
                             user.userId)) {
-                chain.doFilter(req, new GuardedResponse(res, valid));
+                // Access management must be able to revoke the current session and return a
+                // response.
+                chain.doFilter(req, accessManagement ? res : new GuardedResponse(res, valid));
             }
             return;
         }

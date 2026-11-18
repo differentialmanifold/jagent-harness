@@ -14,12 +14,12 @@ Add these dependencies to a Spring Boot application:
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>2.3.0</version>
+  <version>2.3.1</version>
 </dependency>
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-store-jdbc</artifactId>
-  <version>2.3.0</version>
+  <version>2.3.1</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>
@@ -89,6 +89,8 @@ Project and execution services are shared by the Console and Personal Agents:
 - `core.runner.RunnerService`: registrations, claimed jobs, local tool results and execution observations. It uses Java futures and callbacks; HTTP SSE and long-poll responses are handled by the Console.
 
 `PersonalAgentProjects` calls these services directly and adds Agent-specific task and ownership checks. `ExecutionAutoConfiguration` assembles the same services without requiring Spring MVC. The Spring starter enables Personal Agents when storage and execution services are available, unless `harness.personal.enabled=false`. A plain Java host can construct these services and manage their lifecycle. No extra Maven module is required.
+
+mainbot's `harness` tool exposes explicit user-space management operations through `HarnessOperations`. Registrations live alongside the personal tools (`ModelManagement`, `AgentManagement`, `ProjectManagement`, `KnowledgeManagement`); they call the existing domain services directly. `describe` returns operation schemas on demand, and `execute` validates arguments and the mainbot conversation identity. The model does not receive HTTP credentials or stored model keys. When adding a Console feature, keep its business rules in the service, register the corresponding management operation, and test that both entries see the same state and preserve user isolation. Never register an arbitrary HTTP dispatcher or a deployment-administrator operation. See [supported management](../docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness).
 
 Frontend messages use `/api/v1/chat` regardless of execution target. Registered Runners advance claimed jobs through `/api/v1/runners/chat`, which verifies Runner credentials and assignment. External Agents delegate through the existing Personal Agent APIs using the [JAgent skill and bundled client](../skills/jagent/SKILL.md). Feishu remains an optional channel under `spring.channel.feishu`.
 

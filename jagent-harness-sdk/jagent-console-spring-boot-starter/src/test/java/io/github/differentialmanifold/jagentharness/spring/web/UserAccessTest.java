@@ -166,6 +166,47 @@ class UserAccessTest {
     }
 
     @Test
+    void onlyInitiatingBrowserCanRedeemRunnerApprovalOnce() throws Exception {
+        String token = token("Pairing user");
+        register(token);
+        String path = "/api/v1/access/pair/";
+        Map<String, String> console = mapStrings("X-JAgent-Console", "1");
+        assertEquals(403, call("POST", path + "start", null, null, map(), null).status);
+        Response start = call("POST", path + "start", null, null, map(), console);
+        assertEquals(200, start.status);
+        String code = start.body.get("code").asText(), claim = start.body.get("claim").asText();
+        assertFalse(
+                call("POST", path + "poll", null, null, map("claim", claim), console)
+                        .body
+                        .get("accepted")
+                        .asBoolean());
+        assertEquals(
+                401, call("POST", path + "approve", null, null, map("code", code), null).status);
+        apiWithSecret("POST", path + "info", token, map("code", code));
+        apiWithSecret("POST", path + "approve", token, map("code", code));
+        assertEquals(
+                410, call("POST", path + "poll", null, null, map("claim", code), console).status);
+        Response accepted = call("POST", path + "poll", null, null, map("claim", claim), console);
+        assertEquals(200, accepted.status);
+        assertTrue(accepted.cookie.contains("HttpOnly"));
+        assertEquals(
+                users.authenticate(token).userId,
+                call(
+                                "GET",
+                                "/api/v1/access/status",
+                                null,
+                                accepted.cookie.split(";")[0],
+                                null,
+                                null)
+                        .body
+                        .path("user")
+                        .path("userId")
+                        .asText());
+        assertEquals(
+                410, call("POST", path + "poll", null, null, map("claim", claim), console).status);
+    }
+
+    @Test
     void tokensIsolateDataAndBrowserAccessEndsOnDisconnectAndRevocation() throws Exception {
         String a = token("Alice"), b = token("Bob");
         register(a);
@@ -219,8 +260,8 @@ class UserAccessTest {
                         (req, res) -> fail("Cross-site mutation must not reach a controller"));
         assertEquals(403, denied.getStatus());
         apiWithSecret("POST", "/api/v1/runners/same_runner/disconnect", a, map());
-        assertEquals(401, call("GET", "/api/v1/personal/agents", null, cookie, null, null).status);
-        assertFalse(
+        assertEquals(503, call("GET", "/api/v1/personal/agents", null, cookie, null, null).status);
+        assertTrue(
                 call("GET", "/api/v1/access/status", null, cookie, null, null)
                         .body
                         .path("authenticated")
@@ -240,6 +281,215 @@ class UserAccessTest {
         assertEquals(
                 401, call("GET", "/api/v1/personal/agents", replacement, null, null, null).status);
         assertEquals(200, call("GET", "/api/v1/personal/agents", b, null, null, null).status);
+    }
+
+    @Test
+    void devicesShareMainbotAvailabilityAndCanBeRevokedIndependently() throws Exception {
+        String token = token("Devices");
+        register(token);
+        Map<String, String> secondary =
+                mapStrings(
+                        "X-Runner-Id",
+                        "secondary",
+                        "X-Runner-Secret",
+                        "another-runner-secret-long-enough");
+        assertEquals(
+                200,
+                call(
+                                "POST",
+                                "/api/v1/runners",
+                                token,
+                                null,
+                                map(
+                                        "runnerId",
+                                        "secondary",
+                                        "name",
+                                        "Other computer",
+                                        "tools",
+                                        Collections.singletonList(
+                                                map(
+                                                        "name",
+                                                        "read",
+                                                        "parameters",
+                                                        map("type", "object")))),
+                                secondary)
+                        .status);
+        String ticket =
+                call("POST", "/api/v1/access/browser", token, null, map(), secondary)
+                        .body
+                        .path("ticket")
+                        .asText();
+        Response first =
+                call(
+                        "POST",
+                        "/api/v1/access/exchange",
+                        null,
+                        null,
+                        map("ticket", ticket),
+                        mapStrings("X-JAgent-Console", "1"));
+        assertEquals(200, first.status);
+        String a = first.cookie.split(";")[0];
+        Response shared = call("POST", "/api/v1/access/devices/link", null, a, map(), null);
+        assertEquals(200, shared.status);
+        String link = shared.body.path("ticket").asText();
+        Response second =
+                call(
+                        "POST",
+                        "/api/v1/access/exchange",
+                        null,
+                        null,
+                        map("ticket", link),
+                        mapStrings("X-JAgent-Console", "1"));
+        assertEquals(200, second.status);
+        String b = second.cookie.split(";")[0];
+        assertNotEquals(a, b);
+        assertEquals(
+                401,
+                call(
+                                "POST",
+                                "/api/v1/access/exchange",
+                                null,
+                                null,
+                                map("ticket", link),
+                                mapStrings("X-JAgent-Console", "1"))
+                        .status);
+        assertEquals(
+                200,
+                call("POST", "/api/v1/runners/secondary/disconnect", token, null, map(), secondary)
+                        .status);
+        assertEquals(200, call("GET", "/api/v1/personal/agents", null, a, null, null).status);
+        assertEquals(200, call("GET", "/api/v1/personal/agents", null, b, null, null).status);
+        try (UserContext ignored = UserContext.enter(users.authenticate(token).userId)) {
+            PersonalAgentStore.Profile mainbot = agents.require("agent_mainbot");
+            mainbot.enabled = false;
+            agents.save(mainbot);
+        }
+        assertEquals(
+                200,
+                call("GET", "/api/v1/personal/agents", null, b, null, null).status,
+                "Pausing must not lock the user out");
+        apiWithSecret("POST", "/api/v1/runners/same_runner/disconnect", token, map());
+        for (String cookie : Arrays.asList(a, b)) {
+            Response status = call("GET", "/api/v1/access/status", null, cookie, null, null);
+            assertTrue(status.body.path("authenticated").asBoolean());
+            assertFalse(status.body.path("mainbotOnline").asBoolean());
+            Response locked = call("GET", "/api/v1/personal/agents", null, cookie, null, null);
+            assertEquals(503, locked.status);
+            assertEquals("MAINBOT_OFFLINE", locked.body.path("code").asText());
+        }
+        // Another Runner becoming online cannot unlock mainbot's workspace.
+        assertEquals(
+                200,
+                call(
+                                "POST",
+                                "/api/v1/runners",
+                                token,
+                                null,
+                                map(
+                                        "runnerId",
+                                        "secondary",
+                                        "name",
+                                        "Other computer",
+                                        "tools",
+                                        Collections.singletonList(
+                                                map(
+                                                        "name",
+                                                        "read",
+                                                        "parameters",
+                                                        map("type", "object")))),
+                                secondary)
+                        .status);
+        assertFalse(
+                call("GET", "/api/v1/access/status", null, b, null, null)
+                        .body
+                        .path("mainbotOnline")
+                        .asBoolean());
+        register(token);
+        assertEquals(200, call("GET", "/api/v1/personal/agents", null, b, null, null).status);
+        JsonNode devices = call("GET", "/api/v1/access/devices", null, a, null, null).body;
+        assertEquals(2, devices.size());
+        String other = null;
+        for (JsonNode device : devices)
+            if (!device.path("current").asBoolean()) other = device.path("id").asText();
+        assertNotNull(other);
+        assertFalse(devices.toString().contains("jhs_"));
+        // A different user cannot list or revoke this user's browser session.
+        String stranger = token("Stranger");
+        register(stranger);
+        String strangerCookie = browser(stranger);
+        assertEquals(
+                1,
+                call("GET", "/api/v1/access/devices", null, strangerCookie, null, null)
+                        .body
+                        .size());
+        assertEquals(
+                200,
+                call("DELETE", "/api/v1/access/devices/" + other, null, strangerCookie, null, null)
+                        .status);
+        assertEquals(200, call("GET", "/api/v1/personal/agents", null, b, null, null).status);
+        assertEquals(
+                200, call("DELETE", "/api/v1/access/devices/" + other, null, a, null, null).status);
+        assertEquals(401, call("GET", "/api/v1/personal/agents", null, b, null, null).status);
+        assertEquals(200, call("GET", "/api/v1/personal/agents", null, a, null, null).status);
+        String current =
+                call("GET", "/api/v1/access/devices", null, a, null, null)
+                        .body
+                        .get(0)
+                        .path("id")
+                        .asText();
+        assertEquals(
+                200,
+                call("DELETE", "/api/v1/access/devices/" + current, null, a, null, null).status);
+        assertFalse(
+                call("GET", "/api/v1/access/status", null, a, null, null)
+                        .body
+                        .path("authenticated")
+                        .asBoolean());
+    }
+
+    @Test
+    void operatorLinkAuthenticatesWithoutRunnerButCannotOpenWorkspace() throws Exception {
+        String token = token("Headless");
+        String user = users.authenticate(token).userId;
+        UserStore.Access ticket = users.createTicket(user, null);
+        Response response =
+                call(
+                        "POST",
+                        "/api/v1/access/exchange",
+                        null,
+                        null,
+                        map("ticket", ticket.secret),
+                        mapStrings("X-JAgent-Console", "1"));
+        assertEquals(200, response.status);
+        String cookie = response.cookie.split(";")[0];
+        assertTrue(
+                call("GET", "/api/v1/access/status", null, cookie, null, null)
+                        .body
+                        .path("authenticated")
+                        .asBoolean());
+        assertEquals(503, call("GET", "/api/v1/personal/agents", null, cookie, null, null).status);
+        register(token);
+        assertTrue(
+                call("GET", "/api/v1/access/status", null, cookie, null, null)
+                        .body
+                        .path("mainbotOnline")
+                        .asBoolean());
+        // Outstanding links and sessions must both be invalidated by a user-token reset.
+        UserStore.Access outstanding = users.createTicket(user, Credentials.hash(token));
+        users.issueToken(user);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> users.createTicket(user, Credentials.hash(token)));
+        assertEquals(
+                401,
+                call(
+                                "POST",
+                                "/api/v1/access/exchange",
+                                null,
+                                null,
+                                map("ticket", outstanding.secret),
+                                mapStrings("X-JAgent-Console", "1"))
+                        .status);
     }
 
     @Test
@@ -350,6 +600,10 @@ class UserAccessTest {
                 assertTrue(link.get().contains("#jagent-ticket=jht_"));
             } finally {
                 ra.close();
+                assertEquals(
+                        0,
+                        api("GET", "/api/v1/runners", a, null).get(0).path("lastSeen").asLong(),
+                        "close must notify the server before a JVM shutdown hook can return");
                 running.get(5, TimeUnit.SECONDS);
                 worker.shutdownNow();
             }

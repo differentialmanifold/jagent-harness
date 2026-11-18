@@ -20,15 +20,39 @@ Project and Agent defaults are separate. An Agent's private knowledge does not a
 
 In **System Settings → Models**, configure **Model**, **Base URL** and **API key**, matching the environment setup in Quick start. The initial model displays the values from `harness.model.*` and is editable like any other entry. Saving stores the configuration in the database; saved settings take priority on restart without rewriting environment variables. Keys are masked; leave the key blank to retain it. Save, then use **Test connection** to check connectivity.
 
-**More options** contains provider settings, context size, accepted input types and an optional capability description. These describe the model for people configuring and selecting it; the connection test does not verify those descriptions.
+**Image input** is visible with the main settings. **More options** contains provider settings, context size and an optional capability description. These describe the model for people configuring and selecting it; the connection test checks text connectivity, not image support.
 
-The model name beside **Send** shows the current default; click it to choose another model for the next run. An Agent is not permanently bound to a model. Neither Agents nor Projects have a model-selection tool or switch models autonomously. When you explicitly ask an Agent to use a model for project work or a delegation, it can pass that exact configured name or ID as `modelId` in `projects send` or `agents send`. The server resolves unique names and rejects unknown or ambiguous ones. Omission uses the system default, independently of the originating Agent's model. Runs keep their selected configuration across Runner exchanges.
+The model beside **Send** applies to the next run. Agents and Projects do not have a permanent model. For delegated work, an explicit configured name or ID takes priority; unknown or ambiguous names are rejected. Otherwise ordinary work uses the default. For visual inspection, the Harness uses the default if it supports images, or the first enabled image-capable model in the list. An explicit text-only selection or an empty vision catalog produces an error instead of silently substituting a model. Runs keep their selected configuration across Runner exchanges.
 
-Original image attachments stay in conversation history. A model that cannot accept them receives an attachment notice; selecting a capable model exposes the original images on the next model request. This is input adaptation, not an automatic model-routing rule. Current transport supports text and images; capability descriptions do not add new media transports or tools.
+A text-only model receives attachment references, not pixels. It can return an image or pass it to a Project session or another Agent for inspection. Original images selected for a final web reply remain in that conversation after the Runner disconnects.
 
 **System Settings → Runners** shows each terminal's purpose, platform, declared capabilities, tools and online state. Give Runners useful descriptions when starting or embedding them. These are discovery hints; projects must still verify installed software and permissions. An Agent is bound to one Runner when created, and its projects inherit that Runner. Existing Agents on other Runners can receive delegated work. Offline jobs wait for their Runner to reconnect; directory browsing requires an online Runner.
 
 Each user has a mainbot. The first authorized Runner binds to it; the all-in-one launcher also registers the source directory. For manual startup, select a Runner and set **JAgentHarness source directory on Runner** in mainbot’s General settings. Its built-in `jagent-help` and `runner-setup` Skills are scoped to its identity within the current user space; changing the primary Agent does not transfer them.
+
+## Ask mainbot to configure JAgentHarness
+
+You can ask mainbot to make supported Console changes directly. For example:
+
+> Add model `<provider-model-name>` as “Image reader”, using the same provider, endpoint and stored key as `<existing-model-name>`. Enable image input, keep my current default, and test the connection.
+
+Use actual model names and declare image support only for a model that supports it. mainbot can also update an Agent's instructions, rename a conversation, change a project's selected Runner tools, or install a text Skill in project or Agent defaults.
+
+mainbot's `harness` tool discovers operation schemas on demand and calls the same business services as Console. Available resources are:
+
+| Resource | Supported management |
+| --- | --- |
+| Models | List, add, edit, remove, set default, test text connectivity |
+| Agents | Profiles, primary selection, tools, task viewing, conversations, private knowledge and undo |
+| Projects | List/inspect sessions, create/rename/delete sessions, select Runner tools |
+| Runners | List terminals and browse directories |
+| Knowledge | Read/write/remove Instructions and text Skill files in project/default scopes |
+
+Changes stay inside the current user's space and appear through the existing Console interfaces. Other Agents and project conversations do not receive `harness`; they can delegate support requests to mainbot. It is listed under mainbot's **Configuration → Tools** and can be disabled there.
+
+Model edits preserve unrelated entries and use the same revision checks as the page. Existing keys can be reused server-side for the same provider and endpoint; they are never returned to the model. New keys should be entered in **Models**, not pasted into chat. A text connection test does not prove image support. Visual work never changes the default model.
+
+The supported operations are explicit, not a general HTTP proxy. MCP configuration, channel authorization, device access and ZIP upload still use their documented Console workflows. Execution and delegation continue through the existing `projects` and `agents` tools. Browser-only preferences are separate from server configuration.
 
 ## Instructions and virtual files
 

@@ -4,6 +4,12 @@ import java.util.List;
 
 public interface MessageRepository {
 
+    default AgentMessage findMessage(String sessionId, String messageId) {
+        for (AgentMessage m : findBySessionId(sessionId))
+            if (messageId.equals(m.getMessageId())) return m;
+        return null;
+    }
+
     default List<AgentMessage> findContextBySessionId(String sessionId) {
         return FailedTurn.context(findBySessionId(sessionId));
     }

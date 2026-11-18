@@ -354,3 +354,13 @@ create table if not exists harness_access (
  expires_at bigint not null,
  primary key(application_id,secret_hash)
 );
+
+create table if not exists harness_browser_pairs (
+ application_id varchar(128) not null,
+ code_hash varchar(64) not null,
+ claim_hash varchar(64) not null,
+ browser_label varchar(128) not null,
+ expires_at bigint not null,
+ primary key(application_id,code_hash),
+ unique(application_id,claim_hash)
+);

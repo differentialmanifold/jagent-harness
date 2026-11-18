@@ -32,6 +32,8 @@ class RunnerDistributionTest {
         for (byte b : MessageDigest.getInstance("SHA-256").digest(jar))
             hash.append(String.format("%02x", b & 255));
         info.put("sha256", hash.toString());
+        Files.write(directory.resolve("runner.zip"), jar);
+        info.put("archiveSha256", hash.toString());
         json.writeValue(directory.resolve("manifest.json").toFile(), info);
         ConsoleProperties properties = new ConsoleProperties();
         properties.setRunnerDistributionDirectory(temp.resolve("runners").toString());
@@ -55,6 +57,12 @@ class RunnerDistributionTest {
         http.perform(get(prefix + "runner.jar").header("Authorization", "Bearer test-token"))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(jar));
+        http.perform(get(prefix + "runner.zip").header("Authorization", "Bearer test-token"))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(jar));
+        Files.write(temp.resolve("runners/coding/runner.zip"), new byte[] {0});
+        http.perform(get(prefix + "runner.zip").header("Authorization", "Bearer test-token"))
+                .andExpect(status().isServiceUnavailable());
         http.perform(get(prefix + "config.json").header("Authorization", "Bearer test-token"))
                 .andExpect(status().isNotFound());
         http.perform(

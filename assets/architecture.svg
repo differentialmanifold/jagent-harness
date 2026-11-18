@@ -1,89 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="920" viewBox="0 0 1120 920" role="img" aria-labelledby="title description" xml:lang="en">
-  <title id="title">JAgentHarness: Agent planning, Project work, terminal execution</title>
-  <desc id="description">Users give a persistent Agent a goal through the Console or optional Feishu channel, or work directly in a Project. The Agent maintains tasks, dependencies and progress, guides Project sessions and reviews their evidence. Project results and scheduled checks wake it to update the plan. Both layers run their agent loops in the server Harness. A lightweight Runner executes native tools on the target terminal through outbound HTTP connections. Shared model and context services, server tools, conversation storage and virtual files support both layers.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="442" viewBox="0 0 1000 442" xml:lang="en" role="img" aria-labelledby="title desc">
+  <title id="title">mainbot, Project sessions and the Runner</title>
+  <desc id="desc">Chat with mainbot through the Console or Feishu. The Harness hosts both agent loops. mainbot tracks the goal, opens Project sessions and reviews their results. The Runner connects from the target machine and executes local tools.</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#526484"/></marker>
     <style>
-      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif; }
-      .brand { font-size: 23px; font-weight: 700; fill: #17243b; }
-      .label { font-size: 17px; font-weight: 700; fill: #526484; }
-      .heading { font-size: 30px; font-weight: 700; fill: #17243b; }
-      .entry { font-size: 25px; font-weight: 700; fill: #17243b; }
-      .section { font-size: 21px; font-weight: 700; fill: #263b59; }
-      .body { font-size: 18px; fill: #41536e; }
-      .small { font-size: 17px; fill: #526484; }
-      .flow { font-size: 17px; font-weight: 600; fill: #41536e; }
-      .arrow { fill: none; stroke: #526484; stroke-width: 2; marker-end: url(#arrow); }
-      .both { marker-start: url(#arrow); }
+      text {font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;fill:#23354a}
+      .head {font-size:24px;font-weight:700} .label {font-size:18px;font-weight:600} .body {font-size:17px}
+      .flow {font-size:16px;fill:#405570} .line {stroke:#526484;stroke-width:2;fill:none}
     </style>
   </defs>
-  <rect width="1120" height="920" rx="16" fill="#ffffff"/>
-  <text x="32" y="36" class="brand">JAgentHarness</text>
-  <text x="1088" y="36" class="body" text-anchor="end">Plan · Track · Execute · Verify</text>
+  <rect width="1000" height="442" rx="14" fill="#fff"/>
+  <rect x="18" y="58" width="964" height="275" rx="16" fill="#f7f9fc" stroke="#b9c9da"/>
+  <text x="950" y="84" text-anchor="end" class="label">Harness server</text>
+  <text x="210" y="29" text-anchor="middle" class="label">Web Console · optional Feishu</text>
+  <path d="M210 40V93" class="line"/>
+  <path d="M205 45L210 37L215 45ZM205 88L210 96L215 88Z" fill="#526484"/>
 
-  <!-- Delegate a goal, or work directly in a Project. -->
-  <rect x="48" y="60" width="408" height="90" rx="14" fill="#f5f1ff" stroke="#d7cbf0"/>
-  <rect x="664" y="60" width="408" height="90" rx="14" fill="#edf5ff" stroke="#bfd5f0"/>
-  <text x="252" y="98" class="entry" text-anchor="middle">Give an Agent a goal</text>
-  <text x="252" y="128" class="small" text-anchor="middle">Web Console · Optional Feishu</text>
-  <text x="868" y="98" class="entry" text-anchor="middle">Work directly in a Project</text>
-  <text x="868" y="128" class="small" text-anchor="middle">Web Console</text>
+  <rect x="42" y="98" width="348" height="147" rx="12" fill="#f4effc" stroke="#c6b4e3"/>
+  <text x="63" y="132" class="head">mainbot</text>
+  <text x="63" y="162" class="body">Your first personal Agent</text>
+  <text x="63" y="192" class="body">Plan and track tasks</text>
+  <text x="63" y="222" class="body">Review results and follow up</text>
 
-  <!-- Two logical layers share the cloud Harness. -->
-  <rect x="24" y="208" width="1072" height="438" rx="18" fill="#f7f9fc" stroke="#ccd6e4"/>
-  <text x="560" y="240" class="label" text-anchor="middle">CLOUD / BOTH AGENT LOOPS</text>
-  <path d="M 252 158 V 256" class="arrow both"/>
-  <path d="M 868 158 V 256" class="arrow both"/>
-  <text x="268" y="184" class="small">Goals / updates</text>
-  <text x="884" y="184" class="small">Messages / progress</text>
+  <path d="M397 148H601" class="line"/>
+  <path d="M594 143L604 148L594 153Z" fill="#526484"/>
+  <text x="500" y="135" text-anchor="middle" class="flow">Send work</text>
+  <path d="M603 202H399" class="line"/>
+  <path d="M406 197L396 202L406 207Z" fill="#526484"/>
+  <text x="500" y="226" text-anchor="middle" class="flow">Return results</text>
 
-  <rect x="48" y="264" width="408" height="256" rx="14" fill="#f5f1ff" stroke="#c4b2e8"/>
-  <text x="72" y="304" class="heading">Agent</text>
-  <text x="72" y="334" class="body">Plan the goal · Coordinate projects</text>
-  <rect x="72" y="352" width="360" height="80" rx="10" fill="#ffffff" stroke="#dfd5f2"/>
-  <text x="88" y="382" class="section">Task tracking</text>
-  <text x="88" y="410" class="small">Steps · Dependencies · Progress</text>
-  <text x="72" y="466" class="body">Review results · Adjust the plan</text>
-  <text x="72" y="496" class="small">Memory · Reusable Skills</text>
+  <rect x="610" y="98" width="348" height="147" rx="12" fill="#edf5ff" stroke="#abc7e8"/>
+  <text x="630" y="132" class="head">Project sessions</text>
+  <text x="630" y="162" class="body">A workspace and its selected tools</text>
+  <text x="630" y="192" class="body">Investigate, implement and verify</text>
+  <text x="630" y="222" class="body">Independent sessions can run in parallel</text>
 
-  <rect x="664" y="264" width="408" height="256" rx="14" fill="#edf5ff" stroke="#adc9ed"/>
-  <text x="688" y="304" class="heading">Project</text>
-  <text x="688" y="334" class="body">Investigate · Implement · Verify</text>
-  <rect x="688" y="352" width="360" height="80" rx="10" fill="#ffffff" stroke="#cdddf2"/>
-  <text x="704" y="382" class="section">Project sessions</text>
-  <text x="704" y="410" class="small">Real code · Tools · Test results</text>
-  <text x="688" y="466" class="body">Owned by you or an Agent</text>
-  <text x="688" y="496" class="small">Independent sessions can run in parallel</text>
-
-  <path d="M 464 372 H 656" class="arrow"/>
-  <text x="560" y="355" class="flow" text-anchor="middle">Goals / tasks</text>
-  <path d="M 656 462 H 464" class="arrow"/>
-  <text x="560" y="491" class="flow" text-anchor="middle">Results / evidence</text>
-
-  <rect x="48" y="536" width="1024" height="36" rx="9" fill="#eaeef7"/>
-  <text x="560" y="560" class="small" text-anchor="middle">Project results + scheduled checks → review evidence → update tasks → continue</text>
-
-  <!-- Shared infrastructure stays secondary to the two layers above. -->
-  <path d="M 48 590 H 1072" stroke="#dbe2ec"/>
-  <text x="48" y="620" class="label">Shared Harness</text>
-  <text x="194" y="620" class="small">Model calls · Context · Server tools</text>
-  <text x="650" y="620" class="label">Storage</text>
-  <text x="730" y="620" class="small">Conversations · Virtual files</text>
-
-  <!-- Native tools run outside the cloud; all connections originate at the Runner. -->
-  <path d="M 252 744 V 654" class="arrow"/>
-  <text x="268" y="688" class="flow">Outbound HTTP</text>
-  <text x="268" y="714" class="small">Poll · Chat · Results</text>
-  <path d="M 868 654 V 744" class="arrow"/>
-  <text x="884" y="688" class="flow">Tool calls</text>
-  <text x="884" y="714" class="small">in HTTP responses</text>
-
-  <rect x="24" y="752" width="1072" height="118" rx="18" fill="#edf9f4" stroke="#b4dbcc"/>
-  <text x="48" y="782" class="label">TERMINAL / NATIVE TOOL EXECUTION</text>
-  <text x="48" y="821" class="entry">Runner · Lightweight SDK</text>
-  <text x="48" y="852" class="body">Receive calls · Run local tools · Return results</text>
-  <path d="M 680 776 V 850" stroke="#c5e2d7"/>
-  <text x="710" y="805" class="section">Files · Shell · Device APIs</text>
-  <text x="710" y="837" class="small">Tool code stays on the terminal</text>
-  <text x="560" y="902" class="small" text-anchor="middle">The Runner connects outbound to the server; no inbound port is needed.</text>
+  <text x="43" y="270" class="label">Shared by both layers</text>
+  <text x="43" y="295" class="body">Model calls · Context · Server tools</text>
+  <text x="43" y="319" class="body">Database-backed conversations and virtual files</text>
+  <path d="M721 251V350" class="line"/>
+  <path d="M716 344L721 354L726 344Z" fill="#526484"/>
+  <text x="711" y="291" text-anchor="end" class="flow">Tool calls</text>
+  <path d="M842 350V251" class="line"/>
+  <path d="M837 257L842 247L847 257Z" fill="#526484"/>
+  <text x="854" y="291" class="flow">Results</text>
+  <rect x="18" y="357" width="964" height="70" rx="12" fill="#eaf7f0" stroke="#a9cfb9"/>
+  <text x="41" y="388" class="head">Runner on the target machine</text>
+  <text x="42" y="413" class="body">Local files · Shell · Device APIs</text>
+  <text x="955" y="399" text-anchor="end" class="body">Connects to the Harness over outbound HTTP</text>
 </svg>

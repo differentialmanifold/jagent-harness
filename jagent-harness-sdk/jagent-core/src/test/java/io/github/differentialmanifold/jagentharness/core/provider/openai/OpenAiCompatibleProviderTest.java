@@ -217,6 +217,29 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
+    void providesPixelsFromAnEarlierAssistantReplyOnACompatibleInputPart() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        RecordingHttpClient client = new RecordingHttpClient();
+        AgentMessage reply =
+                AgentMessage.assistant("s", "Here is the selected image", Collections.emptyList());
+        reply.setImages(
+                Collections.singletonList(
+                        new MessageImage(
+                                "capture.png", "image/png", "https://example.com/capture.png")));
+        ModelRequest request = request();
+        request.setMessages(
+                java.util.Arrays.asList(reply, AgentMessage.user("s", "Which colors?")));
+        new OpenAiCompatibleProvider(config(false), mapper, client).chat(request);
+        JsonNode messages = mapper.readTree(client.requestBodies.get(0)).get("messages");
+        assertEquals("assistant", messages.get(0).get("role").asText());
+        assertEquals("user", messages.get(1).get("role").asText());
+        assertEquals(
+                "https://example.com/capture.png",
+                messages.get(1).get("content").get(1).get("image_url").get("url").asText());
+        assertEquals("Which colors?", messages.get(2).get("content").asText());
+    }
+
+    @Test
     void supportsImageOnlyUserMessages() throws Exception {
         RecordingHttpClient httpClient = new RecordingHttpClient();
         ObjectMapper objectMapper = new ObjectMapper();

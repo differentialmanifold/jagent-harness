@@ -10,6 +10,7 @@ import io.github.differentialmanifold.jagentharness.core.event.AgentEvent;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
 import io.github.differentialmanifold.jagentharness.core.message.ConversationHistory;
+import io.github.differentialmanifold.jagentharness.core.message.ConversationImages;
 import io.github.differentialmanifold.jagentharness.core.message.FailedTurn;
 import io.github.differentialmanifold.jagentharness.core.message.MessageImage;
 import io.github.differentialmanifold.jagentharness.core.message.ToolOutcome;
@@ -162,6 +163,7 @@ public class AgentRunner implements AgentHarness {
         }
         List<ToolCall> pendingClientCalls = new ArrayList<ToolCall>();
         String answer = "";
+        List<String> answerAttachments = Collections.emptyList();
         int turnCount = 0;
         String firstTurnId = null;
         String currentTurnId = null;
@@ -284,6 +286,11 @@ public class AgentRunner implements AgentHarness {
                         promptProvider.buildSystemPrompt(new PromptContext(tools, toolContext));
                 if (selected != null) systemPrompt = modelCatalog.prompt(systemPrompt, selected);
                 List<AgentMessage> storedMessages = sessionStore.findContextMessages(sessionId);
+                boolean hasImages = ConversationImages.hasImages(storedMessages);
+                if (hasImages) {
+                    storedMessages = ConversationImages.label(storedMessages);
+                    systemPrompt += ConversationImages.REPLY_FORMAT;
+                }
                 if (selected != null)
                     storedMessages = modelCatalog.readableMessages(selected, storedMessages);
                 ConversationContext conversationContext =
@@ -307,8 +314,11 @@ public class AgentRunner implements AgentHarness {
                 request.setMessages(conversationContext.getMessages());
                 request.setTools(tools);
 
+                final ConversationImages.ReplyStream imageDelta =
+                        new ConversationImages.ReplyStream();
                 final int[] contentDeltaIndex = new int[] {0};
                 final int[] reasoningDeltaIndex = new int[] {0};
+
                 ModelResponse response =
                         new ModelCallRetryExecutor(runSettings, eventPublisher)
                                 .call(
@@ -317,13 +327,12 @@ public class AgentRunner implements AgentHarness {
                                         new ModelDeltaConsumer() {
                                             @Override
                                             public void onContentDelta(String delta) {
-                                                // A per-run decoder owns final text; never expose
-                                                // its
-                                                // envelope,
-                                                // including partial content on cancellation or
-                                                // retry.
                                                 if (effectiveOptions.getFinalAnswerMapper() != null)
                                                     return;
+                                                if (hasImages) {
+                                                    delta = imageDelta.accept(delta);
+                                                    if (delta == null) return;
+                                                }
                                                 partialAnswer.append(delta);
                                                 publishAssistantTextUpdate(
                                                         sessionId,
@@ -347,6 +356,7 @@ public class AgentRunner implements AgentHarness {
                                         new Runnable() {
                                             @Override
                                             public void run() {
+                                                imageDelta.reset();
                                                 partialAnswer.setLength(0);
                                                 partialReasoning.setLength(0);
                                                 contentDeltaIndex[0] = 0;
@@ -366,14 +376,24 @@ public class AgentRunner implements AgentHarness {
                                         && toolRegistry.isClientTool(call.getName(), toolContext));
                     }
                 }
-                if (effectiveOptions.getFinalAnswerMapper() != null
-                        && (response.getToolCalls() == null || response.getToolCalls().isEmpty())) {
-                    response.setContent(
-                            effectiveOptions.getFinalAnswerMapper().apply(response.getContent()));
-                }
                 AgentMessage assistantMessage =
                         AgentMessage.assistant(
                                 sessionId, response.getContent(), response.getToolCalls());
+                if (assistantMessage.getToolCalls().isEmpty()) {
+                    ConversationImages.applyReply(assistantMessage, sessionStore);
+                    if (effectiveOptions.getFinalAnswerMapper() != null
+                            && assistantMessage.getImages().isEmpty())
+                        assistantMessage.setContent(
+                                effectiveOptions
+                                        .getFinalAnswerMapper()
+                                        .apply(assistantMessage.getContent()));
+                    ConversationImages.ReplySelection selection =
+                            toolContext.getAttribute(
+                                    ConversationImages.ReplySelection.ATTRIBUTE,
+                                    ConversationImages.ReplySelection.class);
+                    if (selection != null) selection.apply(assistantMessage);
+                    answerAttachments = ConversationImages.ids(assistantMessage);
+                } else answerAttachments = Collections.emptyList();
                 assistantMessage.setReasoningContent(response.getReasoningContent());
                 assistantMessage.setRunId(runId);
                 assistantMessage.setTurnId(turnId);
@@ -398,7 +418,7 @@ public class AgentRunner implements AgentHarness {
                         response,
                         runSettings);
 
-                answer = response.getContent();
+                answer = assistantMessage.getContent();
                 boolean hasToolCalls =
                         response.getToolCalls() != null && !response.getToolCalls().isEmpty();
                 if (hasToolCalls) {
@@ -514,6 +534,7 @@ public class AgentRunner implements AgentHarness {
         result.setFirstTurnId(firstTurnId);
         result.setLastTurnId(currentTurnId);
         result.setAnswer(answer);
+        result.setAttachmentIds(answerAttachments);
         result.setTurnCount(turnCount);
 
         if (!pendingClientCalls.isEmpty()) {

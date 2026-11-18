@@ -49,9 +49,17 @@ public final class AgentsTool extends PersonalTool {
                         text("Goal, necessary context, constraints and acceptance checks."),
                         "taskId",
                         text("Optional owned task."),
+                        "attachmentIds",
+                        array(text("Image reference from this conversation.")),
+                        "requiresVision",
+                        json.createObjectNode()
+                                .put("type", "boolean")
+                                .put(
+                                        "description",
+                                        "Select an image-capable model for visual inspection, including images to be read on the Runner. Defaults to true when forwarding images; set false for delivery only."),
                         "modelId",
                         text(
-                                "Exact configured model ID or name explicitly requested by the user for this run. Otherwise omit for the system default. Do not choose a model autonomously.")),
+                                "Pass the exact model requested by the user. Otherwise omit: visual work uses an enabled image model; other work uses the default.")),
                 new String[] {},
                 "agentId",
                 "text");
@@ -92,7 +100,11 @@ public final class AgentsTool extends PersonalTool {
                         required(args, "text"),
                         args.path("taskId").asText(null),
                         context.getAttribute("personalReplyTo", ReplyTarget.class),
-                        args.path("modelId").asText(null));
+                        args.path("modelId").asText(null),
+                        io.github.differentialmanifold.jagentharness.core.message.ConversationImages
+                                .readIds(args.get("attachmentIds")),
+                        args.path("requiresVision")
+                                .asBoolean(args.path("attachmentIds").size() > 0));
             case "inspect":
                 return service.inspectDelegation(
                         id, required(args, "agentId"), required(args, "sessionId"));

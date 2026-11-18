@@ -8,9 +8,7 @@ Give your Agent a small development task and watch it create a project, run tool
 
 ## 1. Start and meet mainbot
 
-Follow [Quick start](../../QUICK_START.md) to start the server, Coding Runner, and Console. Open **http://127.0.0.1:5175**.
-
-Open **Agents → mainbot** and start chatting. The server creates it and its first conversation automatically. The all-in-one launcher binds the local Coding Runner and registers the source checkout. With manual startup, choose the Runner and optional source directory in mainbot's **Configuration → General & instructions**. No Feishu setup is required.
+Follow [Quick start](../../QUICK_START.md) and use the Console opened by your Runner. Select **Agents → mainbot → Chat**. The Harness creates mainbot and its first conversation for your user. Your first authenticated Runner becomes its execution environment. The all-in-one launcher also registers the matching source location for mainbot’s help with JAgentHarness.
 
 mainbot is the initial **primary Agent**. Its Runner is the default when you create another Agent. You can choose another entry point with **Set as primary** without moving existing projects, Runner bindings or mainbot's built-in Skills. Restarts preserve names, preferences, memory and conversations. **New Agent** remains available for another role or environment.
 
@@ -73,7 +71,13 @@ For work on another machine, start a Runner there with a useful description, for
 
 Use a real repository URL and branch. The Agent discovers Runner capabilities, reuses or creates a colleague and sends the goal asynchronously. The colleague has its own conversations, tasks and projects; its replies wake the originating Agent. Open that colleague in **Agents** to see its work. A tracked delegation stays waiting until its result is reviewed; an acknowledgement alone is not completion. Private memory and unrelated conversations are not shared. Files and paths are not copied between machines automatically.
 
-Use **System Settings → Models** to describe available model capabilities. Chats use the system default unless you select a model. Agents can pass a model you explicitly request when sending work; they do not choose or switch models themselves; see [Configuration](configuration.md#models-and-execution-environments).
+### Try it: return and describe a screenshot
+
+Enable **Image input** for a model that supports vision in **System Settings → Models**. Save a screenshot in a directory on your Coding Runner. In mainbot's web chat, send:
+
+> Open the project in `<directory>`. Use the actual pixels of `screen.png` to describe its layout and colors. Return the original screenshot here with the description.
+
+You should see a clickable image and a description in the same reply. Refresh the page to reopen the image from chat history. If an earlier Project report contained only a description, ask mainbot to attach the stored screenshot to this chat; the Runner need not be online again. mainbot can inspect an attached image directly, use the source Project, open a fresh Project session for an independent reading, or delegate to a colleague. The reader receives the image itself; it does not need the originating machine or OCR. Explicit model requests are honored. If there is no enabled vision model, mainbot can still deliver the image but should report that it could not inspect it. See [model selection](configuration.md#models-and-execution-environments).
 
 ## Ask mainbot about JAgentHarness
 
@@ -119,7 +123,7 @@ Replies from other Agents and background project events appear as expandable pro
 
 **Pause Agent** prevents new decisions and stops its current turn. Already submitted project jobs and external processes need to be inspected or stopped through their Projects. Each Agent runs one decision at a time; independent project work can proceed concurrently. For writes in the same workspace, Agent-dispatched work runs in sequence; this does not lock commands started manually outside that dispatch.
 
-The Agent has six management tools, with operations described directly in their schemas:
+Every Agent has six work tools, with operations described directly in their schemas:
 
 | Tool | Purpose |
 | --- | --- |
@@ -129,6 +133,8 @@ The Agent has six management tools, with operations described directly in their 
 | `memory` | Read and edit persistent preferences and facts |
 | `skills` | Discover and maintain private reusable methods |
 | `history` | Find evidence in older conversations and project work |
+
+mainbot also has `harness` for user-requested Console management: models, Agent settings, project sessions, Runner tool selection and virtual knowledge files. It discovers detailed operation schemas only when needed. For example, ask it to add an image-capable model using an existing connection while keeping the default unchanged. See [Manage configuration through mainbot](configuration.md#ask-mainbot-to-configure-jagentharness) for supported operations and credential handling. A visual task does not change the user’s default model.
 
 Core planning rules are always present; no Skill must be read to enable these tools. The Agent uses Project sessions to investigate files, execute changes and verify results. Its Runner selection does not give the Agent chat direct shell access.
 

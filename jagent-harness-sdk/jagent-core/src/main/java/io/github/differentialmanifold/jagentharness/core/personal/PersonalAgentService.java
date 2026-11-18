@@ -38,6 +38,30 @@ public class PersonalAgentService implements AutoCloseable {
         return models.resolveRequested(modelId);
     }
 
+    String workModel(String reference, boolean requiresVision) {
+        if (!requiresVision) return selectedModel(reference);
+        if (models == null)
+            throw new IllegalArgumentException(
+                    "Model catalog is unavailable for image recognition");
+        return models.visionModel(reference);
+    }
+
+    List<MessageImage> attachments(String session, List<String> ids) {
+        return ConversationImages.resolve(history, session, ids);
+    }
+
+    List<MessageImage> projectReplyImages(String session, String run, List<String> ids) {
+        return ConversationImages.resolve(
+                history,
+                session,
+                ids,
+                message ->
+                        run.equals(message.getRunId())
+                                && AgentMessage.ROLE_ASSISTANT.equals(message.getRole())
+                                && message.getToolCalls().isEmpty()
+                                && message.getStopReason() == null);
+    }
+
     public PersonalAgentService(
             PersonalAgentStore store,
             SessionRepository records,
@@ -418,8 +442,33 @@ public class PersonalAgentService implements AutoCloseable {
             String taskId,
             ReplyTarget returnTo,
             String modelId) {
-        modelId = selectedModel(modelId);
+        return sendToAgent(
+                from,
+                origin,
+                recipient,
+                session,
+                content,
+                taskId,
+                returnTo,
+                modelId,
+                Collections.emptyList(),
+                false);
+    }
+
+    synchronized Map<String, Object> sendToAgent(
+            String from,
+            String origin,
+            String recipient,
+            String session,
+            String content,
+            String taskId,
+            ReplyTarget returnTo,
+            String modelId,
+            List<String> ids,
+            boolean requiresVision) {
         Conversation source = conversation(from, origin);
+        List<MessageImage> images = attachments(origin, ids);
+        modelId = workModel(modelId, requiresVision);
         Profile target = require(recipient);
         if (!target.enabled) throw new IllegalArgumentException("Recipient Agent is paused");
         List<String> chain = new ArrayList<>(source.delegationChain);
@@ -472,6 +521,8 @@ public class PersonalAgentService implements AutoCloseable {
         m.source = "AGENT";
         m.modelId = modelId;
         m.senderId = from;
+        m.images = images;
+        m.requiresVision = requiresVision;
         m.text = text(content, "text", 32000);
         m.createdAt = System.currentTimeMillis();
         m.replyTo = new ReplyTarget("agent", from, origin);
@@ -549,6 +600,9 @@ public class PersonalAgentService implements AutoCloseable {
                 reply.sessionId = m.replyTo.recipientId;
                 reply.source = "AGENT_REPLY";
                 reply.senderId = m.agentId;
+                if ("DONE".equals(status)) {
+                    reply.images = attachments(m.sessionId, m.answerAttachmentIds);
+                }
                 reply.text =
                         "Reply from "
                                 + require(m.agentId).name
@@ -835,6 +889,32 @@ public class PersonalAgentService implements AutoCloseable {
             String taskId,
             boolean readOnly,
             String modelId) {
+        return submitProject(
+                agent,
+                conversation,
+                session,
+                text,
+                replyTo,
+                taskId,
+                readOnly,
+                modelId,
+                Collections.emptyList(),
+                false);
+    }
+
+    synchronized Inbox submitProject(
+            String agent,
+            String conversation,
+            String session,
+            String text,
+            ReplyTarget replyTo,
+            String taskId,
+            boolean readOnly,
+            String modelId,
+            List<String> ids,
+            boolean requiresVision) {
+        conversation(agent, conversation);
+        List<MessageImage> images = attachments(conversation, ids);
         return projects.submit(
                 agent,
                 conversation,
@@ -843,7 +923,9 @@ public class PersonalAgentService implements AutoCloseable {
                 replyTo,
                 taskId,
                 readOnly,
-                selectedModel(modelId));
+                workModel(modelId, requiresVision),
+                images,
+                requiresVision);
     }
 
     public synchronized Object steerProject(String agent, String session, String run, String text) {

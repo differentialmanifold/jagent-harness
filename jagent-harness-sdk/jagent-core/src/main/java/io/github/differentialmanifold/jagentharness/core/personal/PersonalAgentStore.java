@@ -46,6 +46,8 @@ public interface PersonalAgentStore {
         public List<io.github.differentialmanifold.jagentharness.core.message.MessageImage> images =
                 new ArrayList<>();
         public String status = "PENDING", answer = "", error = "";
+        public List<String> answerAttachmentIds = new ArrayList<>();
+        public boolean requiresVision;
         public String projectSessionId, projectRunId, projectModelId;
         public String taskId, taskRequirements, executionScope;
         public boolean readOnly, dispatchStarted;
