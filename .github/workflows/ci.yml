@@ -8,6 +8,16 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: jagent
+          POSTGRES_USER: jagent
+          POSTGRES_PASSWORD: ci-only
+        ports:
+          - 5432/tcp
+        options: --health-cmd "pg_isready -U jagent" --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -25,6 +35,34 @@ jobs:
       - run: node --check scripts/lib/launch.mjs && node --test scripts/lib/*.test.mjs && node scripts/dev.mjs --help
       - run: node --test skills/tests/*.test.mjs
       - run: mvn -B install
+      - name: Verify packaged host with PostgreSQL on Linux
+        env:
+          JAGENT_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:${{ job.services.postgres.ports['5432'] }}/jagent
+          JAGENT_DATASOURCE_USERNAME: jagent
+          JAGENT_DATASOURCE_PASSWORD: ci-only
+          JAGENT_MODEL: ci
+          JAGENT_OPENAI_BASE_URL: http://127.0.0.1:1/v1
+          JAGENT_STATE_DIR: ${{ runner.temp }}/harness-state
+        run: |
+          node scripts/start-server.mjs --skip-build &
+          launcher=$!
+          trap 'kill "$launcher" 2>/dev/null || true; wait "$launcher" || true' EXIT
+          curl -fsS --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:18181/api/v1/health
+          test -s "$JAGENT_STATE_DIR/data/user.env"
+          server=(examples/server-demo/target/server-demo-*.jar)
+          java -jar "${server[0]}" users create --name pg-ci --output "$RUNNER_TEMP/pg-user.env"
+          java -jar "${server[0]}" users list | grep -F pg-ci
+          test ! -e "$JAGENT_STATE_DIR/data/agent-server.db"
+      - name: Install and remove the Runner CLI on Linux
+        run: |
+          package="$RUNNER_TEMP/runner-package"
+          unzip -q examples/coding-runner/target/*-offline.zip -d "$package"
+          export JAGENT_INSTALL_DIR="$RUNNER_TEMP/installed runner"
+          sh "$package/scripts/install.sh"
+          "$JAGENT_INSTALL_DIR/bin/jagent" runner --help
+          if "$JAGENT_INSTALL_DIR/bin/jagent" server; then exit 1; fi
+          sh "$package/scripts/uninstall.sh"
+          test ! -e "$JAGENT_INSTALL_DIR/bin/jagent"
       - run: npm ci --prefix protocol && npm test --prefix protocol
       - run: npm ci --prefix console && npm test --prefix console && npm run build --prefix console
   coding-windows:

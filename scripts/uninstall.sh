@@ -16,12 +16,13 @@ fi
 
 # Older installers added this exact line before path-entries was recorded.
 line='export PATH="$HOME/.local/share/jagent/bin:$PATH"'
+guarded='case ":$PATH:" in *":$HOME/.local/share/jagent/bin:"*) ;; *) export PATH="$HOME/.local/share/jagent/bin:$PATH" ;; esac'
 remove_path() {
   rc=$1
-  if [ -f "$rc" ] && grep -Fqx "$line" "$rc"; then
+  if [ -f "$rc" ] && grep -Fqx -e "$line" -e "$guarded" "$rc"; then
     temp=$(mktemp "$base/.uninstall.XXXXXXXX")
     trap 'rm -f "$temp"' EXIT
-    awk -v entry="$line" '$0 != entry' "$rc" > "$temp"
+    awk -v entry="$line" -v guarded="$guarded" '$0 != entry && $0 != guarded' "$rc" > "$temp"
     cat "$temp" > "$rc"
     rm -f "$temp"
     trap - EXIT
@@ -32,7 +33,7 @@ if [ "$base" = "$HOME/.local/share/jagent" ]; then
   if [ -f "$base/path-entries" ]; then
     while IFS= read -r rc; do remove_path "$rc"; done < "$base/path-entries"
   else
-    for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do remove_path "$rc"; done
+    for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do remove_path "$rc"; done
   fi
 fi
 

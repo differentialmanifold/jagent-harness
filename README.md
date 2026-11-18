@@ -26,6 +26,8 @@ Project results and scheduled checks bring mainbot back to a task while the Harn
 
 Look for the path and the remaining item in **Chat**. Open **Projects** within mainbot to see the file operations. Then ask in the same chat, “Mark the release notes complete and check the file again.” mainbot can return to that workspace. For a multi-step example, see the [personal Agent guide](docs/guides/agents.md).
 
+On a headless Linux host, use the per-user CLI from a service account. SQLite works out of the box; the same server package can connect to PostgreSQL. [Linux installation](QUICK_START.md#linux-servers-and-existing-services) · [Database settings](QUICK_START.md#choose-a-database)
+
 ## Other ways to use mainbot
 
 - **Ask about your installation.** With the all-in-one launcher, mainbot can inspect the bundled source or checkout through a Project. It can also manage supported settings, such as adding a model or installing a Skill. [Configuration](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)

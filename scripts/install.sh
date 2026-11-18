@@ -35,26 +35,37 @@ if [ -d "$slot/build" ]; then rm -rf "$slot/build"; fi
 if [ ! -f "$base/current" ] && [ ! -e "$base/path-entries" ]; then : > "$base/path-entries"; fi
 mv "$slot/current" "$base/current"
 trap - EXIT
+plain='export PATH="$HOME/.local/share/jagent/bin:$PATH"'
+line=$plain
+add_path() {
+  rc=$1
+  if ! grep -Fqx -e "$plain" -e "$line" "$rc" 2>/dev/null; then
+    printf '\n%s\n' "$line" >> "$rc"
+    if [ -f "$base/path-entries" ]; then printf '%s\n' "$rc" >> "$base/path-entries"; fi
+  fi
+}
 case ":$PATH:" in
   *":$base/bin:"*) ;;
   *)
     if [ -z "${JAGENT_INSTALL_DIR:-}" ]; then
       login_shell=${SHELL:-sh}
       case "${login_shell##*/}" in
-        zsh) rc="${ZDOTDIR:-$HOME}/.zshrc";;
-        bash) rc="$HOME/.bashrc"; if [ "$(uname -s)" = Darwin ]; then rc="$HOME/.bash_profile"; fi;;
-        sh|dash|ksh) rc="$HOME/.profile";;
-        *) rc="";;
+        zsh) add_path "${ZDOTDIR:-$HOME}/.zshrc" ;;
+        bash)
+          if [ "$(uname -s)" = Darwin ]; then
+            add_path "$HOME/.bash_profile"
+          else
+            # A Linux Bash login may source .bashrc, or skip it entirely.
+            line='case ":$PATH:" in *":$HOME/.local/share/jagent/bin:"*) ;; *) export PATH="$HOME/.local/share/jagent/bin:$PATH" ;; esac'
+            add_path "$HOME/.bashrc"
+            for rc in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+              if [ -f "$rc" ] || [ "$rc" = "$HOME/.profile" ]; then add_path "$rc"; break; fi
+            done
+          fi ;;
+        sh|dash|ksh) add_path "$HOME/.profile" ;;
       esac
-      line='export PATH="$HOME/.local/share/jagent/bin:$PATH"'
-      if [ -n "$rc" ]; then
-        if ! grep -Fqx "$line" "$rc" 2>/dev/null; then
-          printf '\n%s\n' "$line" >> "$rc"
-          if [ -f "$base/path-entries" ]; then printf '%s\n' "$rc" >> "$base/path-entries"; fi
-        fi
-        echo "Open a new terminal to use jagent."
-      fi
     fi
-    echo "Command directory: $base/bin (add it to PATH for other shells).";;
+    echo "Open a new terminal, or add $base/bin to PATH for your shell." ;;
 esac
 echo "Installed: $base/bin/jagent"
+echo "For SSH automation or systemd, use this path and set PATH for Java (and Node.js for the server)."

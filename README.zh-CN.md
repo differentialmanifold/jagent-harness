@@ -26,6 +26,8 @@ JAgentHarness 为每位用户提供一个 **mainbot**。它是可以长期对话
 
 在 **Chat** 里看文件路径和待办项，在 mainbot 的 **Projects** 里看实际读写过程。然后在原对话里说：“把发布说明也勾上，再检查一次文件。”mainbot 可以回到同一工作目录继续。想看它如何跟进更长的任务，可以接着做[个人 Agent 示例](docs/guides/agents.zh-CN.md)。
 
+Linux 无桌面部署可以使用服务账户安装命令，在其他设备打开网页配对。默认使用 SQLite，同一服务端安装包也可以连接 PostgreSQL。[Linux 安装](QUICK_START.md#linux-servers-and-existing-services) · [数据库配置](QUICK_START.md#choose-a-database)
+
 ## 还能怎样使用 mainbot
 
 - **询问或配置 JAgentHarness。** 一键启动会为 mainbot 登记配套源码。你可以让它通过 Project 查代码解释运行原理，也可以让它添加模型、安装 Skill 等。[配置指南](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
