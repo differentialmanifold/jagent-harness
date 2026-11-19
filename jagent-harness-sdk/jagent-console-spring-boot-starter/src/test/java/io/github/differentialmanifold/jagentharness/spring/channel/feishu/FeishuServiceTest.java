@@ -49,7 +49,13 @@ class FeishuServiceTest {
                             Inbox m = call.getArgument(0);
                             return accepted.putIfAbsent(m.id, m) == null;
                         });
+        when(store.message(anyString())).thenAnswer(call -> accepted.get(call.getArgument(0)));
         when(channel.connect()).thenReturn(CompletableFuture.completedFuture(null));
+        when(channel.addReaction(anyString(), eq("Typing")))
+                .thenAnswer(call ->
+                        CompletableFuture.completedFuture("reaction-" + call.getArgument(0)));
+        when(channel.removeReaction(anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(null));
         doAnswer(
                         call -> {
                             handlers.put(call.getArgument(0), call.getArgument(1));
@@ -95,12 +101,7 @@ class FeishuServiceTest {
                         options -> {
                             throw new AssertionError();
                         })) {
-            FeishuService.Configuration config = new FeishuService.Configuration();
-            config.appId = "app";
-            config.appSecret = "secret";
-            config.ownerId = "ou_owner";
-            config.sessionId = "conversation";
-            service.connect("a", config);
+            connectPaired(service);
             handlers.get("message").handle(message("input", "ou_owner", "p2p", "Do the work"));
             Inbox input = accepted.values().iterator().next();
             assertEquals("app", input.replyTo.accountId);
@@ -132,7 +133,74 @@ class FeishuServiceTest {
             assertNotNull(wrongOwner.deliveryError);
             service.deliver();
             verify(channel, times(2)).send(anyString(), any(SendInput.class));
+            verify(channel).removeReaction("input", "reaction-input");
         }
+    }
+
+    @Test
+    void tracksEachMessageUntilItsOwnTurnEndsEvenWhenFeishuAcknowledgesLate() throws Exception {
+        try (FeishuService service = fixture(null)) {
+            connectPaired(service);
+            CompletableFuture<String> firstReaction = new CompletableFuture<>();
+            when(channel.addReaction("first", "Typing")).thenReturn(firstReaction);
+            handlers.get("message").handle(message("first", "ou_owner", "p2p", "First"));
+            Inbox first = accepted.values().iterator().next();
+            handlers.get("message").handle(message("second", "ou_owner", "p2p", "Second"));
+            Inbox second = accepted.values().stream().filter(m -> m != first).findFirst().get();
+            first.status = "RUNNING";
+            service.deliver();
+            verify(channel, never()).removeReaction(anyString(), anyString());
+
+            first.status = "FAILED";
+            first.error = "Model unavailable";
+            when(store.inbox("FAILED")).thenReturn(Collections.singletonList(first));
+            when(channel.send(anyString(), any(SendInput.class)))
+                    .thenReturn(CompletableFuture.completedFuture(null));
+            service.deliver();
+            assertTrue(first.delivered);
+            firstReaction.complete("first-reaction");
+            verify(channel).removeReaction("first", "first-reaction");
+            verify(channel, never()).removeReaction(eq("second"), anyString());
+
+            // Deleting the queued chat also ends its indicator.
+            accepted.remove(second.id);
+            service.deliver();
+            verify(channel).removeReaction("second", "reaction-second");
+        }
+    }
+
+    @Test
+    void missingReactionPermissionStillDeliversTheFinalReply() throws Exception {
+        try (FeishuService service = fixture(null)) {
+            connectPaired(service);
+            CompletableFuture<String> denied = new CompletableFuture<>();
+            denied.completeExceptionally(new IllegalStateException("Permission denied"));
+            when(channel.addReaction("input", "Typing")).thenReturn(denied);
+            handlers.get("message").handle(message("input", "ou_owner", "p2p", "Hello"));
+            Inbox input = accepted.values().iterator().next();
+            assertEquals("CONNECTED", service.status("a").get("status"));
+            assertTrue(
+                    service.status("a").get("reactionWarning").toString()
+                            .contains("im:message.reactions:write_only"));
+            input.status = "DONE";
+            input.answer = "Hi";
+            when(store.inbox("DONE")).thenReturn(Collections.singletonList(input));
+            when(channel.send(anyString(), any(SendInput.class)))
+                    .thenReturn(CompletableFuture.completedFuture(null));
+            service.deliver();
+            verify(channel).send(eq("ou_owner"), any(SendInput.class));
+            verify(channel, never()).removeReaction(anyString(), anyString());
+            assertTrue(input.delivered);
+        }
+    }
+
+    private void connectPaired(FeishuService service) {
+        FeishuService.Configuration config = new FeishuService.Configuration();
+        config.appId = "app";
+        config.appSecret = "secret";
+        config.ownerId = "ou_owner";
+        config.sessionId = "conversation";
+        service.connect("a", config);
     }
 
     private Inbox reply(String source, String answer, ReplyTarget target) {
@@ -193,11 +261,14 @@ class FeishuServiceTest {
                     .handle(message("outsider", "ou_other", "p2p", "not authorized"));
             assertTrue(accepted.isEmpty());
             NormalizedMessage input = message("one", "ou_owner", "p2p", "Plan an experiment");
+            verify(channel, never()).addReaction(anyString(), anyString());
             handlers.get("message").handle(input);
             handlers.get("message").handle(input);
+            verify(channel).addReaction("one", "Typing");
             assertEquals(1, accepted.size());
             assertEquals("FEISHU", accepted.values().iterator().next().source);
             service.disconnect("a");
+            verify(channel).removeReaction("one", "reaction-one");
             assertNotNull(saved);
             assertFalse(json.readTree(saved).path("enabled").asBoolean(true));
             assertEquals("DISCONNECTED", service.status("a").get("status"));
@@ -230,6 +301,9 @@ class FeishuServiceTest {
                         options -> {
                             registrations.incrementAndGet();
                             assertNotNull(options.getAddons());
+                            assertTrue(
+                                    options.getAddons().getScopes().getTenant()
+                                            .contains("im:message.reactions:write_only"));
                             options.getOnQRCode()
                                     .accept(
                                             new QRCodeInfo(

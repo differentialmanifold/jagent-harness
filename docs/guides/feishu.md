@@ -14,11 +14,13 @@ Feishu is an optional channel for the same Agent you use in the Console. Create 
 
 ### Use an existing app
 
-Expand **Use an existing app** and enter its App ID and App Secret. Enable bot capability, long-connection delivery for `im.message.receive_v1`, and permissions `im:message:send_as_bot` and `im:message.p2p_msg:readonly`; publish the app. Send the Console's pairing code to the bot to associate your account. Other senders and group chats are ignored.
+Expand **Use an existing app** and enter its App ID and App Secret. Enable bot capability and long-connection delivery for `im.message.receive_v1`. Grant `im:message:send_as_bot` and `im:message.p2p_msg:readonly` for messaging, and `im:message.reactions:write_only` for the processing indicator. Publish the app, then send the Console's pairing code to the bot. Other senders and group chats are ignored.
 
 No public webhook URL is required. The server uses the official Java SDK's outbound WebSocket connection. The [server host settings](../../jagent-harness-sdk/README.md#personal-agent-settings) describe the optional dependency.
 
 ## Messages and background work
+
+When the Agent accepts your message, a typing reaction appears beneath it in Feishu. It stays while the message is queued or being processed and clears when that turn finishes. If replies arrive without the indicator, check **Configuration → Channels**. For a previously connected bot, grant the reaction permission and publish the updated Feishu app.
 
 Feishu messages and final replies appear in the same conversation on the web. Detailed tool calls stay in the web Console. Text and rich-text direct messages are supported; images and files are not passed to the model.
 

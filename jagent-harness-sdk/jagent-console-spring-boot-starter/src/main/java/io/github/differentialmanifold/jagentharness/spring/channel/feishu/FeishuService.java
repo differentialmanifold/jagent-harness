@@ -14,6 +14,8 @@ import java.util.concurrent.*;
 
 /** Optional Feishu DM channel. Credentials never enter tools, prompts, or public responses. */
 public class FeishuService implements AutoCloseable {
+    private static final String REACTION_SCOPE = "im:message.reactions:write_only";
+
     public static class Configuration {
         public String appId, appSecret, ownerId, sessionId;
         public String brand = "feishu";
@@ -22,6 +24,8 @@ public class FeishuService implements AutoCloseable {
 
     private static class Connection {
         volatile String status = "CONNECTING", error = "", url, pairCode;
+        volatile boolean reactionUnavailable;
+        final Map<String, CompletableFuture<Void>> processing = new ConcurrentHashMap<>();
         volatile long expiresAt;
         volatile LarkChannel channel;
         volatile Configuration configuration;
@@ -134,7 +138,8 @@ public class FeishuService implements AutoCloseable {
                                                                                 .preset(false)
                                                                                 .tenantScopes(
                                                                                         "im:message:send_as_bot",
-                                                                                        "im:message.p2p_msg:readonly")
+                                                                                        "im:message.p2p_msg:readonly",
+                                                                                        REACTION_SCOPE)
                                                                                 .tenantEvents(
                                                                                         "im.message.receive_v1")
                                                                                 .build())
@@ -286,12 +291,12 @@ public class FeishuService implements AutoCloseable {
         if (!Arrays.asList("text", "post").contains(m.getRawContentType())
                 || m.getContent() == null
                 || m.getContent().trim().isEmpty()) return;
+        Inbox input = new Inbox();
         synchronized (agents) {
             if (config.sessionId == null || store.conversation(config.sessionId) == null) {
                 config.sessionId = agents.newConversation(agent, "Feishu").sessionId;
                 persist(agent, config);
             }
-            Inbox input = new Inbox();
             input.id = "feishu_" + PersonalAgentSupport.hash(config.appId + ":" + m.getMessageId());
             input.agentId = agent;
             input.sessionId = config.sessionId;
@@ -300,8 +305,38 @@ public class FeishuService implements AutoCloseable {
             input.replyTo = new ReplyTarget("feishu", config.appId, m.getSenderId());
             input.text = PersonalAgentSupport.bounded(m.getContent(), 32000);
             input.createdAt = System.currentTimeMillis();
-            store.enqueue(input);
+            if (!store.enqueue(input)) return;
         }
+        indicateProcessing(c, input.id, m.getMessageId());
+    }
+
+    private void indicateProcessing(Connection c, String inboxId, String messageId) {
+        CompletableFuture<Void> finished = new CompletableFuture<>();
+        c.processing.put(inboxId, finished);
+        c.channel.addReaction(messageId, "Typing")
+                .thenCompose(
+                        reactionId -> {
+                            c.reactionUnavailable = false;
+                            // The turn may finish before Feishu returns the reaction ID.
+                            return finished.thenCompose(
+                                    ignored -> c.channel.removeReaction(messageId, reactionId));
+                        })
+                .whenComplete(
+                        (ignored, error) -> {
+                            if (error != null) c.reactionUnavailable = true;
+                            c.processing.remove(inboxId, finished);
+                        });
+    }
+
+    private void finishCompletedReactions() {
+        for (Connection c : connections.get().values())
+            c.processing.forEach(
+                    (id, finished) -> {
+                        if (finished.isDone()) return;
+                        Inbox m = store.message(id);
+                        if (m == null || "DONE".equals(m.status) || "FAILED".equals(m.status))
+                            finished.complete(null);
+                    });
     }
 
     private void persist(String agent, Configuration config) {
@@ -323,6 +358,11 @@ public class FeishuService implements AutoCloseable {
         out.put("status", c == null ? "DISCONNECTED" : c.status);
         if (c != null) {
             out.put("error", c.error);
+            if (c.reactionUnavailable)
+                out.put(
+                        "reactionWarning",
+                        "Could not update the processing indicator. Check the connection and the published app's "
+                                + REACTION_SCOPE + " permission.");
             out.put("authorizationUrl", c.url);
             out.put("expiresAt", c.expiresAt);
             out.put("pairCode", c.pairCode);
@@ -375,14 +415,18 @@ public class FeishuService implements AutoCloseable {
 
     private void closeConnection(String agent) {
         Connection old = connections.get().remove(agent);
-        if (old != null) {
-            if (old.registration != null) old.registration.cancel(true);
-            if (old.channel != null) old.channel.disconnect();
-        }
+        if (old != null) closeConnection(old);
+    }
+
+    private void closeConnection(Connection c) {
+        if (c.registration != null) c.registration.cancel(true);
+        c.processing.values().forEach(finished -> finished.complete(null));
+        if (c.channel != null) c.channel.disconnect();
     }
 
     void deliver() {
         try {
+            finishCompletedReactions();
             List<Inbox> pending = new ArrayList<>(store.inbox("DONE"));
             pending.addAll(store.inbox("FAILED"));
             for (Inbox m : pending) {
@@ -439,10 +483,7 @@ public class FeishuService implements AutoCloseable {
 
     public synchronized void close() {
         for (java.util.Map<String, Connection> map : connections.all())
-            for (Connection c : map.values()) {
-                if (c.registration != null) c.registration.cancel(true);
-                if (c.channel != null) c.channel.disconnect();
-            }
+            for (Connection c : map.values()) closeConnection(c);
         connections.get().clear();
         setups.shutdownNow();
         delivery.shutdownNow();
