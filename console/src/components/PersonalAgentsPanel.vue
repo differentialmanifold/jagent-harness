@@ -342,6 +342,9 @@
                     <p v-if="feishu.error" class="personal-error">
                       {{ feishu.error }}
                     </p>
+                    <p v-if="feishu.reactionWarning" class="personal-muted">
+                      {{ feishu.reactionWarning }}
+                    </p>
                     <div v-if="qrImage" class="personal-qr">
                       <img
                         :src="qrImage"
@@ -416,10 +419,10 @@
                       <p>
                         Enable the bot, subscribe to
                         <code>im.message.receive_v1</code> using a long
-                        connection, grant
-                        <code>im:message:send_as_bot</code> and
-                        <code>im:message.p2p_msg:readonly</code>, then publish
-                        the app. No public webhook address is needed.
+                        connection, and grant <code>im:message:send_as_bot</code>
+                        and <code>im:message.p2p_msg:readonly</code>. Add
+                        <code>im:message.reactions:write_only</code> for the
+                        processing indicator, then publish the app.
                       </p>
                       <el-form
                         label-position="top"
