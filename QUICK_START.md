@@ -118,7 +118,7 @@ Use three terminals with the repository root as the working directory. Direct Ja
 export JAGENT_MODEL='your-model-name'
 export JAGENT_OPENAI_BASE_URL='https://your-provider.example/v1'
 export JAGENT_OPENAI_API_KEY='your-api-key'
-java -jar examples/server-demo/target/server-demo-2.3.1.jar
+java -jar examples/server-demo/target/server-demo-2.3.2.jar
 ```
 
 **2. Web Console**
@@ -130,7 +130,7 @@ npm --prefix console run dev
 **3. Coding Runner** — it reads the server-generated `data/user.env` and opens your browser.
 
 ```sh
-java -jar examples/coding-runner/target/jagent-coding-runner-2.3.1.jar
+java -jar examples/coding-runner/target/jagent-coding-runner-2.3.2.jar
 ```
 
 In IntelliJ IDEA, import the root `pom.xml` and use the repository root as the working directory. Run `ServerDemoApplication.main()` with the model environment variables, start the web Console as above, then run `RunnerMain.main()` with no arguments. For source-based help with a manual launch, select the checkout in **mainbot → Configuration → General & instructions**.

@@ -8,11 +8,11 @@
   </parent>
   <groupId>com.example</groupId>
   <artifactId>server-demo</artifactId>
-  <version>2.3.1</version>
+  <version>2.3.2</version>
   <name>JAgentHarness server demo</name>
   <properties>
     <java.version>8</java.version>
-    <jagent.version>2.3.1</jagent.version>
+    <jagent.version>2.3.2</jagent.version>
     <postgresql.version>42.7.14</postgresql.version>
     <maven.deploy.skip>true</maven.deploy.skip>
   </properties>

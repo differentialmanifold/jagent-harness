@@ -15,8 +15,8 @@ For separate processes, start the server, frontend, then Runner. In IDEA, use th
 Run these commands **on the Harness host**, from the same working directory and with the same database configuration as the server. They do not start a web server or Agent execution loops.
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.3.1.jar users create --name Alice --output alice.env
-java -jar examples/server-demo/target/server-demo-2.3.1.jar users list
+java -jar examples/server-demo/target/server-demo-2.3.2.jar users create --name Alice --output alice.env
+java -jar examples/server-demo/target/server-demo-2.3.2.jar users list
 ```
 
 With the prebuilt application, replace the JAR path with `server/server.jar`. For SQLite, point `JAGENT_DATASOURCE_URL` at the same database file as the running Harness. For PostgreSQL, export the same JDBC URL, username, password and any custom application ID in this shell. Direct JAR commands read the process environment. [Database settings](../../QUICK_START.md#choose-a-database)
@@ -30,7 +30,7 @@ Host the Console and `/api/` under one public origin. Forward `/api/` to the Har
 On the user's computer:
 
 ```sh
-java -jar jagent-coding-runner-2.3.1.jar \
+java -jar jagent-coding-runner-2.3.2.jar \
   --server http://harness.example.com \
   --credentials /path/to/alice.env
 ```
@@ -81,7 +81,7 @@ Use the **same API origin** the Runner registered against and the **same state r
 An operator can generate a link on the Harness host, using the same database configuration as the running server:
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.3.1.jar users link \
+java -jar examples/server-demo/target/server-demo-2.3.2.jar users link \
   --id usr_example --console https://harness.example.com --output console-link.txt
 ```
 
@@ -98,8 +98,8 @@ Pending results are saved before exit. Restart with the same state directory and
 ## Reset or revoke access
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.3.1.jar users reset --id usr_example --output replacement.env
-java -jar examples/server-demo/target/server-demo-2.3.1.jar users revoke --id usr_example
+java -jar examples/server-demo/target/server-demo-2.3.2.jar users reset --id usr_example --output replacement.env
+java -jar examples/server-demo/target/server-demo-2.3.2.jar users revoke --id usr_example
 ```
 
 Use the actual ID from `users list`; the automatically created local user's ID is `local`. Resetting preserves data, invalidates the previous token and browser sessions, and re-enables a revoked user. Update every Runner using that token. Revocation prevents further authenticated access; it does not delete the user's data. If `data/user.env` is lost, reset `local` explicitly. Startup never silently replaces an existing credential.

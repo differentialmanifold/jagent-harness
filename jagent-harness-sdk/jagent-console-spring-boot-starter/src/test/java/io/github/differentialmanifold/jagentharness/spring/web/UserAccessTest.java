@@ -272,15 +272,46 @@ class UserAccessTest {
         assertEquals(401, call("GET", "/api/v1/personal/agents", a, null, null, null).status);
         assertEquals(401, call("GET", "/api/v1/personal/agents", null, cookie, null, null).status);
         assertEquals(
-                "Alice mainbot",
-                api("GET", "/api/v1/personal/agents", replacement, null)
+                ses,
+                api("GET", "/api/v1/personal/agents/agent_mainbot/conversations", replacement, null)
                         .get(0)
-                        .path("name")
+                        .path("sessionId")
                         .asText());
+        assertEquals(
+                403, call("GET", "/api/v1/personal/agents", replacement, null, null, null).status);
+        assertEquals(
+                403,
+                call(
+                                "POST",
+                                "/api/v1/personal/agents",
+                                replacement,
+                                null,
+                                map("name", "Helper"),
+                                null)
+                        .status);
+        assertEquals(
+                403,
+                call(
+                                "GET",
+                                "/api/v1/personal/agents/another/conversations",
+                                replacement,
+                                null,
+                                null,
+                                null)
+                        .status);
         users.revoke(aId);
         assertEquals(
                 401, call("GET", "/api/v1/personal/agents", replacement, null, null, null).status);
-        assertEquals(200, call("GET", "/api/v1/personal/agents", b, null, null, null).status);
+        assertEquals(
+                200,
+                call(
+                                "GET",
+                                "/api/v1/personal/agents/agent_mainbot/conversations",
+                                b,
+                                null,
+                                null,
+                                null)
+                        .status);
     }
 
     @Test
