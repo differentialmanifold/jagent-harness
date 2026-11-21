@@ -10,9 +10,7 @@
 
 按[快速启动](../../QUICK_START.md)运行程序，使用 Runner 自动打开的网页，进入 **Agents → mainbot → Chat**。Harness 会为当前用户创建 mainbot 和第一个会话，第一个通过认证的 Runner 成为它的执行环境。一键启动还会登记对应的源码目录，方便 mainbot 回答 JAgentHarness 自身的问题。
 
-mainbot 默认成为 **主 Agent（Primary Agent）**，用户创建其他 Agent 时默认使用它的 Runner。可以通过 **Set as primary** 更换聊天入口，不会迁移项目、Runner 绑定或 mainbot 的内置 Skill。重启保留名称、偏好、记忆和会话。需要其他角色或环境时仍可使用 **New Agent**。
-
-日常直接和主 Agent 聊天即可。它可以通过自己的 Project 执行，也可以发现并委托其他 Agent，跟踪任务、检查结果后回到这里汇报。其他 Agent 仍可通过下拉框访问。Agent 自主创建助手时仍默认使用自己的 Runner，需要其他环境时显式指定 Runner ID。
+控制台默认打开 mainbot。把目标告诉它，需要专门角色或指定机器时也一起说明。mainbot 可以通过自己的 Project 执行，也可以复用已有 Agent，或在目标 Runner 上创建 Agent。它会跟进任务，在原对话里汇报结果。你可以通过下拉框查看其他 Agent 的工作。
 
 ## 2. 发一条消息
 
@@ -86,7 +84,7 @@ Agent 应先通过 Project 查看现有实现，再决定怎么改。可以观�
 | 工具 | 用途 |
 | --- | --- |
 | `projects` | 查找或打开对应项目，检查、发送要求、调整和停止工作 |
-| `agents` | 发现 Agent 和 Runner、创建 Agent、委托工作和查看回复 |
+| `agents` | 发现 Agent 和 Runner、委托工作和查看回复。mainbot 还可以创建 Agent |
 | `tasks` | 追踪计划、依赖、验收依据和一次性检查 |
 | `memory` | 读取和编辑长期偏好与事实 |
 | `skills` | 发现和维护自己的可复用方法 |
@@ -130,7 +128,7 @@ Agent 在创建时绑定一个 Runner，创建项目时自动使用它。其他�
 
 mainbot 会加载 `jagent-help`，读取登记的源码位置和版本，通过普通 Project 查询。后续复用该源码项目，不同问题可使用独立会话。一键源码启动使用当前仓库；预构建运行包携带对应的源码快照。本地未提交修改可能与运行中的 JAR 不一致，mainbot 需要核对证据。改完源码不代表已经部署修复。
 
-这两份内置 Skill 仅出现在 mainbot 的 **Configuration → Skills** 中，不受改名或切换主 Agent 影响。其他 Agent 可通过现有 `agents` 工具向 mainbot 求助，手机 Runner 无需获取源码。
+这两份内置 Skill 仅出现在 mainbot 的 **Configuration → Skills** 中，改名后仍然可用。其他 Agent 可通过现有 `agents` 工具向 mainbot 求助，手机 Runner 无需获取源码。
 
 ## 让 JAgent 准备一台 SSH 机器
 

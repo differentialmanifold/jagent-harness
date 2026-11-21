@@ -28,7 +28,7 @@ A text-only model receives attachment references, not pixels. It can return an i
 
 **System Settings → Runners** shows each terminal's purpose, platform, declared capabilities, tools and online state. Give Runners useful descriptions when starting or embedding them. These are discovery hints; projects must still verify installed software and permissions. An Agent is bound to one Runner when created, and its projects inherit that Runner. Existing Agents on other Runners can receive delegated work. Offline jobs wait for their Runner to reconnect; directory browsing requires an online Runner.
 
-Each user has a mainbot. The first authorized Runner binds to it; the all-in-one launcher also registers the source directory. For manual startup, select a Runner and set **JAgentHarness source directory on Runner** in mainbot’s General settings. Its built-in `jagent-help` and `runner-setup` Skills are scoped to its identity within the current user space; changing the primary Agent does not transfer them.
+Each user has a mainbot. The first authorized Runner binds to it; the all-in-one launcher also registers the source directory. For manual startup, select a Runner and set **JAgentHarness source directory on Runner** in mainbot’s General settings. Its built-in `jagent-help` and `runner-setup` Skills are scoped to its identity within the current user space.
 
 ## Ask mainbot to configure JAgentHarness
 
@@ -43,7 +43,7 @@ mainbot's `harness` tool discovers operation schemas on demand and calls the sam
 | Resource | Supported management |
 | --- | --- |
 | Models | List, add, edit, remove, set default, test text connectivity |
-| Agents | Profiles, primary selection, tools, task viewing, conversations, private knowledge and undo |
+| Agents | Profiles, tools, task viewing, conversations, private knowledge and undo |
 | Projects | List/inspect sessions, create/rename/delete sessions, select Runner tools |
 | Runners | List terminals and browse directories |
 | Knowledge | Read/write/remove Instructions and text Skill files in project/default scopes |
@@ -96,9 +96,9 @@ There is no fixed limit on conversation turns. Within recent tool history, if th
 
 This check covers both server tools and Runner results across requests. Successful calls, changed arguments or results, and new user instructions reset the streak. It does not stop successful polling or detect every possible cycle. JDBC storage retains the full history while loading recent messages for this check and messages after the compaction cursor for model context.
 
-## Primary Agent and Runner
+## mainbot’s Runner
 
-In an Agent's **Configuration → General & instructions**, choose **Set as primary**. Its bound Runner becomes the default for user-created Agents and is marked **Primary Runner** in **System Settings → Runners**. The first new Agent with a Runner is selected automatically. Existing installations can choose a primary Agent explicitly. Switching the primary does not move projects or rebind any Agent. Agents creating their own colleagues continue to inherit the creator's Runner unless they explicitly select another one.
+**System Settings → Runners** marks the Runner bound to mainbot. Ask mainbot for another Agent when you need a separate role. It can share its own Runner or create the Agent on another registered Runner for work on a different machine.
 
 ## Offline Runner packages
 

@@ -67,70 +67,6 @@ class PersonalAgentIntegrationTest {
 
     @Autowired io.github.differentialmanifold.jagentharness.core.model.ModelCatalog modelCatalog;
 
-    @Autowired
-    io.github.differentialmanifold.jagentharness.spring.web.personal.PersonalAgentController
-            personalController;
-
-    @Test
-    void primaryDefaultsPersistWhilePeerCreationKeepsItsOwnEnvironment() throws Exception {
-        String original = store.primaryAgentId();
-        List<Profile> created = new ArrayList<>();
-        for (String name : Arrays.asList("Primary machine", "Other machine")) {
-            RunnerInfo runner = new RunnerInfo();
-            runner.runnerId = "runner_" + UUID.randomUUID().toString().replace("-", "");
-            runner.name = name;
-            ToolDescriptor tool = new ToolDescriptor();
-            tool.name = "read";
-            tool.parameters.put("type", "object");
-            runner.tools.add(tool);
-            runners.register(runner, "a-test-secret-long-enough-for-registration");
-            Profile p = new Profile();
-            p.name = name;
-            p.runnerId = runner.runnerId;
-            created.add(service.save(p));
-        }
-        Profile primary = created.get(0), other = created.get(1);
-        try {
-            service.selectPrimaryAgent(primary.id, store.primaryAgentId());
-            assertEquals(primary.runnerId, personalController.defaults().get("primaryRunnerId"));
-            Profile humanCreated = new Profile();
-            humanCreated.name = "User's assistant";
-            personalController.save(humanCreated);
-            assertEquals(primary.runnerId, humanCreated.runnerId);
-            Conversation c = service.newConversation(other.id, "Create a colleague");
-            ToolContext context =
-                    new ToolContext(
-                            c.sessionId,
-                            "run",
-                            "turn",
-                            null,
-                            Collections.singletonMap("personalAgentId", other.id));
-            JsonNode peer =
-                    json.readTree(
-                            tools.get("agents", context)
-                                    .execute(
-                                            context,
-                                            json.createObjectNode()
-                                                    .put("action", "create")
-                                                    .put("name", "Local colleague")
-                                                    .put("description", "Same environment"))
-                                    .getContent());
-            assertEquals(other.runnerId, peer.path("runnerId").asText());
-            service.selectPrimaryAgent(other.id, primary.id);
-            assertEquals(other.runnerId, personalController.defaults().get("primaryRunnerId"));
-            assertEquals(primary.runnerId, store.profile(humanCreated.id).runnerId);
-            assertEquals(primary.runnerId, store.profile(primary.id).runnerId);
-            assertThrows(
-                    PersonalAgentException.class,
-                    () -> service.selectPrimaryAgent(primary.id, primary.id));
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () -> service.selectPrimaryAgent(profile("Unbound").id, other.id));
-        } finally {
-            if (original != null) store.setPrimaryAgentId(original, store.primaryAgentId());
-        }
-    }
-
     @Test
     void noModelToolsAreExposedAndProjectsUseUserRequestedNamesOrDefault() throws Exception {
         Profile p = profile("Model planner");
@@ -574,9 +510,8 @@ class PersonalAgentIntegrationTest {
     }
 
     @Test
-    void
-            internalAgentCanReuseItsRunnerOrBindANewlyRegisteredMachineWithoutSharingProjectDirectories()
-                    throws Exception {
+    void mainbotCanReuseItsRunnerOrBindANewlyRegisteredMachineWithoutSharingProjectDirectories()
+            throws Exception {
         RunnerInfo local = new RunnerInfo();
         local.runnerId = "test_" + UUID.randomUUID().toString().replace("-", "");
         local.name = "Controller terminal";
@@ -587,10 +522,8 @@ class PersonalAgentIntegrationTest {
         read.parameters.put("type", "object");
         local.tools.add(read);
         runners.register(local, "test-secret-that-is-long-enough-for-registration");
-        Profile coordinator = new Profile();
-        coordinator.name = "Coordinator";
-        coordinator.runnerId = local.runnerId;
-        service.save(coordinator);
+        service.bindMainbotIfUnbound(local.runnerId);
+        Profile coordinator = service.require(PersonalAgentService.MAINBOT_ID);
         Conversation conversation = service.newConversation(coordinator.id, "Prepare environment");
         ToolContext context =
                 new ToolContext(
@@ -624,6 +557,30 @@ class PersonalAgentIntegrationTest {
         String colleague = created.path("agentId").asText();
         assertNotEquals(coordinator.id, colleague);
         assertEquals(local.runnerId, created.path("runnerId").asText());
+        Conversation peerChat = service.newConversation(colleague, "Build");
+        ToolContext peerContext =
+                new ToolContext(
+                        peerChat.sessionId,
+                        "build",
+                        "turn",
+                        null,
+                        Collections.singletonMap("personalAgentId", colleague));
+        ToolDefinition peerTools = tools.get("agents", peerContext);
+        assertFalse(
+                peerTools
+                        .getParametersSchema()
+                        .at("/properties/action/enum")
+                        .toString()
+                        .contains("\"create\""));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        peerTools.execute(
+                                peerContext,
+                                json.createObjectNode()
+                                        .put("action", "create")
+                                        .put("name", "Nested")
+                                        .put("description", "Nested role")));
         SessionRecord ownProject =
                 service.createProjectSession(coordinator.id, new CreateSessionRequest());
         SessionRecord colleagueProject =
@@ -678,31 +635,22 @@ class PersonalAgentIntegrationTest {
     }
 
     @Test
-    void externalAgentCanCreateThenSubmitReadProgressAndPageHistory() throws Exception {
+    void externalAgentSubmitsToMainbotAndReadsProgressAndHistory() throws Exception {
         io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient api =
                 new io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient(
                         "http://127.0.0.1:" + port, "test-token");
-        RunnerInfo runner = new RunnerInfo();
-        runner.runnerId = "test_" + UUID.randomUUID().toString().replace("-", "");
-        runner.name = "External delegation terminal";
-        ToolDescriptor tool = new ToolDescriptor();
-        tool.name = "read";
-        tool.parameters.put("type", "object");
-        runner.tools.add(tool);
-        runners.register(runner, "test-secret-that-is-long-enough-for-registration");
-        JsonNode available = api.management("GET", "/api/v1/runners", null);
-        assertTrue(available.findValuesAsText("runnerId").contains(runner.runnerId));
-        Map<String, String> create = new LinkedHashMap<>();
-        create.put("name", "External delegation");
-        create.put("runnerId", runner.runnerId);
-        create.put("instructions", "Verify results before reporting success.");
-        Profile profile =
-                json.treeToValue(
-                        api.management("POST", "/api/v1/personal/agents", create), Profile.class);
-        assertNotNull(profile.id);
-        assertTrue(profile.enabled);
-        assertEquals(runner.runnerId, service.require(profile.id).runnerId);
-        assertEquals(create.get("instructions"), service.require(profile.id).instructions);
+        assertEquals(
+                400,
+                assertThrows(
+                                io.github.differentialmanifold.jagentharness.client
+                                        .AgentHttpException.class,
+                                () ->
+                                        api.management(
+                                                "POST",
+                                                "/api/v1/personal/agents",
+                                                Collections.singletonMap("name", "Another Agent")))
+                        .status);
+        Profile profile = service.require(PersonalAgentService.MAINBOT_ID);
         Conversation chat =
                 json.treeToValue(
                         api.management(

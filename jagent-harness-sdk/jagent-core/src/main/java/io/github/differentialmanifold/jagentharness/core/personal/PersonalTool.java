@@ -79,6 +79,10 @@ abstract class PersonalTool implements ToolDefinition {
         return true;
     }
 
+    boolean supportsAction(Profile profile, String action) {
+        return true;
+    }
+
     boolean supports(Profile profile) {
         return true;
     }
@@ -86,7 +90,8 @@ abstract class PersonalTool implements ToolDefinition {
     final ToolDefinition forProfile(Profile profile) {
         if (!supports(profile)) return null;
         Set<String> allowed = new LinkedHashSet<>();
-        for (String action : actions.keySet()) if (enabled(profile, action)) allowed.add(action);
+        for (String action : actions.keySet())
+            if (supportsAction(profile, action) && enabled(profile, action)) allowed.add(action);
         if (allowed.isEmpty()) return null;
         JsonNode schema = schema(allowed);
         return new ToolDefinition() {
@@ -113,11 +118,13 @@ abstract class PersonalTool implements ToolDefinition {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name);
         out.put("description", description);
-        out.put("parametersSchema", getParametersSchema());
+        Set<String> supported = new LinkedHashSet<>();
         out.put("enabled", profile.disabledTools == null || !profile.disabledTools.contains(name));
         List<Map<String, Object>> rows = new ArrayList<>();
         actions.forEach(
                 (key, action) -> {
+                    if (!supportsAction(profile, key)) return;
+                    supported.add(key);
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", key);
                     row.put("description", action.description);
@@ -127,6 +134,7 @@ abstract class PersonalTool implements ToolDefinition {
                     row.put("disabledKeys", keys);
                     rows.add(row);
                 });
+        out.put("parametersSchema", schema(supported));
         out.put("actions", rows);
         return out;
     }
@@ -181,6 +189,8 @@ abstract class PersonalTool implements ToolDefinition {
         if (contract == null)
             throw new IllegalArgumentException(
                     "Unknown action; choose " + String.join(", ", actions.keySet()));
+        if (!supportsAction(p, action))
+            throw new IllegalArgumentException("This operation is not available to this Agent");
         if (!enabled(p, action)) throw new IllegalArgumentException("This operation is disabled");
         validate(args, contract);
         context.getStopSignal().throwIfAborted();

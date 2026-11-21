@@ -38,7 +38,7 @@ class MainbotTest {
         Profile p = service.require(id);
         assertEquals("mainbot", p.name);
         assertNull(p.runnerId);
-        assertEquals(id, service.defaults().get("primaryAgentId"));
+        assertEquals(id, service.defaults().get("mainbotAgentId"));
         assertEquals(1, store.conversations(id).size());
         String chat = store.conversations(id).get(0).sessionId;
         assertThrows(
@@ -89,9 +89,9 @@ class MainbotTest {
         ordinary.runnerId = "runner_coding";
         ordinary = service.save(ordinary);
         assertTrue(knowledge.availableSkills(ordinary.id).isEmpty());
-        service.selectPrimaryAgent(ordinary.id, id);
         service.initializeMainbot();
-        assertEquals(ordinary.id, service.defaults().get("primaryAgentId"));
+        assertEquals(id, service.defaults().get("mainbotAgentId"));
+        assertEquals("runner_coding", service.defaults().get("mainbotRunnerId"));
         assertEquals(3, knowledge.availableSkills(id).size());
         assertEquals(1, store.conversations(id).size());
         TestHttpClient api = new TestHttpClient("http://127.0.0.1:" + port, "test-token");

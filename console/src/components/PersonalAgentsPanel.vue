@@ -3,17 +3,16 @@
     <aside class="personal-directory">
       <div class="personal-heading">
         <h2>Agents</h2>
-        <el-button size="small" @click="createOpen = true">New Agent</el-button>
       </div>
       <div class="personal-agent-select">
         <el-select :model-value="selectedId" aria-label="Agent" placeholder="Choose an Agent" :disabled="busy" filterable @change="chooseAgent">
           <el-option v-for="agent in orderedAgents" :key="agent.id" :value="agent.id" :label="agent.name">
-            <span>{{ agent.name }}</span><span class="agent-option-state">{{ agent.id === defaults.primaryAgentId ? 'Primary · ' : '' }}{{ agent.enabled ? 'Active' : 'Paused' }}</span>
+            <span>{{ agent.name }}</span><span class="agent-option-state">{{ agent.enabled ? 'Active' : 'Paused' }}</span>
           </el-option>
         </el-select>
       </div>
-      <el-button v-if="defaults.primaryAgentId && selectedId !== defaults.primaryAgentId"
-        class="primary-agent-link" text @click="chooseAgent(defaults.primaryAgentId)">Back to primary Agent</el-button>
+      <el-button v-if="mainbotId && selectedId !== mainbotId"
+        class="mainbot-link" text @click="chooseAgent(mainbotId)">Back to mainbot</el-button>
       <div v-if="selected" class="personal-conversations">
         <el-button :disabled="busy" @click="newChat">New chat</el-button>
         <div
@@ -50,7 +49,7 @@
       </div>
       <el-empty
         v-if="!agents.length && !loading"
-        description="Create your first assistant."
+        description="Waiting for mainbot."
         :image-size="70"
       />
     </aside>
@@ -58,12 +57,12 @@
       <p v-if="error" class="personal-error" role="alert">{{ error }}</p>
       <el-empty
         v-if="!selected"
-        description="Choose an Agent or create one to get started."
+        description="Waiting for an Agent to open."
       />
       <template v-else>
         <div class="personal-heading">
           <div>
-            <h2>{{ selected.name }} <el-tag v-if="selectedId === defaults.primaryAgentId" size="small" effect="plain">Primary Agent</el-tag></h2>
+            <h2>{{ selected.name }}</h2>
           </div>
           <el-button :loading="busy" @click="togglePause">{{
             selected.enabled ? "Pause Agent" : "Resume Agent"
@@ -75,7 +74,7 @@
           :before-leave="beforeTabLeave"
         >
           <el-tab-pane label="Chat" name="chat">
-            <el-alert v-if="selectedId === defaults.mainbotAgentId && !selected.runnerId"
+            <el-alert v-if="selectedId === mainbotId && !selected.runnerId"
               title="mainbot is ready to chat. Start the all-in-one launcher or select a Runner in Configuration to enable project work."
               type="info" :closable="false" show-icon />
             <div class="personal-chat-layout">
@@ -208,12 +207,6 @@
             </p>
             <el-tabs v-model="configTab" :before-leave="beforeConfigTabLeave">
               <el-tab-pane label="General & instructions" name="general">
-                <div class="primary-agent-setting">
-                  <div><strong>{{ selectedId === defaults.primaryAgentId ? 'Your primary Agent' : 'Primary Agent' }}</strong>
-                    <p class="personal-muted">The default chat entry point. Its bound Runner is the default for Agents you create. Existing Agents and projects keep their bindings.</p></div>
-                  <el-button v-if="selectedId !== defaults.primaryAgentId" :disabled="!selected.runnerId" :loading="busy" @click="makePrimary">Set as primary</el-button>
-                  <el-tag v-else effect="plain">Selected</el-tag>
-                </div>
                 <el-form
                   v-if="profile"
                   label-position="top"
@@ -245,7 +238,7 @@
                       </option>
                     </select>
                   </el-form-item>
-                  <el-form-item v-if="selectedId === defaults.mainbotAgentId" label="JAgentHarness source directory on Runner">
+                  <el-form-item v-if="selectedId === mainbotId" label="JAgentHarness source directory on Runner">
                     <el-input v-model="profile.sourceWorkspace" placeholder="Prepared automatically by the launcher; optional for manual setup" />
                     <p class="personal-muted">Used by jagent-help through an ordinary Project. The directory must exist on the bound Runner.</p>
                   </el-form-item>
@@ -475,56 +468,6 @@
       @submit="saveChatTitle"
       @close="renaming = null"
     />
-    <el-dialog
-      v-model="createOpen"
-      title="New personal Agent"
-      width="min(520px, 94vw)"
-    >
-      <el-form label-position="top"
-        ><el-form-item label="Name"
-          ><el-input
-            v-model="newProfile.name"
-            maxlength="128"
-            placeholder="Developer" /></el-form-item
-        ><el-form-item label="Purpose (optional)"><el-input v-model="newProfile.description" type="textarea" :rows="2" maxlength="4000" placeholder="What this Agent helps with; visible to other Agents" /></el-form-item><el-form-item label="Bound Runner">
-          <el-select
-            v-model="newProfile.runnerId"
-            placeholder="Choose a Runner"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="runner in runners"
-              :key="runner.runnerId"
-              :value="runner.runnerId"
-              :label="
-                runner.name + (runner.online ? ' · Online' : ' · Offline')
-              "
-              :title="runner.description || runner.platform"
-            />
-          </el-select>
-          <p class="personal-muted">
-            Choose where this Agent's projects execute tools. Project
-            directories are created automatically. Your primary Runner is selected by default.
-            mainbot is created automatically as the initial primary Agent.
-          </p> </el-form-item
-        ><el-form-item label="Instructions (optional)"
-          ><el-input
-            v-model="newProfile.instructions"
-            type="textarea"
-            :rows="4"
-            placeholder="What should this Agent help you with?" /></el-form-item
-      ></el-form>
-      <template #footer
-        ><el-button @click="createOpen = false">Cancel</el-button
-        ><el-button
-          type="primary"
-          :loading="busy"
-          :disabled="!newProfile.name.trim() || !newProfile.runnerId"
-          @click="createAgent"
-          >Create Agent</el-button
-        ></template
-      >
-    </el-dialog>
   </section>
 </template>
 
@@ -690,8 +633,8 @@ const chatStatus = computed(() =>
 const displayMessages = computed(() => activeConversation.value
   ? personalChatMessages(timeline.value, messages.value, agents.value)
   : []);
-const defaults = ref({ primaryAgentId: null, primaryRunnerId: null });
-const orderedAgents = computed(() => [...agents.value].sort((a, b) => Number(b.id === defaults.value.primaryAgentId) - Number(a.id === defaults.value.primaryAgentId)));
+const mainbotId = ref("");
+const orderedAgents = computed(() => [...agents.value].sort((a, b) => Number(b.id === mainbotId.value) - Number(a.id === mainbotId.value)));
 const agents = ref([]),
   selectedId = ref(""),
   conversations = ref([]),
@@ -735,14 +678,6 @@ const projectGroups = computed(() => {
 function openProject(id) {
   emit("open-project", id, selectedId.value);
 }
-const createOpen = ref(false),
-  newProfile = ref({ name: "", description: "", instructions: "", runnerId: "" });
-watch(createOpen, (open) => {
-  if (open) newProfile.value = {
-    name: "", description: "", instructions: "",
-    runnerId: defaults.value.primaryRunnerId || runners.value.find((r) => r.online)?.runnerId || "",
-  };
-});
 const feishu = ref({ available: false }),
   credentials = ref({ appId: "", appSecret: "", brand: "feishu" }),
   qrImage = ref("");
@@ -772,7 +707,7 @@ async function refresh() {
   polling = true;
   try {
     const [profiles, preferences] = await Promise.all([request(base + "/agents"), request(base + "/defaults")]);
-    defaults.value = preferences;
+    mainbotId.value = preferences.mainbotAgentId;
     agents.value = profiles;
     if (selectedId.value && !profiles.some((p) => p.id === selectedId.value)) {
       stopObserving();
@@ -783,7 +718,8 @@ async function refresh() {
       profile.value = null;
     }
     runners.value = await request("/api/v1/runners").catch(() => []);
-    if (!selectedId.value && profiles.length) await selectAgent(profiles.find(p => p.id === preferences.primaryAgentId) || profiles[0]);
+    const mainbot = profiles.find(p => p.id === mainbotId.value);
+    if (!selectedId.value && mainbot) await selectAgent(mainbot);
     else if (
       selected.value &&
       profile.value &&
@@ -826,9 +762,8 @@ async function openDelegation(agentId, conversationId) {
   await selectAgent(agent);
   if (selectedId.value === agentId) await openAgentConversation(conversationId);
 }
-async function selectAgent(agent, force = false) {
-  if (busy.value && !force) return;
-  if (!force && !(await beforeLeave())) return;
+async function selectAgent(agent) {
+  if (busy.value || !(await beforeLeave())) return;
   stopObserving();
   selectedId.value = agent.id;
   sessionId.value = "";
@@ -864,24 +799,6 @@ async function loadConversation() {
   inboxRevision.value++;
   if (active && activeConversation.value)
     observeSession(activeConversation.value);
-}
-async function makePrimary() {
-  if (!(await beforeLeave())) return;
-  await action(async () => {
-    defaults.value = await post('/defaults', { primaryAgentId: selectedId.value, expectedPrimaryAgentId: defaults.value.primaryAgentId });
-    ElMessage.success('Primary Agent updated');
-  });
-}
-async function createAgent() {
-  await action(async () => {
-    const agent = await post("/agents", { ...newProfile.value, enabled: true });
-    agents.value.push(agent);
-    defaults.value = await request(base + "/defaults");
-    createOpen.value = false;
-    newProfile.value = { name: "", description: "", instructions: "", runnerId: "" };
-    await selectAgent(agent, true);
-    await createConversation("Chat 1");
-  });
 }
 async function createConversation(title) {
   const c = await post(agentPath() + "/conversations", { title });
@@ -933,7 +850,7 @@ async function saveProfile() {
     let saved = await post("/agents", profile.value);
     agents.value = agents.value.map((a) => (a.id === saved.id ? saved : a));
     resetProfile();
-    if (saved.id === defaults.value.mainbotAgentId && saved.runnerId && sourceChanged) {
+    if (saved.id === mainbotId.value && saved.runnerId && sourceChanged) {
       saved = await post("/mainbot/setup", { runnerId: saved.runnerId, sourceWorkspace: desiredSource });
       agents.value = agents.value.map((a) => (a.id === saved.id ? saved : a));
     }

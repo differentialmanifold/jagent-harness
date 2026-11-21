@@ -13,12 +13,11 @@
     <article v-for="runner in runners" :key="runner.runnerId">
       <header>
         <h3>{{ runner.name }}</h3>
-        <el-tag v-if="runner.runnerId === primaryRunnerId" effect="plain">Primary Runner</el-tag>
+        <el-tag v-if="runner.runnerId === mainbotRunnerId" effect="plain">mainbot Runner</el-tag>
         <el-tag :type="runner.online ? 'success' : 'info'">{{
           runner.online ? "Online" : "Offline · jobs wait for reconnect"
         }}</el-tag>
       </header>
-      <p v-if="runner.runnerId === primaryRunnerId">Bound to your primary Agent. Change the primary Agent in its Configuration to select another default environment.</p>
       <p>{{ runner.platform || runner.runtime }}</p>
       <p>
         <strong>Version:</strong> {{ runner.version || "Unknown" }}
@@ -54,7 +53,7 @@
 import { onMounted, ref } from "vue";
 import { ElAlert } from "element-plus";
 import { request } from "../api/http.js";
-const primaryRunnerId = ref(null);
+const mainbotRunnerId = ref(null);
 const runners = ref([]),
   error = ref("");
 async function load() {
@@ -64,7 +63,7 @@ async function load() {
       request("/api/v1/personal/defaults").catch(() => null),
     ]);
     runners.value = rows;
-    primaryRunnerId.value = defaults?.primaryRunnerId || null;
+    mainbotRunnerId.value = defaults?.mainbotRunnerId || null;
     error.value = "";
   } catch (e) {
     error.value = e.message;

@@ -13,7 +13,7 @@ const integer = (value, name, min, max) => {
   return number
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
-const agentSummary = ({ id, name, description, enabled, instructions, runnerId }) => ({ id, name, ...(description ? { description } : {}), enabled, instructions, runnerId: runnerId ?? null })
+const mainbotPath = '/personal/agents/agent_mainbot'
 
 export class JAgentError extends Error {
   constructor(message, { status, code, messageId } = {}) {
@@ -25,7 +25,6 @@ export class JAgentError extends Error {
   }
 }
 
-/** Dependency-free client for creating Personal Agents and delegating work to them. */
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const isList = value => Array.isArray(value) && value.every(isObject)
 const hasText = (value, key) => isObject(value) && typeof value[key] === 'string' && value[key].length > 0
@@ -43,7 +42,7 @@ export class JAgentClient {
     this.timeoutMs = integer(timeoutMs, 'timeoutMs', 1, 300000)
   }
 
-  async request(method, path, body, timeoutMs = this.timeoutMs, validate = isObject) {
+  async #request(method, path, body, timeoutMs = this.timeoutMs, validate = isObject) {
     let response
     let text
     try {
@@ -62,7 +61,7 @@ export class JAgentClient {
     } catch (error) {
       throw new JAgentError(method === 'GET'
         ? `Could not read JAgent (${error.name}). Check the server and connection.`
-        : `JAgent did not confirm the request (${error.name}). Delivery is uncertain; inspect existing Agents or conversations before retrying.`,
+        : `JAgent did not confirm the request (${error.name}). Delivery is uncertain; check the mainbot conversation before retrying.`,
       { code: 'CONNECTION_FAILED' })
     }
     let value
@@ -76,48 +75,25 @@ export class JAgentClient {
     return value
   }
 
-  async agents() {
-    const agents = await this.request('GET', '/personal/agents', undefined, this.timeoutMs, value => isList(value) && value.every(agent => hasText(agent, 'id')))
-    return agents.map(agentSummary)
-  }
-
-  async runners() {
-    const runners = await this.request('GET', '/runners', undefined, this.timeoutMs, value => isList(value) && value.every(runner => hasText(runner, 'runnerId') && (runner.tools === undefined || isList(runner.tools))))
-    return runners.map(({ runnerId, name, online, runtime, workspaces, workspaceRoot, description, platform, capabilities, tools = [] }) => ({
-      runnerId, name, online, runtime, workspaces, workspaceRoot, description, platform, capabilities,
-      tools: tools.map(({ name, description }) => ({ name, description }))
-    }))
-  }
-
-  async createAgent({ name, runnerId, description = '', instructions = '' } = {}) {
-    if (typeof name !== 'string' || !name.trim() || name.length > 128) throw new Error('name must contain 1–128 characters')
-    id(runnerId)
-    if (typeof description !== 'string' || description.length > 4000) throw new Error('description must contain at most 4000 characters')
-    if (typeof instructions !== 'string' || instructions.length > 16000) throw new Error('instructions must be a string of at most 16000 characters')
-    // Omit identity/revision fields: this always creates, never updates an existing Agent.
-    const agent = await this.request('POST', '/personal/agents', { name: name.trim(), runnerId, instructions, ...(description ? { description } : {}) }, this.timeoutMs, value => hasText(value, 'id'))
-    return agentSummary(agent)
-  }
-
   async models() {
-    const catalog = await this.request('GET', '/models', undefined, this.timeoutMs, value => hasText(value, 'defaultModelId') && isList(value.models))
+    const catalog = await this.#request('GET', '/models', undefined, this.timeoutMs, value => hasText(value, 'defaultModelId') && isList(value.models))
     return { defaultModelId: catalog.defaultModelId, models: catalog.models.filter(m => m.enabled).map(({ id, name, description, inputTypes, capabilities, contextWindowTokens }) => ({ id, name, description, inputTypes, capabilities, contextWindowTokens })) }
   }
 
-  conversations(agentId) { return this.request('GET', `/personal/agents/${id(agentId)}/conversations`, undefined, this.timeoutMs, isList) }
+  conversations() { return this.#request('GET', `${mainbotPath}/conversations`, undefined, this.timeoutMs, isList) }
 
-  createConversation(agentId, title = 'New conversation') {
+  createConversation(title = 'New conversation') {
     if (typeof title !== 'string' || !title.trim() || title.length > 256) throw new Error('title must contain 1–256 characters')
-    return this.request('POST', `/personal/agents/${id(agentId)}/conversations`, { title }, this.timeoutMs, value => hasText(value, 'sessionId'))
+    return this.#request('POST', `${mainbotPath}/conversations`, { title }, this.timeoutMs, value => hasText(value, 'sessionId'))
   }
 
-  async send(agentId, sessionId, text, { messageId = `msg_${randomUUID()}`, modelId, images = [] } = {}) {
+  async send(sessionId, text, { messageId = `msg_${randomUUID()}`, modelId, images = [] } = {}) {
     if (typeof text !== 'string' || (!text.trim() && !images.length) || text.length > 32000) throw new Error('Provide text (up to 32000 characters) or images')
     if (!Array.isArray(images) || images.length > 4) throw new Error('images must be an array of at most four images')
     if (modelId != null) id(modelId)
     id(messageId)
     try {
-      const message = await this.request('POST', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}`, { text, messageId, ...(modelId ? { modelId } : {}), ...(images.length ? { images } : {}) }, this.timeoutMs, value => hasText(value, 'id') && hasText(value, 'sessionId') && hasText(value, 'agentId') && hasText(value, 'status'))
+      const message = await this.#request('POST', `${mainbotPath}/conversations/${id(sessionId)}`, { text, messageId, ...(modelId ? { modelId } : {}), ...(images.length ? { images } : {}) }, this.timeoutMs, value => hasText(value, 'id') && hasText(value, 'sessionId') && hasText(value, 'agentId') && hasText(value, 'status'))
       return { messageId: message.id, agentId: message.agentId, sessionId: message.sessionId, status: message.status }
     } catch (error) {
       error.messageId = messageId
@@ -125,22 +101,22 @@ export class JAgentClient {
     }
   }
 
-  status(agentId, sessionId, messageId, { timeoutMs = this.timeoutMs } = {}) {
+  status(sessionId, messageId, { timeoutMs = this.timeoutMs } = {}) {
     const query = messageId ? `?messageId=${id(messageId)}` : ''
-    return this.request('GET', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}/status${query}`, undefined, timeoutMs, value => isObject(value) && (!messageId || hasText(value.message, 'status')))
+    return this.#request('GET', `${mainbotPath}/conversations/${id(sessionId)}/status${query}`, undefined, timeoutMs, value => isObject(value) && (!messageId || hasText(value.message, 'status')))
   }
 
-  history(agentId, sessionId, { after, limit = 40 } = {}) {
+  history(sessionId, { after, limit = 40 } = {}) {
     const query = new URLSearchParams({ limit: String(integer(limit, 'limit', 1, 100)) })
     if (after) query.set('after', id(after))
-    return this.request('GET', `/personal/agents/${id(agentId)}/conversations/${id(sessionId)}/history?${query}`, undefined, this.timeoutMs, value => isObject(value) && isList(value.messages))
+    return this.#request('GET', `${mainbotPath}/conversations/${id(sessionId)}/history?${query}`, undefined, this.timeoutMs, value => isObject(value) && isList(value.messages))
   }
 
-  async tasks(agentId, sessionId) {
+  async tasks(sessionId) {
     id(sessionId)
     // Verify the conversation even when there are no tasks.
-    await this.status(agentId, sessionId)
-    const tasks = await this.request('GET', `/personal/agents/${id(agentId)}/cards`, undefined, this.timeoutMs, isList)
+    await this.status(sessionId)
+    const tasks = await this.#request('GET', `${mainbotPath}/cards`, undefined, this.timeoutMs, isList)
     return tasks.filter(task => task.conversationId === sessionId).map(task => ({
       id: task.id, title: task.title, status: task.status, parentId: task.parentId,
       description: task.description, acceptance: task.acceptance, progress: task.progress,
@@ -149,7 +125,7 @@ export class JAgentClient {
   }
 
   /** Wait for one message's decision turn. Background project work may continue afterwards. */
-  async wait(agentId, sessionId, messageId, { timeoutMs = 30000, intervalMs = 2000 } = {}) {
+  async wait(sessionId, messageId, { timeoutMs = 30000, intervalMs = 2000 } = {}) {
     id(messageId)
     timeoutMs = integer(timeoutMs, 'timeoutMs', 1, 300000)
     intervalMs = integer(intervalMs, 'intervalMs', 100, 60000)
@@ -157,7 +133,7 @@ export class JAgentClient {
     let status
     do {
       const remaining = Math.max(1, deadline - Date.now())
-      try { status = await this.status(agentId, sessionId, messageId, { timeoutMs: Math.min(this.timeoutMs, remaining) }) }
+      try { status = await this.status(sessionId, messageId, { timeoutMs: Math.min(this.timeoutMs, remaining) }) }
       catch (error) {
         if (error.code === 'CONNECTION_FAILED' && Date.now() >= deadline) return { timedOut: true, messageId, ...(status || {}) }
         throw error
@@ -171,23 +147,19 @@ export class JAgentClient {
   }
 }
 
-const help = `JAgent delegation client (Node.js 22+, no npm install)
+const help = `JAgent mainbot client (Node.js 22+, no npm install)
 Environment: JAGENT_SERVER_URL (default http://127.0.0.1:18181), JAGENT_USER_TOKEN
 
-  agents
-  runners
   models
-  create-agent --name <name> --runner <runnerId> [--description <text>] [--instructions <text> | --instructions-file <path>]
-  conversations --agent <id>
-  new --agent <id> --title <title>
-  send --agent <id> --session <id> (--text <text> | --file <path|->) [--message <id>] [--model <modelId>]
-  status --agent <id> --session <id> [--message <id>]
-  history --agent <id> --session <id> [--after <messageId>] [--limit <1-100>]
-  tasks --agent <id> --session <id>
-  wait --agent <id> --session <id> --message <id> [--timeout <seconds>] [--interval <seconds>]
+  conversations
+  new --title <title>
+  send --session <id> (--text <text> | --file <path|->) [--message <id>] [--model <modelId>]
+  status --session <id> [--message <id>]
+  history --session <id> [--after <messageId>] [--limit <1-100>]
+  tasks --session <id>
+  wait --session <id> --message <id> [--timeout <seconds>] [--interval <seconds>]
 
 All output is JSON. A send receipt confirms acceptance, not task completion.
-create-agent creates an enabled Agent bound to an existing Runner.
 wait observes one decision turn; status and tasks show ongoing background work.
 Send follow-up requirements, including requests to stop, in the same conversation.
 `
@@ -196,11 +168,11 @@ async function main(argv) {
   if (!argv.length || argv.includes('--help')) { process.stdout.write(help); return }
   const [command, ...args] = argv
   const allowed = {
-    agents: [], runners: [], models: [], 'create-agent': ['name', 'runner', 'description', 'instructions', 'instructions-file'],
-    conversations: ['agent'], new: ['agent', 'title'],
-    send: ['agent', 'session', 'text', 'file', 'message', 'model'], status: ['agent', 'session', 'message'],
-    history: ['agent', 'session', 'after', 'limit'], tasks: ['agent', 'session'],
-    wait: ['agent', 'session', 'message', 'timeout', 'interval']
+    models: [],
+    conversations: [], new: ['title'],
+    send: ['session', 'text', 'file', 'message', 'model'], status: ['session', 'message'],
+    history: ['session', 'after', 'limit'], tasks: ['session'],
+    wait: ['session', 'message', 'timeout', 'interval']
   }
   if (!Object.hasOwn(allowed, command)) throw new Error(`Unknown command: ${command}`)
   const options = {}
@@ -212,17 +184,9 @@ async function main(argv) {
   const client = new JAgentClient()
   let result
   switch (command) {
-    case 'agents': result = await client.agents(); break
-    case 'runners': result = await client.runners(); break
     case 'models': result = await client.models(); break
-    case 'create-agent': {
-      if (options.instructions !== undefined && options['instructions-file'] !== undefined) throw new Error('Provide only one of --instructions or --instructions-file')
-      const instructions = options['instructions-file'] === undefined ? options.instructions : await readFile(options['instructions-file'], 'utf8')
-      result = await client.createAgent({ name: options.name, runnerId: options.runner, description: options.description, instructions })
-      break
-    }
-    case 'conversations': result = await client.conversations(options.agent); break
-    case 'new': result = await client.createConversation(options.agent, options.title); break
+    case 'conversations': result = await client.conversations(); break
+    case 'new': result = await client.createConversation(options.title); break
     case 'send': {
       if ((options.text !== undefined) === (options.file !== undefined)) throw new Error('Provide exactly one of --text or --file')
       let content = options.text
@@ -231,13 +195,13 @@ async function main(argv) {
         for await (const chunk of process.stdin) chunks.push(chunk)
         content = Buffer.concat(chunks).toString('utf8')
       } else if (options.file !== undefined) content = await readFile(options.file, 'utf8')
-      result = await client.send(options.agent, options.session, content, { messageId: options.message, modelId: options.model })
+      result = await client.send(options.session, content, { messageId: options.message, modelId: options.model })
       break
     }
-    case 'status': result = await client.status(options.agent, options.session, options.message); break
-    case 'history': result = await client.history(options.agent, options.session, { after: options.after, limit: options.limit }); break
-    case 'tasks': result = await client.tasks(options.agent, options.session); break
-    case 'wait': result = await client.wait(options.agent, options.session, options.message, {
+    case 'status': result = await client.status(options.session, options.message); break
+    case 'history': result = await client.history(options.session, { after: options.after, limit: options.limit }); break
+    case 'tasks': result = await client.tasks(options.session); break
+    case 'wait': result = await client.wait(options.session, options.message, {
       timeoutMs: options.timeout === undefined ? 30000 : Number(options.timeout) * 1000,
       intervalMs: options.interval === undefined ? 2000 : Number(options.interval) * 1000
     }); break

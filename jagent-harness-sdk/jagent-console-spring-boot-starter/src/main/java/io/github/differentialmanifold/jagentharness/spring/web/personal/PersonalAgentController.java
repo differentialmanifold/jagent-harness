@@ -34,8 +34,8 @@ public class PersonalAgentController {
 
     @PostMapping("/agents")
     public Profile save(@RequestBody Profile profile) {
-        if (profile.id == null && (profile.runnerId == null || profile.runnerId.trim().isEmpty()))
-            profile.runnerId = service.defaults().get("primaryRunnerId");
+        if (profile.id == null)
+            throw new IllegalArgumentException("Ask mainbot to create an Agent");
         return service.save(profile);
     }
 
@@ -51,12 +51,6 @@ public class PersonalAgentController {
     @GetMapping("/defaults")
     public Map<String, String> defaults() {
         return service.defaults();
-    }
-
-    @PostMapping("/defaults")
-    public Map<String, String> defaults(@RequestBody Map<String, String> body) {
-        return service.selectPrimaryAgent(
-                body.get("primaryAgentId"), body.get("expectedPrimaryAgentId"));
     }
 
     @GetMapping("/agents/{agent}/conversations")

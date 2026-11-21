@@ -16,7 +16,7 @@ Applications may set `.version("1.2.3")` and `.buildRevision("commit-or-build-id
 <dependency>
   <groupId>io.github.differentialmanifold</groupId>
   <artifactId>jagent-client-java</artifactId>
-  <version>2.3.1</version>
+  <version>2.3.2</version>
 </dependency>
 ```
 

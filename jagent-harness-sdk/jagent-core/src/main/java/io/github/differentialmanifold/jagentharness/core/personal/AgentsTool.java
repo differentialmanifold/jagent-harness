@@ -12,7 +12,7 @@ public final class AgentsTool extends PersonalTool {
             Supplier<PersonalAgentService> services, PersonalAgentStore store, ObjectMapper json) {
         super(
                 "agents",
-                "Find colleagues with suitable Runner capabilities and delegate goals through conversations. Reuse a suitable Agent before creating one. A reply or acknowledgement is not proof of task completion.",
+                "Find colleagues with suitable Runner capabilities and delegate goals through conversations. mainbot can create a colleague when needed. A reply or acknowledgement is not proof of task completion.",
                 services,
                 store,
                 json);
@@ -74,6 +74,11 @@ public final class AgentsTool extends PersonalTool {
                 new String[] {},
                 "agentId",
                 "sessionId");
+    }
+
+    @Override
+    boolean supportsAction(Profile profile, String action) {
+        return !"create".equals(action) || PersonalAgentService.MAINBOT_ID.equals(profile.id);
     }
 
     Object run(String id, ToolContext context, String action, JsonNode args) {

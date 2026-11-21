@@ -20,10 +20,10 @@
 mvn -pl examples/coding-runner -am package
 ```
 
-将 `examples/coding-runner/target/jagent-coding-runner-2.3.1.jar` 复制到目标机器。在环境变量中将 `JAGENT_USER_TOKEN` 设置为Harness 签发的用户凭据，然后执行：
+将 `examples/coding-runner/target/jagent-coding-runner-2.3.2.jar` 复制到目标机器。在环境变量中将 `JAGENT_USER_TOKEN` 设置为Harness 签发的用户凭据，然后执行：
 
 ```sh
-java -jar jagent-coding-runner-2.3.1.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.3.2.jar --server https://agent.example.com --name linux-dev
 ```
 
 打开 Web 前端，添加项目并选择 **linux-dev**，工作目录留空时会在 `~/.jagent/workspaces/user/` 下自动创建项目目录，也可以浏览选择已有目录。一个 Runner 代表一台执行终端，可以服务多个工作目录不同的项目。
@@ -41,7 +41,7 @@ Runner 所在机器不需要模型密钥，也不监听端口。远程 HTTP 也�
 ```text
 target/runners/coding/runner.jar
 target/runners/coding/manifest.json
-target/jagent-coding-runner-2.3.1-offline.zip
+target/jagent-coding-runner-2.3.2-offline.zip
 ```
 
 清单包含版本、SHA-256 和 Java 要求。服务端分发时，将生成的 `target/runners/coding` 目录复制到 Harness 进程工作目录下的 `data/runners/`，或者配置 `harness.console.runner-distribution-directory`（server-demo 对应 `JAGENT_RUNNER_DISTRIBUTION_DIR`）。JAR、清单和安装 ZIP 应一起更新。例如在仓库根目录执行：
@@ -104,7 +104,7 @@ ssh -NT -o ExitOnForwardFailure=yes -R 127.0.0.1:18182:127.0.0.1:18181 user@targ
 需要恢复中断任务中的待回传结果时，先停止 `serve`，检查会话和本地实际执行效果，再显式提交已保存的结果：
 
 ```sh
-java -jar jagent-coding-runner-2.3.1.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.3.2.jar recover --server https://agent.example.com --session ses_example
 ```
 
 恢复时使用原来的状态目录和可执行文件版本；工作目录和工具清单取自已保存的任务。缺失或未完成的结果以 `UNKNOWN` 回传；模型收到结果后可能发起新的工具调用。恢复完成后重新启动 `serve`。

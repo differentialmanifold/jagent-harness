@@ -10,9 +10,7 @@ Give your Agent a small development task and watch it create a project, run tool
 
 Follow [Quick start](../../QUICK_START.md) and use the Console opened by your Runner. Select **Agents → mainbot → Chat**. The Harness creates mainbot and its first conversation for your user. Your first authenticated Runner becomes its execution environment. The all-in-one launcher also registers the matching source location for mainbot’s help with JAgentHarness.
 
-mainbot is the initial **primary Agent**. Its Runner is the default when you create another Agent. You can choose another entry point with **Set as primary** without moving existing projects, Runner bindings or mainbot's built-in Skills. Restarts preserve names, preferences, memory and conversations. **New Agent** remains available for another role or environment.
-
-Talk to this Agent normally. It can solve work through its own Projects, or discover and delegate to another Agent, track the task, review the result and report back here. Other Agents remain available in the selector. An Agent creating a colleague still defaults to its own Runner; an explicit Runner ID selects another environment.
+The Console opens mainbot by default. Tell it your goal, including any need for a specialist or another machine. mainbot can use its own Projects, reuse an existing Agent or create one on the intended Runner. It follows the work and reports back in the same chat. Use the Agent selector to inspect a colleague's work.
 
 ## 2. Send one message
 
@@ -85,7 +83,7 @@ You should see a clickable image and a description in the same reply. Refresh th
 
 mainbot loads `jagent-help`, reads its registered source location/version and opens an ordinary source Project on its Coding Runner. Further questions reuse that Project with independent sessions when needed. The all-in-one launcher uses the current checkout; the prebuilt application includes a source snapshot. A dirty checkout may differ from the running JAR. mainbot checks evidence before claiming a match or a repair; editing source does not deploy it.
 
-These built-in Skills appear only in mainbot's **Configuration → Skills**, independent of its display name or the selected primary Agent. Other Agents can ask mainbot for help through their existing `agents` tool. No source checkout is required on a phone Runner.
+These built-in Skills appear only in mainbot's **Configuration → Skills**, even if you rename mainbot. Other Agents can ask mainbot for help through their existing `agents` tool. No source checkout is required on a phone Runner.
 
 ## Ask JAgent to prepare an SSH machine
 
@@ -128,7 +126,7 @@ Every Agent has six work tools, with operations described directly in their sche
 | Tool | Purpose |
 | --- | --- |
 | `projects` | Find or open the correct project, then inspect, send, steer and stop work |
-| `agents` | Discover colleagues and Runners, create an Agent, delegate and inspect replies |
+| `agents` | Discover colleagues and Runners, delegate and inspect replies. mainbot can also create Agents |
 | `tasks` | Track plans, dependencies, acceptance evidence and one-shot checks |
 | `memory` | Read and edit persistent preferences and facts |
 | `skills` | Discover and maintain private reusable methods |

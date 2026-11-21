@@ -52,17 +52,16 @@ public final class AgentManagement {
                         strings(
                                 "Tool/action names disabled in configuration. Read agents.tools before editing. An empty list enables all available tools."));
         ObjectNode createFields = profileFields.deepCopy();
-        createFields.set(
-                "runnerId",
-                text("Existing Runner ID. Omit for the primary Runner, as in Console."));
+        createFields.set("runnerId", text("Existing Runner ID. Omit to use mainbot's Runner."));
         ops.register(
                 "agents.create",
-                "Create an Agent in the current user's space, using the same defaults as Console. This does not deploy a Runner.",
+                "Create an Agent in the current user's space, using mainbot's Runner by default. This does not deploy a Runner.",
                 object(createFields, "name"),
                 (ctx, a) -> {
                     Profile p = json.treeToValue(a, Profile.class);
                     if (p.runnerId == null)
-                        p.runnerId = services.get().defaults().get("primaryRunnerId");
+                        p.runnerId =
+                                services.get().require(PersonalAgentService.MAINBOT_ID).runnerId;
                     return services.get().save(p);
                 });
         ops.register(
@@ -87,23 +86,6 @@ public final class AgentManagement {
                     json.readerForUpdating(p).readValue(a.get("changes"));
                     return services.get().save(p);
                 });
-        ops.register(
-                "agents.primary",
-                "Select the user's primary Agent when requested. This does not change mainbot's identity.",
-                object(
-                        fields(
-                                "agentId",
-                                agentFields.get("agentId"),
-                                "expectedPrimaryAgentId",
-                                text("Current primaryAgentId from agents.list, or null.")
-                                        .put("nullable", true)),
-                        "agentId",
-                        "expectedPrimaryAgentId"),
-                (ctx, a) ->
-                        services.get()
-                                .selectPrimaryAgent(
-                                        a.get("agentId").asText(),
-                                        a.get("expectedPrimaryAgentId").asText(null)));
         ops.register(
                 "agents.tools",
                 "Read available tools and disabled operations for this Agent.",

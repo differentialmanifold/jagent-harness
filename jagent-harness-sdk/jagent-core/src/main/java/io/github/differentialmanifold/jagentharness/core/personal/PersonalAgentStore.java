@@ -104,12 +104,6 @@ public interface PersonalAgentStore {
 
     LearningChange latestChange(String agentId, String path);
 
-    /** The default user-facing Agent; its bound Runner is also the default Runner. */
-    String primaryAgentId();
-
-    /** Compare-and-set the default; null expectedId initializes it once. */
-    boolean setPrimaryAgentId(String agentId, String expectedId);
-
     /** Create the built-in profile and its first conversation atomically, once per application. */
     boolean initializeMainbot(Profile profile, Runnable createConversation);
 

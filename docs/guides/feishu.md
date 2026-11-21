@@ -2,11 +2,11 @@
 
 [Documentation](../README.md) · [Personal Agents](agents.md)
 
-Feishu is an optional channel for the same Agent you use in the Console. Create and try an Agent first; no channel is needed for planning, project execution or memory.
+Feishu is an optional channel for the same Agent you use in the Console. Try mainbot in the Console first. You can then connect Feishu to continue chatting with it.
 
 ## Connect
 
-1. Select the Agent and open **Configuration → Channels → Connect with Feishu**.
+1. Select mainbot and open **Configuration → Channels → Connect with Feishu**.
 2. Scan the code or open the authorization page, then confirm the app and permissions. Your organization may require administrator approval.
 3. Wait for **CONNECTED**, then send a text direct message to the bot. The authorizing account becomes its owner.
 

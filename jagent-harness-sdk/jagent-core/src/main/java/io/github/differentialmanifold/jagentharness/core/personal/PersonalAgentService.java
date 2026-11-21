@@ -115,8 +115,6 @@ public class PersonalAgentService implements AutoCloseable {
             p.description = "Your primary assistant for everyday work and JAgentHarness support.";
             store.initializeMainbot(p, () -> newConversation(MAINBOT_ID, "Chat 1"));
         }
-        if (store.profile(MAINBOT_ID) != null && store.primaryAgentId() == null)
-            store.setPrimaryAgentId(MAINBOT_ID, null);
     }
 
     /** Operator setup after a known Runner registers; never pick the first connected terminal. */
@@ -218,37 +216,19 @@ public class PersonalAgentService implements AutoCloseable {
         p.memory =
                 PersonalAgentKnowledge.limited(
                         p.memory, PersonalAgentKnowledge.MEMORY_LIMIT, "Memory");
-        boolean creating = p.id == null;
-        if (creating) {
+        if (p.id == null) {
             p.id = Ids.newId("agent");
             p.revision = 0;
         } else require(p.id);
         knowledge.saveProfile(p);
-        if (creating && p.runnerId != null && store.primaryAgentId() == null)
-            store.setPrimaryAgentId(p.id, null);
         return p;
     }
 
     public Map<String, String> defaults() {
         Map<String, String> result = new LinkedHashMap<>();
-        String primary = store.primaryAgentId();
-        Profile profile = primary == null ? null : store.profile(primary);
         result.put("mainbotAgentId", MAINBOT_ID);
-        result.put("primaryAgentId", profile == null ? null : profile.id);
-        result.put("primaryRunnerId", profile == null ? null : profile.runnerId);
+        result.put("mainbotRunnerId", require(MAINBOT_ID).runnerId);
         return result;
-    }
-
-    public Map<String, String> selectPrimaryAgent(String id, String expectedId) {
-        Profile profile = require(id);
-        if (profile.runnerId == null)
-            throw new IllegalArgumentException("The primary Agent needs a bound Runner");
-        if (!store.setPrimaryAgentId(id, expectedId))
-            throw new PersonalAgentException(
-                    PersonalAgentException.Kind.CONFLICT,
-                    "PRIMARY_AGENT_CHANGED",
-                    "The primary Agent changed. Refresh and try again.");
-        return defaults();
     }
 
     public Conversation conversation(String agent, String session) {
