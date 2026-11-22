@@ -38,7 +38,7 @@
                 <Document v-else />
               </el-icon>
               <span class="vfs-tree-label">{{ data.label }}</span>
-              <el-tag v-if="data.path !== 'skills' && isReadOnlyPath(data.path)" size="small" effect="plain">Built-in</el-tag>
+              <el-tag v-if="data.path !== 'skills' && isReadOnlyPath(data.path)" size="small" effect="plain">{{ readOnlyLabel(data.path) }}</el-tag>
             </span>
           </template>
         </el-tree>
@@ -150,7 +150,7 @@
           v-if="!isEditing && (selectedKind === 'dir' || selectedFile)"
           class="github-commit-row"
         >
-          <div class="github-commit-avatar">{{ selectedFile?.readOnly ? 'SDK' : 'DB' }}</div>
+          <div class="github-commit-avatar">{{ selectedFile?.source === 'builtin' ? 'SDK' : 'DB' }}</div>
           <strong>{{ commitTitle }}</strong>
           <span>{{ commitSubtitle }}</span>
           <span v-if="currentUpdatedAt" class="github-commit-date">updated {{ formatDate(currentUpdatedAt) }}</span>
@@ -236,7 +236,7 @@
                       <Document v-else />
                     </el-icon>
                     <span>{{ row.name }}</span>
-                    <el-tag v-if="row.name !== '..' && isReadOnlyPath(row.path)" size="small" effect="plain">Built-in · read-only</el-tag>
+                    <el-tag v-if="row.name !== '..' && isReadOnlyPath(row.path)" size="small" effect="plain">{{ readOnlyLabel(row.path) }} · read-only</el-tag>
                   </button>
                 </td>
                 <td>{{ row.type === 'dir' ? 'Directory' : 'File' }}</td>
@@ -431,6 +431,12 @@ function isReadOnlyPath(path) {
   const children = filesUnderDirectory(path)
   return children.length > 0 && children.every(file => file.readOnly)
 }
+function readOnlyLabel(path) {
+  const file = fileByPath.value.get(path)
+  const sources = new Set(file ? [file.source] : filesUnderDirectory(path).map(child => child.source))
+  if (sources.size > 1) return 'Inherited'
+  return sources.has('global') ? 'Project default' : 'Built-in'
+}
 const deleteConfirmTitle = computed(() => {
   return selectedKind.value === 'dir'
     ? `Delete ${selectedPath.value} and all files under it?`
@@ -441,7 +447,7 @@ const currentUpdatedAt = computed(() => {
   const rows = directoryRows.value.filter((row) => row.updatedAt)
   return rows.length ? rows[0].updatedAt : ''
 })
-const commitTitle = computed(() => selectedFile.value?.readOnly ? 'Built-in Skill · read-only' : selectedKind.value === 'dir' ? 'Directory snapshot' : `${scopeLabel.value} file`)
+const commitTitle = computed(() => selectedFile.value?.readOnly ? `${readOnlyLabel(selectedPath.value)} Skill · read-only` : selectedKind.value === 'dir' ? 'Directory snapshot' : `${scopeLabel.value} file`)
 const commitSubtitle = computed(() => {
   return selectedKind.value === 'dir'
     ? selectedPath.value

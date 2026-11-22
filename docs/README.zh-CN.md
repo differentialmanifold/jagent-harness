@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | 交给 Agent 规划、执行并验证任务 | [个人 Agent](guides/agents.zh-CN.md) | Agents → Chat、Tasks、Projects |
 | 在终端的代码和文件上开展工作 | [项目与会话](guides/projects.md) | Projects → Chat |
+| 用浏览器检索并核实原文 | [浏览器检索](guides/browser-research.zh-CN.md) | Project → Configuration → Skills |
 | 记住偏好、沉淀可复用经验 | [记忆与学习](guides/knowledge.md) | Agents → Knowledge |
 | 配置指引、虚拟文件、Skills 和工具 | [配置与 Skills](guides/configuration.md) | Project / Agent → Configuration；System Settings |
 | 让 mainbot 配置模型、管理 Console 资源 | [mainbot 管理能力（英文）](guides/configuration.md#ask-mainbot-to-configure-jagentharness) | mainbot → Chat |

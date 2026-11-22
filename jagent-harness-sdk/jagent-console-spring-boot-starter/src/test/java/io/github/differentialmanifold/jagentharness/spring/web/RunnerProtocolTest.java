@@ -48,6 +48,108 @@ class RunnerProtocolTest {
     final String secret = "secret-for-tests-with-at-least-32-characters";
 
     @Test
+    void browserSkillsFollowTheProjectRunnerAndItsBashSelection() throws Exception {
+        RunnerInfo runner = register();
+        TestHttpClient api = http(runner.runnerId);
+        ToolDescriptor bash = new ToolDescriptor();
+        bash.name = "bash";
+        bash.parameters.put("type", "object");
+        runner.tools.add(bash);
+        api.management("POST", "/api/v1/runners", runner);
+
+        String session = request(runner).sessionId;
+        Map<String, String> chat = Collections.singletonMap("sessionId", session);
+        String project = sessions.requireSession(session).getProjectId();
+        String main = "skills/browser-research/SKILL.md";
+        String reference = "skills/playwright-cli/references/session-management.md";
+        String files = "/api/v1/vfs/files?scope=project&sessionId=" + session + "&prefix=";
+        assertEquals(0, api.management("GET", files + main, null).size());
+        assertEquals(
+                0,
+                api.management("GET", "/api/v1/vfs/files?scope=global&prefix=" + main, null)
+                        .size());
+
+        runner.capabilities.add("browser-research");
+        api.management("POST", "/api/v1/runners", runner);
+        String prompt =
+                api.management("POST", "/api/v1/agent/prompt-preview", chat)
+                        .path("systemPrompt")
+                        .asText();
+        assertTrue(prompt.contains(main));
+        assertTrue(prompt.contains("skills/playwright-cli/SKILL.md"));
+        assertFalse(prompt.contains("npx --yes"));
+        assertTrue(api.management("GET", files + main, null).get(0).path("readOnly").asBoolean());
+        String read = "/api/v1/vfs/files/content?scope=project&sessionId=" + session + "&path=";
+        assertEquals("builtin", api.management("GET", read + main, null).path("source").asText());
+        Map<String, Object> call = new LinkedHashMap<>(chat);
+        call.put("toolName", "skill");
+        call.put("arguments", Collections.singletonMap("path", reference));
+        JsonNode result =
+                json.readTree(
+                        api.management("POST", "/api/v1/tools/call", call).path("result").asText());
+        assertEquals(
+                api.management("GET", read + reference, null).path("content"),
+                result.path("content"));
+        assertFalse(result.path("content").asText().isEmpty());
+
+        // A previously imported reference must read identically in the UI and via the skill tool.
+        String defaults = "/api/v1/vfs/files?scope=global";
+        Map<String, String> inherited = new LinkedHashMap<>();
+        inherited.put("path", reference);
+        inherited.put("content", "Local browser reference");
+        try {
+            api.management("PUT", defaults, inherited);
+            assertEquals(
+                    "global",
+                    api.management("GET", files + reference, null).get(0).path("source").asText());
+            assertEquals(
+                    "Local browser reference",
+                    api.management("GET", read + reference, null).path("content").asText());
+            assertEquals(
+                    "Local browser reference",
+                    json.readTree(
+                                    api.management("POST", "/api/v1/tools/call", call)
+                                            .path("result")
+                                            .asText())
+                            .path("content")
+                            .asText());
+        } finally {
+            api.management("DELETE", defaults + "&path=" + reference, null);
+        }
+
+        String tools = "/api/v1/runners/projects/" + project + "/tools";
+        api.management(
+                "PUT", tools, Collections.singletonMap("enabledTools", Collections.emptyList()));
+        assertEquals(0, api.management("GET", files + main, null).size());
+        assertFalse(
+                api.management("POST", "/api/v1/agent/prompt-preview", chat)
+                        .path("systemPrompt")
+                        .asText()
+                        .contains(main));
+        api.management(
+                "PUT",
+                tools,
+                Collections.singletonMap("enabledTools", Collections.singletonList("bash")));
+
+        Map<String, String> custom = new LinkedHashMap<>();
+        custom.put("path", main);
+        custom.put(
+                "content",
+                "---\nname: browser-research\ndescription: Project preference\n---\nUse the company portal.");
+        api.management("PUT", "/api/v1/vfs/files?scope=project&sessionId=" + session, custom);
+        assertFalse(api.management("GET", files + main, null).get(0).path("readOnly").asBoolean());
+        call.put("arguments", Collections.singletonMap("path", main));
+        assertEquals(
+                custom.get("content"),
+                json.readTree(
+                                api.management("POST", "/api/v1/tools/call", call)
+                                        .path("result")
+                                        .asText())
+                        .path("content")
+                        .asText());
+    }
+
+    @Test
     void optionalBuildMetadataSurvivesPersistenceHeartbeatAndMixedVersionReconnects()
             throws Exception {
         RunnerInfo legacy = register();

@@ -11,6 +11,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolApprovalReques
 import io.github.differentialmanifold.jagentharness.core.tool.ToolContext;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolExecutionResult;
+import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.ContentHashing;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.ToolArguments;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.ToolSchemas;
 import io.github.differentialmanifold.jagentharness.tools.coding.tool.support.WorkspacePathResolver;
@@ -150,6 +151,12 @@ public class BashTool implements ToolDefinition {
         String shellInput = shellInput(command, osName);
         ProcessBuilder processBuilder = new ProcessBuilder(shellCommand);
         processBuilder.directory(cwd.toFile());
+        String sessionId = context.getSessionId();
+        if (sessionId != null && !sessionId.isEmpty()) {
+            // Separate chats can use the same workspace. Keep the CLI socket name short and path-safe.
+            String hash = ContentHashing.sha256(sessionId.getBytes(StandardCharsets.UTF_8));
+            processBuilder.environment().put("PLAYWRIGHT_CLI_SESSION", "ja-" + hash.substring(0, 20));
+        }
         Process process = processBuilder.start();
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
