@@ -38,6 +38,17 @@ public class ExecutionAutoConfiguration {
                 json, harness, history, records, timeline, tools, inputs, publisher);
     }
 
+    @Bean
+    @ConditionalOnBean(RunnerStore.class)
+    @ConditionalOnProperty(
+            prefix = "harness.runner",
+            name = "enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public CodingBrowserSkills codingBrowserSkills(RunnerStore store) throws java.io.IOException {
+        return new CodingBrowserSkills(store);
+    }
+
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
     @ConditionalOnBean(RunnerStore.class)

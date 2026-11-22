@@ -20,15 +20,17 @@ Build from the repository root, or use a prepared offline Coding Runner package:
 mvn -pl examples/coding-runner -am package
 ```
 
-Copy `examples/coding-runner/target/jagent-coding-runner-2.3.2.jar` to the target machine. Set `JAGENT_USER_TOKEN` to your Harness-issued user token, then:
+Copy `examples/coding-runner/target/jagent-coding-runner-2.4.0.jar` to the target machine. Set `JAGENT_USER_TOKEN` to your Harness-issued user token, then:
 
 ```sh
-java -jar jagent-coding-runner-2.3.2.jar --server https://agent.example.com --name linux-dev
+java -jar jagent-coding-runner-2.4.0.jar --server https://agent.example.com --name linux-dev
 ```
 
 Open the web frontend wherever it is hosted, add a project, and choose **linux-dev**. Leave the workspace empty for a new directory under `~/.jagent/workspaces/user/`, or browse an existing directory on that terminal. One runner can execute work for multiple projects with different directories.
 
 New projects enable all seven tools by default. Project tools can be changed in **Projects → Configuration → Tools → Client tools**; changes apply to the next run. Selected tools use **Full access**, without interactive approval. A project can disable every client tool.
+
+Coding Projects with bash enabled also include the [browser research Skills](../../docs/guides/browser-research.md).
 
 Tools run with the OS account's file and process permissions; the workspace is a working directory, not an OS sandbox. Use an account or container with suitable permissions. Bash needs a local shell; Windows requires Git Bash. Search uses ripgrep when available and falls back to Java. `JAGENT_RG_PATH` can select a ripgrep executable. The runner logs the detected search backend at startup; **Projects → Configuration → Tools → Client tools** shows that startup snapshot beside `find` and `grep`. Each search result reports the backend actually used, including any later fallback.
 
@@ -41,7 +43,7 @@ Prepare the package once. `mvn -pl examples/coding-runner -am package` produces:
 ```text
 target/runners/coding/runner.jar
 target/runners/coding/manifest.json
-target/jagent-coding-runner-2.3.2-offline.zip
+target/jagent-coding-runner-2.4.0-offline.zip
 ```
 
 The manifest records the version, SHA-256 and Java requirement. For server-side distribution, copy the generated `target/runners/coding` directory to `data/runners/` relative to the Harness process working directory, or set `harness.console.runner-distribution-directory` (`JAGENT_RUNNER_DISTRIBUTION_DIR` in server-demo). Keep the manifest, JAR and installer ZIP together. For example, from the repository root:
@@ -104,7 +106,7 @@ Jobs can be delivered again after a disconnect. The runner journals acceptance b
 To recover pending results after interruption, stop `serve`, inspect the conversation and local effects, and explicitly submit the saved results:
 
 ```sh
-java -jar jagent-coding-runner-2.3.2.jar recover --server https://agent.example.com --session ses_example
+java -jar jagent-coding-runner-2.4.0.jar recover --server https://agent.example.com --session ses_example
 ```
 
 Use the same home and executable version. The saved job supplies its project workspace and tool selection. Missing or unfinished results are reported as `UNKNOWN`; the model may issue new calls after receiving them. Restart `serve` afterwards.

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "JAgent conversation API",
-    "version": "2.3.2",
+    "version": "2.4.0",
     "description": "Conversation and Runner SDK contract. Personal Agent delegation is documented separately in skills/jagent/references/api.md."
   },
   "servers": [

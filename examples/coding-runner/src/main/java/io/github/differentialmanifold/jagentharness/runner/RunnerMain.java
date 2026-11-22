@@ -215,7 +215,7 @@ public final class RunnerMain {
                                                 .getOrDefault(
                                                         "JAGENT_RUNNER_DESCRIPTION",
                                                         "Coding environment with local file, search and shell tools. Installed SDKs must be verified before use.")))
-                        .capabilities(Collections.singletonList("coding"))
+                        .capabilities(Arrays.asList("coding", "browser-research"))
                         .workspaces(new LocalWorkspaces())
                         .tools(coding.tools())
                         .toolDiagnostics(diagnostics)

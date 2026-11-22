@@ -2,6 +2,7 @@ package io.github.differentialmanifold.jagentharness.tools.coding.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +39,24 @@ import org.junit.jupiter.api.io.TempDir;
 class BashToolTest {
 
     @TempDir Path tempDir;
+
+    @Test
+    void browserSessionFollowsTheChatAcrossRunsInASharedWorkspace() throws Exception {
+        String first = browserSession("chat/a", "run-1");
+        assertTrue(first.matches("ja-[0-9a-f]{20}"));
+        assertEquals(first, browserSession("chat/a", "run-2"));
+        assertNotEquals(first, browserSession("chat-a", "run-1"));
+    }
+
+    private String browserSession(String session, String run) throws Exception {
+        ObjectMapper json = new ObjectMapper();
+        BashTool tool = new BashTool(json, new WorkspacePathResolver());
+        ToolContext context =
+                new ToolContext(session, run, "turn", null, tempDir, null, Collections.emptyMap());
+        ObjectNode args =
+                json.createObjectNode().put("command", "printf '%s' \"$PLAYWRIGHT_CLI_SESSION\"");
+        return json.readTree(tool.execute(context, args).getContent()).get("stdout").asText();
+    }
 
     @Test
     void deniedRedirectionsNeverModifyTargetsIncludingSymlinks() throws Exception {

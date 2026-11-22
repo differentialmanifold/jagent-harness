@@ -7,6 +7,7 @@ import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFileStore;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeScope;
 import io.github.differentialmanifold.jagentharness.core.session.SessionManager;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.spring.CodingBrowserSkills;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileContentResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileImportResponse;
 import io.github.differentialmanifold.jagentharness.spring.web.dto.VirtualFileResponse;
@@ -15,11 +16,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +43,9 @@ public class VirtualFileController {
     private final KnowledgeFileStore knowledgeFileStore;
     private final SessionManager sessionManager;
 
+    @Autowired(required = false)
+    private CodingBrowserSkills browserSkills;
+
     public VirtualFileController(
             KnowledgeFileStore knowledgeFileStore, SessionManager sessionManager) {
         this.knowledgeFileStore = knowledgeFileStore;
@@ -53,6 +59,24 @@ public class VirtualFileController {
             @RequestParam(value = "sessionId", required = false) String sessionId) {
         KnowledgeScope resolved = scope(scope, sessionId);
         Map<String, VirtualFileResponse> catalog = new LinkedHashMap<>();
+        String normalized = KnowledgeFilePaths.normalizePrefix(prefix);
+        Map<String, KnowledgeFile> bundled = bundledFiles(resolved, normalized);
+        for (KnowledgeFile file : bundled.values()) {
+            String path = file.getPath();
+            if (normalized.isEmpty()
+                    || path.equals(normalized)
+                    || path.startsWith(normalized + "/"))
+                catalog.put(path, new VirtualFileResponse(file, "builtin", true));
+        }
+        // A previously imported default takes precedence over the bundled file in the skill tool
+        // too.
+        if (!catalog.isEmpty()) {
+            for (KnowledgeFile file :
+                    knowledgeFileStore.listFiles(KnowledgeScope.global(), prefix)) {
+                if (catalog.containsKey(file.getPath()))
+                    catalog.put(file.getPath(), new VirtualFileResponse(file, "global", true));
+            }
+        }
         for (KnowledgeFile file : knowledgeFileStore.listFiles(resolved, prefix)) {
             catalog.put(file.getPath(), new VirtualFileResponse(file));
         }
@@ -69,10 +93,16 @@ public class VirtualFileController {
         KnowledgeScope resolved = scope(scope, sessionId);
         String normalized = KnowledgeFilePaths.normalize(path);
         KnowledgeFile file = knowledgeFileStore.readFile(resolved, normalized);
-        if (file == null) {
-            throw new ProtocolException(404, "NOT_FOUND", "Knowledge file not found: " + path);
+        if (file != null) return new VirtualFileContentResponse(file);
+        KnowledgeFile builtin = bundledFiles(resolved, normalized).get(normalized);
+        if (builtin != null) {
+            KnowledgeFile inherited =
+                    knowledgeFileStore.readFile(KnowledgeScope.global(), normalized);
+            return inherited == null
+                    ? new VirtualFileContentResponse(builtin, "builtin", true)
+                    : new VirtualFileContentResponse(inherited, "global", true);
         }
-        return new VirtualFileContentResponse(file);
+        throw new ProtocolException(404, "NOT_FOUND", "Knowledge file not found: " + path);
     }
 
     @PutMapping("/files")
@@ -149,6 +179,14 @@ public class VirtualFileController {
                     knowledgeScope, entry.getKey(), entry.getValue(), contentType(entry.getKey()));
         }
         return new VirtualFileImportResponse(files.size());
+    }
+
+    private Map<String, KnowledgeFile> bundledFiles(KnowledgeScope scope, String path) {
+        if (browserSkills == null
+                || !KnowledgeScope.PROJECT_TYPE.equals(scope.getType())
+                || !(path.isEmpty() || path.equals("skills") || path.startsWith("skills/")))
+            return Collections.emptyMap();
+        return browserSkills.filesForProject(scope.getId());
     }
 
     private KnowledgeScope scope(String scope, String sessionId) {

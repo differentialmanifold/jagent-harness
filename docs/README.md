@@ -16,6 +16,7 @@ Your personal **mainbot** is ready when your first Runner connects. Start in its
 | --- | --- | --- |
 | Delegate work and follow a plan through verification | [Personal Agents](guides/agents.md) · [中文](guides/agents.zh-CN.md) | Agents → Chat, Tasks, Projects |
 | Chat about code or files on a terminal | [Projects and conversations](guides/projects.md) | Projects → Chat |
+| Search the web with a browser and verify original sources | [Browser research](guides/browser-research.md) · [中文](guides/browser-research.zh-CN.md) | Project → Configuration → Skills |
 | Keep preferences and learn reusable methods | [Memory and learning](guides/knowledge.md) | Agents → Knowledge |
 | Configure instructions, virtual files, Skills and tools | [Configuration and Skills](guides/configuration.md) | Project or Agent → Configuration; System Settings |
 | Ask mainbot to configure models or manage Console resources | [mainbot management](guides/configuration.md#ask-mainbot-to-configure-jagentharness) | mainbot → Chat |
