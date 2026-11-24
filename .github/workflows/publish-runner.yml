@@ -22,7 +22,7 @@ jobs:
         run: node -e "require('node:assert/strict').equal(process.env.GITHUB_REF_NAME,'runner-v'+require('./sdk/node/package.json').version)"
       - run: mvn -B -pl examples/server-demo -am -DskipTests package
       - run: npm ci --prefix sdk/node
-      - name: Verify and publish the packed CLI
+      - name: Verify and stage the packed CLI
         working-directory: sdk/node
         run: |
           server=(../../examples/server-demo/target/server-demo-*.jar)
@@ -30,4 +30,4 @@ jobs:
           npm pack --pack-destination "$RUNNER_TEMP"
           npm install --global --offline --no-audit --prefix "$RUNNER_TEMP/client" "$RUNNER_TEMP"/jagent-*.tgz
           test "$("$RUNNER_TEMP/client/bin/jagent" version)" = "${GITHUB_REF_NAME#runner-v}"
-          npm publish "$RUNNER_TEMP"/jagent-*.tgz --access public --tag latest
+          npm stage publish "$RUNNER_TEMP"/jagent-*.tgz --access public --tag latest
