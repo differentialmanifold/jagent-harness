@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, delimiter } from 'node:path'
+import { OutputTail } from '../output.js'
 import { digest } from '../files.js'
 import type { Arguments, ToolContext, ToolResult } from '../types.js'
 import { display, integer, location, text } from './files.js'
@@ -44,10 +45,10 @@ export async function bash(args: Arguments, ctx: ToolContext): Promise<ToolResul
       PLAYWRIGHT_CLI_SESSION: 'ja-' + digest(ctx.sessionId).slice(0, 20),
     },
   })
-  const stdout: Buffer[] = [],
-    stderr: Buffer[] = []
-  child.stdout.on('data', (b) => stdout.push(b))
-  child.stderr.on('data', (b) => stderr.push(b))
+  const stdout = new OutputTail(6 * 1024)
+  const stderr = new OutputTail(6 * 1024)
+  child.stdout.on('data', (chunk: Buffer) => stdout.append(chunk))
+  child.stderr.on('data', (chunk: Buffer) => stderr.append(chunk))
   const closed = new Promise<number | null>((done, fail) => {
     child.once('error', fail)
     child.once('close', done)
@@ -83,8 +84,8 @@ export async function bash(args: Arguments, ctx: ToolContext): Promise<ToolResul
         cwd: display(ctx, cwd),
         timedOut,
         exitCode,
-        stdout: Buffer.concat(stdout).toString(),
-        stderr: Buffer.concat(stderr).toString(),
+        stdout: stdout.text(),
+        stderr: stderr.text(),
       },
     }
   } finally {

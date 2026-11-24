@@ -20,6 +20,12 @@ New coding projects enable all registered client tools. Change the selection und
 - Stop a running conversation from Chat when you need to intervene. Closing the browser does not cancel accepted work. Inspect local effects after interruption before repeating commands.
 - Concurrent project chats can modify the same files. Give them independent directories when writes should not overlap; worktrees are not created automatically.
 
+### Large tool results
+
+The Coding Runner returns the last 6 KiB of each shell output stream. Search returns up to 512 bytes per matching line. To keep a complete log, redirect the command output to a workspace file and read the relevant lines.
+
+When an Agent inspects a Project, it receives a page of message excerpts. It can pass the returned `beforeMessageId` to read the preceding page. The Harness also limits tool text when preparing model requests, including requests that resume an existing conversation.
+
 ## Inspect the effective configuration
 
 Open **Configuration → Runtime Context** for **Runtime Preview**, **Context** and **Tools**. It shows the current model, prompt, discoverable Skills and tool catalog. Runtime Preview is generated from current settings, not a captured historical request. A discoverable Skill has not necessarily been read by the model.

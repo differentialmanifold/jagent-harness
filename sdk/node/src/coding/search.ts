@@ -4,6 +4,7 @@ import { createReadStream, existsSync } from 'node:fs'
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { minimatch } from 'minimatch'
+import { preview } from '../output.js'
 import { success, type Arguments, type ToolContext } from '../types.js'
 import { display, integer, location, text } from './files.js'
 
@@ -68,14 +69,22 @@ async function* records(
     child.on('error', (error) => done({ code: null, error }))
     child.on('close', (code) => done({ code }))
   })
-  let pending = ''
+  let pending: string[] = []
   try {
     for await (const chunk of child.stdout.setEncoding('utf8')) {
-      const values = (pending + chunk).split(delimiter)
-      pending = values.pop()!
-      for (const value of values) if (value) yield value
+      const parts = (chunk as string).split(delimiter)
+      for (let i = 0; i < parts.length - 1; i++) {
+        pending.push(parts[i])
+        const record = pending.join('')
+        pending = []
+        if (record) yield record
+      }
+      pending.push(parts[parts.length - 1])
     }
-    if (pending) yield pending
+    if (pending.length) {
+      const record = pending.join('')
+      if (record) yield record
+    }
     const { code, error } = await closed
     signal.throwIfAborted()
     if (code !== 0 && code !== 1) throw error ?? new Error(diagnostics.trim() || 'ripgrep failed')
@@ -130,13 +139,27 @@ export async function search(
   const literal = args.literal === true,
     insensitive = args.ignoreCase === true
   const compiled = kind === 'grep' ? regex(pattern, literal, insensitive) : undefined
+  let bytes = 0,
+    pageFull = false,
+    shortened = false
+  function add<T>(rows: T[], row: T) {
+    const size = Buffer.byteLength(JSON.stringify(row)) + 1
+    if (rows.length >= limit || bytes + size > 12 * 1024) {
+      pageFull = true
+      return
+    }
+    bytes += size
+    rows.push(row)
+  }
   const match = (path: string, line: number, s: string) => {
-    s = s.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
-    matches.push({
-      path: display(ctx, path),
-      line,
-      preview: s.length > 2000 ? s.slice(0, 2000) + '...' : s,
-    })
+    let start = 0,
+      end = s.length
+    while (start < end && s.charCodeAt(start) <= 32) start++
+    while (end > start && s.charCodeAt(end - 1) <= 32) end--
+    const text = s.slice(start, end)
+    const excerpt = preview(text, 512)
+    shortened ||= excerpt !== text
+    add(matches, { path: display(ctx, path), line, preview: excerpt })
   }
   if (rg) {
     const options = [
@@ -153,8 +176,8 @@ export async function search(
         ctx.signal,
       )) {
         const full = resolve(root, path)
-        if (globMatch(glob, relative(root, full))) files.push(display(ctx, full))
-        if (files.length > limit) break
+        if (globMatch(glob, relative(root, full))) add(files, display(ctx, full))
+        if (pageFull) break
       }
     } else {
       const command = [
@@ -175,13 +198,13 @@ export async function search(
         const full = resolve(root, data.path.text)
         if (globMatch(glob, relative(root, full)))
           match(full, data.line_number, data.lines.text.replace(/\r?\n$/, ''))
-        if (matches.length > limit) break
+        if (pageFull) break
       }
     }
   } else {
     for await (const path of dir ? walk(root, ctx.signal) : [target]) {
       if (!globMatch(glob, relative(root, path))) continue
-      if (!compiled) files.push(display(ctx, path))
+      if (!compiled) add(files, display(ctx, path))
       else {
         const input = createReadStream(path, { encoding: 'utf8', signal: ctx.signal })
         const reader = createInterface({ input, crlfDelay: Infinity })
@@ -192,7 +215,7 @@ export async function search(
             number++
             if (line.includes('\uFFFD')) break
             if (compiled.test(line)) match(path, number, line)
-            if (matches.length > limit) break
+            if (pageFull) break
           }
         } catch (e) {
           if ((e as NodeJS.ErrnoException).code !== 'EACCES') throw e
@@ -201,7 +224,7 @@ export async function search(
           input.destroy()
         }
       }
-      if (files.length > limit || matches.length > limit) break
+      if (pageFull) break
     }
   }
   const result = {
@@ -209,17 +232,17 @@ export async function search(
     path: display(ctx, target),
     ...(kind === 'grep' && glob ? { glob } : {}),
     limit,
-    truncated: Math.max(files.length, matches.length) > limit,
+    truncated: pageFull || shortened,
     engine: rg ? 'ripgrep' : 'node',
   }
   return success(
     kind === 'find'
-      ? { ...result, files: files.slice(0, limit).sort() }
+      ? { ...result, files: files.sort() }
       : {
           ...result,
-          matches: matches
-            .slice(0, limit)
-            .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line)),
+          matches: matches.sort((a, b) =>
+            a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line,
+          ),
         },
   )
 }

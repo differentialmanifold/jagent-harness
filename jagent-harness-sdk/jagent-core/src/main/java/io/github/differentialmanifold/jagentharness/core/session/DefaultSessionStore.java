@@ -50,6 +50,11 @@ public class DefaultSessionStore implements SessionStore {
     }
 
     @Override
+    public List<AgentMessage> findBefore(String sessionId, String before, int limit) {
+        return messageRepository.findBefore(sessionId, before, limit);
+    }
+
+    @Override
     public void appendMessage(AgentMessage message) {
         messageRepository.append(message);
     }

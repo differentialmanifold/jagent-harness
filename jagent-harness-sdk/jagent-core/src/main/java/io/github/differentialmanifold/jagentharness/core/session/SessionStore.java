@@ -25,6 +25,11 @@ public interface SessionStore {
         return ConversationHistory.recent(findMessages(sessionId), limit);
     }
 
+    default List<AgentMessage> findBefore(String sessionId, String before, int limit) {
+        if (before == null || before.isEmpty()) return findRecentMessages(sessionId, limit);
+        return ConversationHistory.before(findMessages(sessionId), before, limit);
+    }
+
     default List<AgentMessage> findContextMessages(String sessionId) {
         return FailedTurn.context(findMessages(sessionId));
     }

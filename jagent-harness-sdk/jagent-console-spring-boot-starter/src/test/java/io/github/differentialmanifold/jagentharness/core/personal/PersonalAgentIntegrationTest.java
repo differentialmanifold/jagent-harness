@@ -2,8 +2,6 @@ package io.github.differentialmanifold.jagentharness.core.personal;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
@@ -19,6 +17,7 @@ import io.github.differentialmanifold.jagentharness.core.session.*;
 import io.github.differentialmanifold.jagentharness.core.tool.*;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import io.github.differentialmanifold.jagentharness.spring.web.*;
+import io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BooleanSupplier;
@@ -1219,6 +1218,63 @@ class PersonalAgentIntegrationTest {
         p.enabled = true;
         service.save(p);
         await(() -> "DONE".equals(store.message(pending.id).status));
+    }
+
+    @Test
+    void inspectingHugeProjectMessagesReturnsBoundedPagesAndStableCursors() throws Exception {
+        Profile owner = profile("History reader");
+        String session =
+                service.createProjectSession(owner.id, new CreateSessionRequest()).getSessionId();
+        char[] chars = new char[1000000];
+        Arrays.fill(chars, '界');
+        String huge = new String(chars);
+        List<String> expected = new ArrayList<>();
+        for (int i = 0; i < 22; i++) {
+            AgentMessage message =
+                    AgentMessage.tool(
+                            session, "call-" + i, "bash", i == 21 ? huge : huge.substring(0, 900));
+            message.setRunId("inspect-run");
+            message.setTurnId("inspect-turn");
+            message.setReasoningContent("private reasoning");
+            history.appendMessage(message);
+            expected.add(message.getMessageId());
+        }
+        AgentMessage last =
+                AgentMessage.assistant(
+                        session,
+                        "done",
+                        Collections.singletonList(
+                                new ToolCall(
+                                        "call", "write", "{\"secretArguments\":\"omitted\"}")));
+        last.setRunId("inspect-run");
+        last.setTurnId("inspect-turn");
+        history.appendMessage(last);
+        expected.add(last.getMessageId());
+        List<String> actual = new ArrayList<>();
+        String cursor = null;
+        do {
+            Map<String, Object> page = service.inspectProject(owner.id, session, cursor);
+            byte[] serialized = json.writeValueAsBytes(page);
+            assertTrue(serialized.length < 12 * 1024);
+            JsonNode body = json.readTree(serialized);
+            assertFalse(body.toString().contains("private reasoning"));
+            assertFalse(body.toString().contains("secretArguments"));
+            List<String> ids = new ArrayList<>();
+            for (JsonNode m : body.path("messages")) {
+                ids.add(m.path("messageId").asText());
+                if ("tool".equals(m.path("role").asText()))
+                    assertTrue(m.path("content").asText().contains("[truncated]"));
+            }
+            assertTrue(ids.size() > 0 && ids.size() <= 10);
+            actual.addAll(0, ids);
+            assertTrue(actual.size() <= expected.size());
+            cursor = (String) page.get("beforeMessageId");
+            if (cursor != null) assertEquals(ids.get(0), cursor);
+        } while (cursor != null);
+        assertEquals(expected, actual);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.inspectProject(owner.id, session, "missing"));
     }
 
     @Test

@@ -137,3 +137,48 @@ test('bash exposes isolated browser session, errors, timeout and cancellation', 
   assert.equal(timeout.status, 'UNKNOWN')
   assert.equal(timeout.content.timedOut, true)
 })
+
+test('million-character shell results drain to bounded UTF-8 tails on both pipes', async (t) => {
+  const { call } = await fixture(t)
+  const command =
+    "node -e \"const s='界😀'.repeat(350000);process.stdout.write(s+'STDOUT-END');process.stderr.write(s+'STDERR-END');process.exitCode=7\""
+  const result = await call('bash', { command })
+  assert.equal(result.status, 'FAILED')
+  assert.equal(result.content.exitCode, 7)
+  for (const [stream, end] of [
+    ['stdout', 'STDOUT-END'],
+    ['stderr', 'STDERR-END'],
+  ]) {
+    const output = result.content[stream]
+    assert.ok(Buffer.byteLength(output) <= 6 * 1024)
+    assert.ok(output.startsWith('[output truncated'))
+    assert.ok(output.endsWith(end))
+    assert.ok(!output.includes('\uFFFD'))
+  }
+})
+
+test('minified files produce bounded search pages and readable file metadata', async (t) => {
+  const { workspace, ctx, call } = await fixture(t)
+  const large = 'MATCH' + '界😀'.repeat(350000) + 'END'
+  const content = [large, ...Array(80).fill('MATCH' + '界'.repeat(240))].join('\n')
+  const path = 'bundle.min.js'
+  await writeFile(join(workspace, path), content)
+  const file = (await call('read', { path, limit: 1 })).content
+  assert.equal(file.contentHash, createHash('sha256').update(content).digest('hex'))
+  assert.equal(file.truncated, true)
+  assert.equal(file.totalLines, 81)
+  assert.ok(Buffer.byteLength(file.content) <= 8192)
+  for (const engine of new Set([undefined, ripgrep()])) {
+    const { matches, truncated } = (await search('grep', engine, { pattern: 'MATCH', path }, ctx))
+      .content
+    assert.equal(truncated, true)
+    assert.ok(matches.length > 1 && matches.length < 81)
+    assert.equal(matches[0].line, 1)
+    assert.ok(matches[0].preview.endsWith('END'))
+    assert.ok(Buffer.byteLength(JSON.stringify(matches)) <= 12 * 1024)
+    for (const { preview } of matches) {
+      assert.ok(Buffer.byteLength(preview) <= 512)
+      assert.ok(preview.includes('[truncated]') && !preview.includes('\uFFFD'))
+    }
+  }
+})

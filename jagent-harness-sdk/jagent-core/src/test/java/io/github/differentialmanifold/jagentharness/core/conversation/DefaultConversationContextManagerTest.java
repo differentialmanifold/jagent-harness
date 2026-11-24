@@ -21,6 +21,7 @@ import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,8 +77,8 @@ class DefaultConversationContextManagerTest {
     void compactionUsesPersistedCursorAndPreservesAbortReason() {
         AgentSettings settings = new AgentSettings();
         settings.setCompactionEnabled(true);
-        settings.setContextWindowTokens(1);
-        settings.setCompactionThresholdRatio(1.0d);
+        settings.setContextWindowTokens(8192);
+        settings.setCompactionThresholdRatio(0.0001d);
         settings.setCompactionRecentMessages(1);
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
@@ -261,7 +262,7 @@ class DefaultConversationContextManagerTest {
     }
 
     @Test
-    void keepsOversizedToolResultInNormalModelContext() {
+    void preservesToolResultsThatFitTheNormalModelBudget() {
         AgentSettings settings = new AgentSettings();
         settings.setCompactionEnabled(false);
         ObjectMapper objectMapper = new ObjectMapper();
@@ -286,7 +287,106 @@ class DefaultConversationContextManagerTest {
     }
 
     @Test
-    void truncatesOversizedToolResultOnlyInCompactionPrompt() {
+    void boundsMillionCharacterResultsInTheCurrentTurnEvenWhenCompactionCannotRun() {
+        String huge = "HEAD" + repeated("界😀", 350000) + "TAIL";
+        for (boolean enabled : new boolean[] {true, false}) {
+            AgentSettings settings = compactingSettings();
+            settings.setCompactionEnabled(enabled);
+            ObjectMapper mapper = new ObjectMapper();
+            CapturingModelProvider provider = new CapturingModelProvider();
+            DefaultConversationContextManager manager =
+                    new DefaultConversationContextManager(
+                            settings,
+                            new FakeCompactionStore(),
+                            new DefaultAgentEventPublisher(mapper),
+                            mapper);
+            List<AgentMessage> history = new ArrayList<>();
+            history.add(AgentMessage.user("s1", "Check each result"));
+            List<ToolCall> calls = new ArrayList<>();
+            for (int i = 0; i < 12; i++) calls.add(new ToolCall("call-" + i, "bash", "{}"));
+            history.add(AgentMessage.assistant("s1", "", calls));
+            for (ToolCall call : calls) {
+                history.add(AgentMessage.tool("s1", call.getToolCallId(), "bash", huge));
+            }
+            history.get(2)
+                    .setImages(
+                            Collections.singletonList(
+                                    new MessageImage("file.png", "image/png", "image-ref")));
+            ConversationContext context = manager.prepare(request(history, provider));
+            assertEquals(0, provider.attempts.get());
+            assertEquals(history.size(), context.getMessages().size());
+            int bytes = 0;
+            for (int i = 2; i < history.size(); i++) {
+                AgentMessage sent = context.getMessages().get(i);
+                assertEquals(history.get(i).getToolCallId(), sent.getToolCallId());
+                assertEquals(history.get(i).getImages(), sent.getImages());
+                assertEquals(huge, history.get(i).getContent());
+                String excerpt = sent.getContent();
+                assertTrue(excerpt.startsWith("HEAD") && excerpt.endsWith("TAIL"));
+                assertTrue(excerpt.contains("[truncated]"));
+                byte[] encoded = excerpt.getBytes(StandardCharsets.UTF_8);
+                assertEquals(excerpt, new String(encoded, StandardCharsets.UTF_8));
+                bytes += encoded.length;
+            }
+            assertTrue(bytes < 8192 - 1024);
+            assertTrue(context.getRawEstimatedTokens() < settings.getContextWindowTokens());
+        }
+    }
+
+    @Test
+    void foldsOversizedHistoryInBoundedBatchesBeforeResumingAnOldSession() {
+        String huge = repeated("界", 1000000);
+        List<AgentMessage> history = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            String turn = "t" + i;
+            history.add(turnMessage("u" + i, turn, AgentMessage.ROLE_USER, "Check file " + i));
+            history.add(turnMessage("r" + i, turn, AgentMessage.ROLE_TOOL, huge));
+        }
+        AgentMessage followup = turnMessage("followup", "new", AgentMessage.ROLE_USER, "Continue");
+        history.add(followup);
+        AgentSettings settings = compactingSettings();
+        CapturingModelProvider provider = new CapturingModelProvider();
+        FakeCompactionStore store = new FakeCompactionStore();
+        ObjectMapper mapper = new ObjectMapper();
+        DefaultConversationContextManager manager =
+                new DefaultConversationContextManager(
+                        settings, store, new DefaultAgentEventPublisher(mapper), mapper);
+        ModelProvider interrupted =
+                new CapturingModelProvider() {
+                    int batches;
+
+                    @Override
+                    public ModelResponse chat(ModelRequest request) {
+                        if (++batches == 2)
+                            throw new ModelProviderException(
+                                    "Stopped during compaction", null, false);
+                        return super.chat(request);
+                    }
+                };
+        assertThrows(
+                ModelProviderException.class, () -> manager.prepare(request(history, interrupted)));
+        assertEquals(0, store.saveCount);
+
+        ConversationContext context = manager.prepare(request(history, provider));
+        assertTrue(provider.requests.size() > 1);
+        for (int i = 0; i < provider.requests.size(); i++) {
+            ModelRequest sent = provider.requests.get(i);
+            String input = sent.getMessages().get(0).getContent();
+            assertTrue(
+                    (sent.getSystemPrompt() + input).getBytes(StandardCharsets.UTF_8).length
+                            < 8192);
+            assertTrue(input.contains("[truncated]"));
+            if (i > 0) assertTrue(input.contains(provider.summary));
+        }
+        assertEquals(1, store.saveCount);
+        assertEquals("r11", store.cursorMessageId);
+        assertTrue(context.getSystemPrompt().contains(provider.summary));
+        assertEquals(Collections.singletonList(followup), context.getMessages());
+        assertEquals(huge, history.get(1).getContent());
+    }
+
+    @Test
+    void usesASmallerToolPreviewForCompaction() {
         AgentSettings settings = compactingSettings();
         FakeCompactionStore store = new FakeCompactionStore();
         CapturingModelProvider provider = new CapturingModelProvider();
@@ -312,7 +412,7 @@ class DefaultConversationContextManagerTest {
         int contentEnd = provider.compactionPrompt.indexOf("\n\n", contentStart);
         String compactedToolContent = provider.compactionPrompt.substring(contentStart, contentEnd);
         assertEquals(2000, compactedToolContent.length());
-        assertTrue(compactedToolContent.endsWith("...[tool result truncated]"));
+        assertTrue(compactedToolContent.contains("...[truncated]..."));
         assertEquals(2500, toolResult.getContent().length());
     }
 
@@ -415,8 +515,8 @@ class DefaultConversationContextManagerTest {
     void invalidatesActualUsageBaselineAfterCompactionChangesContext() {
         AgentSettings settings = new AgentSettings();
         settings.setCompactionEnabled(true);
-        settings.setContextWindowTokens(100);
-        settings.setCompactionThresholdRatio(0.5d);
+        settings.setContextWindowTokens(4096);
+        settings.setCompactionThresholdRatio(50d / 4096);
         settings.setCompactionRecentMessages(2);
         ObjectMapper objectMapper = new ObjectMapper();
         FakeCompactionStore compactionStore = new FakeCompactionStore();
@@ -518,8 +618,8 @@ class DefaultConversationContextManagerTest {
         AgentSettings settings = new AgentSettings();
         settings.setModel("test-model");
         settings.setCompactionEnabled(true);
-        settings.setContextWindowTokens(1);
-        settings.setCompactionThresholdRatio(1.0d);
+        settings.setContextWindowTokens(8192);
+        settings.setCompactionThresholdRatio(0.0001d);
         settings.setCompactionRecentMessages(1);
         settings.setCompactionTargetTokens(1);
         return settings;
@@ -577,6 +677,7 @@ class DefaultConversationContextManagerTest {
 
     private static class CapturingModelProvider implements ModelProvider {
         private String compactionPrompt;
+        private final List<ModelRequest> requests = new ArrayList<>();
         private String summary = "Compacted summary";
         private final AtomicInteger attempts = new AtomicInteger();
 
@@ -588,6 +689,7 @@ class DefaultConversationContextManagerTest {
         @Override
         public ModelResponse chat(ModelRequest request) {
             attempts.incrementAndGet();
+            requests.add(request);
             compactionPrompt = request.getMessages().get(0).getContent();
             ModelResponse response = new ModelResponse();
             response.setContent(summary);

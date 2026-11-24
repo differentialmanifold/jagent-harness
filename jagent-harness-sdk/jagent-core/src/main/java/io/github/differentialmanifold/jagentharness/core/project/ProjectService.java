@@ -1,8 +1,14 @@
 package io.github.differentialmanifold.jagentharness.core.project;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
+import io.github.differentialmanifold.jagentharness.core.message.ImageInputValidator;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.session.*;
+import io.github.differentialmanifold.jagentharness.core.support.Utf8Preview;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerInfo;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerProject;
 import java.util.*;
@@ -10,6 +16,8 @@ import java.util.stream.Collectors;
 
 /** Shared project/session operations for people and Personal Agents. */
 public class ProjectService {
+    private static final int INSPECT_PAGE_SIZE = 10;
+    private static final int INSPECT_PAGE_BYTES = 8 * 1024;
     private final SessionManager sessions;
     private final SessionStore history;
     private final RunnerService runners;
@@ -93,21 +101,70 @@ public class ProjectService {
 
     public Map<String, Object> inspect(String sessionId, String before) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("session", session(sessionId));
-        List<AgentMessage> messages = history.findMessages(sessionId);
-        int end = messages.size();
-        if (before != null && !before.isEmpty()) {
-            end = -1;
-            for (int i = 0; i < messages.size(); i++)
-                if (before.equals(messages.get(i).getMessageId())) {
-                    end = i;
-                    break;
+        SessionRecord record = session(sessionId);
+        ObjectNode settings = JsonNodeFactory.instance.objectNode();
+        settings.put("sessionId", sessionId);
+        settings.put("projectId", record.getProjectId());
+        settings.put("projectName", Utf8Preview.limit(record.getProjectName(), 192));
+        settings.put("title", Utf8Preview.limit(record.getTitle(), 192));
+        settings.put("workspacePath", Utf8Preview.limit(record.getWorkspacePath(), 512));
+        settings.put("runnerId", record.getRunnerId());
+        settings.put("status", record.getStatus());
+        if (record.getUpdatedAt() != null)
+            settings.put("updatedAt", record.getUpdatedAt().toString());
+        out.put("session", settings);
+
+        // Read one extra row to distinguish the end of history from an exactly full page.
+        List<AgentMessage> page = history.findBefore(sessionId, before, INSPECT_PAGE_SIZE + 1);
+        LinkedList<ObjectNode> rows = new LinkedList<>();
+        ObjectNode attachments = JsonNodeFactory.instance.objectNode();
+        int bytes = 0, i = page.size();
+        while (i > 0 && rows.size() < INSPECT_PAGE_SIZE) {
+            AgentMessage message = page.get(i - 1);
+            ObjectNode row = JsonNodeFactory.instance.objectNode();
+            row.put("messageId", message.getMessageId());
+            row.put("role", message.getRole());
+            row.put("content", Utf8Preview.limit(message.getContent(), 1024));
+            if (message.getRunId() != null)
+                row.put("runId", Utf8Preview.limit(message.getRunId(), 128));
+            if (message.getCreatedAt() != null)
+                row.put("createdAt", message.getCreatedAt().toString());
+            if (message.getToolName() != null)
+                row.put("toolName", Utf8Preview.limit(message.getToolName(), 128));
+            if (message.getToolCallId() != null)
+                row.put("toolCallId", Utf8Preview.limit(message.getToolCallId(), 128));
+            if (message.getStopReason() != null)
+                row.put("stopReason", Utf8Preview.limit(message.getStopReason(), 64));
+            if (!message.getToolCalls().isEmpty()) {
+                ArrayNode names = row.putArray("toolNames");
+                for (ToolCall call : message.getToolCalls()) {
+                    if (names.size() == 8) break;
+                    names.add(Utf8Preview.limit(call.getName(), 64));
                 }
-            if (end < 0) throw new IllegalArgumentException("History cursor not found");
+            }
+            ObjectNode images = JsonNodeFactory.instance.objectNode();
+            for (int n = 0;
+                    n < Math.min(ImageInputValidator.MAX_IMAGES, message.getImages().size());
+                    n++)
+                images.put(
+                        message.getMessageId() + ":" + (n + 1),
+                        Utf8Preview.limit(message.getImages().get(n).getName(), 96));
+            int size = Utf8Preview.bytes(row.toString()) + Utf8Preview.bytes(images.toString()) + 2;
+            if (size > INSPECT_PAGE_BYTES) {
+                // JSON escapes can expand control characters sixfold. Keep the row pageable.
+                row.put("content", Utf8Preview.limit(message.getContent(), 256));
+                row.remove("toolNames");
+                size = Utf8Preview.bytes(row.toString()) + Utf8Preview.bytes(images.toString()) + 2;
+            }
+            if (bytes + size > INSPECT_PAGE_BYTES) break;
+            rows.addFirst(row);
+            attachments.setAll(images);
+            bytes += size;
+            i--;
         }
-        int start = Math.max(0, end - 40);
-        out.put("messages", messages.subList(start, end));
-        out.put("beforeMessageId", start == 0 ? null : messages.get(start).getMessageId());
+        out.put("beforeMessageId", i == 0 ? null : page.get(i).getMessageId());
+        if (attachments.size() > 0) out.put("imageAttachments", attachments);
+        out.put("messages", rows);
         return out;
     }
 

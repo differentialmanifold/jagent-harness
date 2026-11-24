@@ -45,7 +45,7 @@ jagent runner --server https://harness.example.com --credentials /path/to/my-use
 
 Use the public Console origin for `--server` if it proxies `/api/`. If the Runner connects directly to the Harness, add `--console <browser-facing-url>`. Have the operator issue the credential on the Harness host. Only the execution machine needs the Runner. [Credentials and remote deployment](docs/guides/access.md)
 
-For offline installation, install the built tarball with `npm install --global /path/to/jagent-0.1.0.tgz`. To produce it from a checkout:
+For offline installation, install the built tarball with `npm install --global /path/to/jagent-0.1.1.tgz`. To produce it from a checkout:
 
 ```sh
 cd sdk/node

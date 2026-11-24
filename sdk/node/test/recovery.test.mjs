@@ -70,12 +70,11 @@ test(
       }
       if (path === 'runners/chat') {
         if (body.messages[0].role === 'user') return json(pending)
-        assert.deepEqual(body.messages[0], {
-          role: 'tool',
-          toolCallId: 'call1',
-          status: 'SUCCEEDED',
-          content: 1,
-        })
+        const { content, ...envelope } = body.messages[0]
+        assert.deepEqual(envelope, { role: 'tool', toolCallId: 'call1', status: 'SUCCEEDED' })
+        assert.ok(content.startsWith('effect=1') && content.endsWith('END'))
+        assert.ok(content.includes('[truncated]') && !content.includes('\uFFFD'))
+        assert.ok(Buffer.byteLength(content) <= 16 * 1024)
         if (phase === 1) return res.destroy()
         assert.equal(phase, 4)
         assert.equal(body.messages[1].toolCallId, 'no-record')
@@ -120,7 +119,7 @@ test(
           description: 'Increment once',
           parameters: { type: 'object' },
           execute() {
-            return success(++effects)
+            return success('effect=' + ++effects + '界😀'.repeat(350000) + 'END')
           },
         },
       ],

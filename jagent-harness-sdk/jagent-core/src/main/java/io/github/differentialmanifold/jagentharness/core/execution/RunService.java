@@ -88,6 +88,15 @@ public class RunService implements AutoCloseable {
     }
 
     public ChatResponse state(String sessionId) {
+        return state(sessionId, true);
+    }
+
+    /** The inspect tool only needs progress, even for sessions with a large transcript. */
+    public ChatResponse status(String sessionId) {
+        return state(sessionId, false);
+    }
+
+    private ChatResponse state(String sessionId, boolean includeResults) {
         sessions.requireSession(sessionId);
         LocalRun active = local.get().get(sessionId);
         if (active != null) return running(sessionId, active.handle.runId);
@@ -96,14 +105,14 @@ public class RunService implements AutoCloseable {
             for (RunnerJob job : runners.unfinished(runner))
                 if (sessionId.equals(job.request.sessionId)) {
                     try {
-                        ChatResponse state = conversations.state(sessionId);
+                        ChatResponse state = conversations.state(sessionId, includeResults);
                         if (job.request.runId.equals(state.runId)) return state;
                     } catch (ProtocolException missing) {
                         if (missing.status != 404) throw missing;
                     }
                     return running(sessionId, job.request.runId);
                 }
-        return conversations.state(sessionId);
+        return conversations.state(sessionId, includeResults);
     }
 
     /** Null means no execution can be established; it never grants permission to replay work. */

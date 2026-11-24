@@ -14,11 +14,12 @@ import io.github.differentialmanifold.jagentharness.core.provider.ModelProvider;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderException;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelResponse;
+import io.github.differentialmanifold.jagentharness.core.support.Utf8Preview;
+import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolDefinition;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsage;
 import io.github.differentialmanifold.jagentharness.core.usage.ModelCallUsageStore;
 import io.github.differentialmanifold.jagentharness.core.usage.NoopModelCallUsageStore;
-import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,8 +30,8 @@ import java.util.Map;
 
 public class DefaultConversationContextManager implements ConversationContextManager {
 
-    private static final int MAX_TOOL_RESULT_CHARS = 2000;
-    private static final String TOOL_RESULT_TRUNCATED_SUFFIX = "\n...[tool result truncated]";
+    private static final int MAX_TOOL_BYTES = 16 * 1024;
+    private static final int SUMMARY_TOOL_BYTES = 2000;
     private static final String COMPACTION_SUMMARY_HEADER =
             "\n\n## Compacted Conversation Summary\n"
                     + "The following summary condenses earlier messages that are no longer included verbatim. "
@@ -89,7 +90,10 @@ public class DefaultConversationContextManager implements ConversationContextMan
                         ? new ArrayList<AgentMessage>()
                         : FailedTurn.context(request.getMessages());
         CompactionState state = compactionStore.findBySessionId(request.getSessionId());
-        String summary = state == null ? null : state.getSummary();
+        String summary =
+                state == null
+                        ? null
+                        : Utf8Preview.limit(state.getSummary(), effectiveContextWindowTokens() / 4);
         String cursorMessageId = state == null ? null : state.getCursorMessageId();
         Instant usageBaselineNotBefore = state == null ? null : state.getUpdatedAt();
         List<AgentMessage> contextMessages = messagesAfterCursor(messages, cursorMessageId);
@@ -180,7 +184,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
         }
 
         request.getStopSignal().throwIfAborted();
-        modelMessages = messagesForModel(contextMessages);
+        modelMessages = fitToolResults(modelMessages, systemPromptWithSummary, request.getTools());
         estimate =
                 estimateRequestTokens(
                         request.getSessionId(),
@@ -387,16 +391,41 @@ public class DefaultConversationContextManager implements ConversationContextMan
         return left == null ? right == null : left.equals(right);
     }
 
-    private boolean isOversizedToolResult(AgentMessage message) {
-        return message != null
-                && AgentMessage.ROLE_TOOL.equals(message.getRole())
-                && message.getContent() != null
-                && message.getContent().length() > MAX_TOOL_RESULT_CHARS;
+    // Tool text is expendable; IDs, tool-call pairs, images and user messages stay intact.
+    // Use one UTF-8 byte per available token as a conservative allowance for arbitrary output.
+    private List<AgentMessage> fitToolResults(
+            List<AgentMessage> messages, String prompt, Collection<ToolDefinition> tools) {
+        List<Integer> sizes = new ArrayList<>();
+        int fixed = rawEstimateRequestTokens(prompt, messages, tools);
+        for (AgentMessage m : messages) {
+            if (AgentMessage.ROLE_TOOL.equals(m.getRole()) && m.getContent() != null) {
+                fixed -= tokenEstimator.estimateText(m.getContent());
+                sizes.add(Utf8Preview.bytes(m.getContent()));
+            }
+        }
+        if (sizes.isEmpty()) return messages;
+        Collections.sort(sizes);
+        int window = effectiveContextWindowTokens();
+        int available = Math.max(0, window - window / 5 - fixed);
+        for (int i = 0; i < sizes.size(); i++) {
+            int share = available / (sizes.size() - i);
+            if (sizes.get(i) > share) {
+                List<AgentMessage> fitted = new ArrayList<>(messages.size());
+                for (AgentMessage m : messages) fitted.add(toolPreview(m, share));
+                return fitted;
+            }
+            available -= sizes.get(i);
+        }
+        return messages;
     }
 
-    private String truncatedToolResult(String content) {
-        int prefixLength = MAX_TOOL_RESULT_CHARS - TOOL_RESULT_TRUNCATED_SUFFIX.length();
-        return content.substring(0, prefixLength) + TOOL_RESULT_TRUNCATED_SUFFIX;
+    private AgentMessage toolPreview(AgentMessage message, int maxBytes) {
+        if (!AgentMessage.ROLE_TOOL.equals(message.getRole())) return message;
+        String content = Utf8Preview.limit(message.getContent(), maxBytes);
+        if (content == message.getContent()) return message;
+        AgentMessage copy = message.copy();
+        copy.setContent(content);
+        return copy;
     }
 
     private String compactConversation(
@@ -407,14 +436,79 @@ public class DefaultConversationContextManager implements ConversationContextMan
             String sessionId,
             String runId,
             String turnId) {
+        int window = effectiveContextWindowTokens();
+        int summaryBudget = window / 4;
+        String instructions =
+                "Compact the following conversation segment, merging it with the previous summary.\n\n";
+        int batchBudget =
+                window
+                        - window / 5
+                        - summaryBudget
+                        - tokenEstimator.estimateText(compactionSystemPrompt())
+                        - instructions.length()
+                        - 32;
+        if (batchBudget < 1)
+            throw new IllegalArgumentException(
+                    "Model context window is too small for conversation compaction");
+        String summary = Utf8Preview.limit(previousSummary, summaryBudget);
+        StringBuilder batch = new StringBuilder();
+        int used = 0;
+        for (AgentMessage message : messagesToCompact) {
+            stopSignal.throwIfAborted();
+            String row =
+                    Utf8Preview.limit(
+                            renderMessageForCompaction(message, batchBudget), batchBudget);
+            int size = Utf8Preview.bytes(row);
+            if (used > 0 && size > batchBudget - used) {
+                summary =
+                        summarizeBatch(
+                                provider,
+                                summary,
+                                instructions,
+                                batch,
+                                summaryBudget,
+                                stopSignal,
+                                sessionId,
+                                runId,
+                                turnId);
+                batch.setLength(0);
+                used = 0;
+            }
+            batch.append(row);
+            used += size;
+        }
+        return summarizeBatch(
+                provider,
+                summary,
+                instructions,
+                batch,
+                summaryBudget,
+                stopSignal,
+                sessionId,
+                runId,
+                turnId);
+    }
+
+    private String summarizeBatch(
+            ModelProvider provider,
+            String previous,
+            String instructions,
+            StringBuilder batch,
+            int summaryBudget,
+            StopSignal stopSignal,
+            String sessionId,
+            String runId,
+            String turnId) {
         ModelRequest request = new ModelRequest();
         request.setModel(settings.getModel());
         request.setSystemPrompt(compactionSystemPrompt());
-        request.setMessages(
-                Collections.singletonList(
-                        AgentMessage.user(
-                                "compaction",
-                                compactionUserPrompt(previousSummary, messagesToCompact))));
+        String input =
+                instructions
+                        + (previous == null || previous.isEmpty()
+                                ? ""
+                                : "Previous compacted summary:\n" + previous + "\n\n")
+                        + batch;
+        request.setMessages(Collections.singletonList(AgentMessage.user("compaction", input)));
         request.setTools(Collections.<ToolDefinition>emptyList());
 
         ModelResponse response =
@@ -431,7 +525,7 @@ public class DefaultConversationContextManager implements ConversationContextMan
         if (summary == null || summary.trim().isEmpty()) {
             throw new ModelProviderException("Compaction returned an empty summary", null, false);
         }
-        return summary.trim();
+        return Utf8Preview.limit(summary.trim(), summaryBudget);
     }
 
     private int effectiveCompactionTargetTokens() {
@@ -451,64 +545,46 @@ public class DefaultConversationContextManager implements ConversationContextMan
                 + "Do not invent details. Do not include generic filler.";
     }
 
-    private String compactionUserPrompt(
-            String previousSummary, List<AgentMessage> messagesToCompact) {
-        StringBuilder prompt = new StringBuilder();
-        if (previousSummary != null && !previousSummary.trim().isEmpty()) {
-            prompt.append("Previous compacted summary:\n")
-                    .append(previousSummary.trim())
-                    .append("\n\n");
-        }
-        prompt.append(
-                "Compact this conversation segment and merge it with the previous summary if present.\n\n");
-        prompt.append(renderMessagesForCompaction(messagesToCompact));
-        return prompt.toString();
-    }
-
-    private String renderMessagesForCompaction(List<AgentMessage> messages) {
+    private String renderMessageForCompaction(AgentMessage message, int batchBudget) {
         StringBuilder rendered = new StringBuilder();
-        if (messages == null || messages.isEmpty()) {
-            return "";
+        rendered.append("[").append(valueOrEmpty(message.getRole())).append("]");
+        if (message.getStopReason() != null && !message.getStopReason().trim().isEmpty()) {
+            rendered.append(" stopReason=").append(message.getStopReason());
         }
-        for (AgentMessage message : messages) {
-            rendered.append("[").append(valueOrEmpty(message.getRole())).append("]");
-            if (message.getStopReason() != null && !message.getStopReason().trim().isEmpty()) {
-                rendered.append(" stopReason=").append(message.getStopReason());
-            }
-            if (message.getToolName() != null && !message.getToolName().trim().isEmpty()) {
-                rendered.append(" tool=").append(message.getToolName());
-            }
-            if (message.getToolCallId() != null && !message.getToolCallId().trim().isEmpty()) {
-                rendered.append(" toolCallId=").append(message.getToolCallId());
-            }
-            rendered.append("\n");
-            if (message.getContent() != null && !message.getContent().isEmpty()) {
-                String content =
-                        isOversizedToolResult(message)
-                                ? truncatedToolResult(message.getContent())
-                                : message.getContent();
-                rendered.append(content).append("\n");
-            }
-            if (message.getImages() != null) {
-                for (MessageImage image : message.getImages()) {
-                    rendered.append("[image attached: ").append(imageLabel(image)).append("]\n");
-                }
-            }
-            if (isAbortedAssistant(message)) {
-                rendered.append(
-                        "The user interrupted this assistant response before completion.\n");
-            }
-            if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
-                try {
-                    rendered.append("toolCalls=")
-                            .append(objectMapper.writeValueAsString(message.getToolCalls()))
-                            .append("\n");
-                } catch (IOException e) {
-                    rendered.append("toolCalls=<failed to serialize>\n");
-                }
-            }
-            rendered.append("\n");
+        if (message.getToolName() != null && !message.getToolName().trim().isEmpty()) {
+            rendered.append(" tool=").append(message.getToolName());
         }
+        if (message.getToolCallId() != null && !message.getToolCallId().trim().isEmpty()) {
+            rendered.append(" toolCallId=").append(message.getToolCallId());
+        }
+        rendered.append("\n");
+        if (message.getContent() != null && !message.getContent().isEmpty()) {
+            int limit =
+                    AgentMessage.ROLE_TOOL.equals(message.getRole())
+                            ? Math.min(SUMMARY_TOOL_BYTES, batchBudget)
+                            : batchBudget;
+            String content = Utf8Preview.limit(message.getContent(), limit);
+            rendered.append(content).append("\n");
+        }
+        if (message.getImages() != null) {
+            for (MessageImage image : message.getImages()) {
+                rendered.append("[image attached: ").append(imageLabel(image)).append("]\n");
+            }
+        }
+        if (isAbortedAssistant(message)) {
+            rendered.append("The user interrupted this assistant response before completion.\n");
+        }
+        if (message.getToolCalls() != null && !message.getToolCalls().isEmpty()) {
+            for (ToolCall call : message.getToolCalls()) {
+                rendered.append("toolCall ")
+                        .append(Utf8Preview.limit(call.getName(), 128))
+                        .append(" ")
+                        .append(Utf8Preview.limit(call.getArgumentsJson(), SUMMARY_TOOL_BYTES))
+                        .append("\n");
+                if (rendered.length() >= batchBudget) break;
+            }
+        }
+        rendered.append("\n");
         return rendered.toString();
     }
 
@@ -532,7 +608,10 @@ public class DefaultConversationContextManager implements ConversationContextMan
         }
         for (AgentMessage message : messages) {
             if (!isAbortedAssistant(message)) {
-                modelMessages.add(message);
+                modelMessages.add(
+                        toolPreview(
+                                message,
+                                Math.min(MAX_TOOL_BYTES, effectiveContextWindowTokens() / 4)));
                 continue;
             }
             if (hasAssistantContent(message)) {

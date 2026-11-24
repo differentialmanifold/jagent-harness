@@ -13,7 +13,7 @@ npm install --global jagent
 jagent runner --server https://harness.example.com --credentials /path/to/user.env
 ```
 
-首次发布前或在内网中，使用 `npm install --global /path/to/jagent-0.1.0.tgz` 安装同一个命令。发布包中包含运行时依赖。从源码构建 tarball 时，在 `sdk/node` 下运行 `npm ci` 和 `npm pack`。本地默认地址可直接运行 `jagent runner`。无图形环境使用 `--no-browser`。用 `npm uninstall --global jagent` 卸载命令。
+首次发布前或在内网中，使用 `npm install --global /path/to/jagent-0.1.1.tgz` 安装同一个命令。发布包中包含运行时依赖。从源码构建 tarball 时，在 `sdk/node` 下运行 `npm ci` 和 `npm pack`。本地默认地址可直接运行 `jagent runner`。无图形环境使用 `--no-browser`。用 `npm uninstall --global jagent` 卸载命令。
 
 ## 命令行
 

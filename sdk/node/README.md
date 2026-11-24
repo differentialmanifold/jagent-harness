@@ -13,7 +13,7 @@ npm install --global jagent
 jagent runner --server https://harness.example.com --credentials /path/to/user.env
 ```
 
-Before publication or in an isolated network, install a supplied tarball with `npm install --global /path/to/jagent-0.1.0.tgz`. It includes its runtime dependencies. To produce it from a checkout, run `npm ci` and `npm pack` in `sdk/node`. For the default local Harness use `jagent runner`. On a headless host add `--no-browser`. Use `npm uninstall --global jagent` to remove the CLI.
+Before publication or in an isolated network, install a supplied tarball with `npm install --global /path/to/jagent-0.1.1.tgz`. It includes its runtime dependencies. To produce it from a checkout, run `npm ci` and `npm pack` in `sdk/node`. For the default local Harness use `jagent runner`. On a headless host add `--no-browser`. Use `npm uninstall --global jagent` to remove the CLI.
 
 ## Use the CLI
 

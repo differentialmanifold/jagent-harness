@@ -29,6 +29,14 @@ public final class ConversationHistory {
                 messages.subList(Math.max(0, messages.size() - limit), messages.size()));
     }
 
+    public static List<AgentMessage> before(List<AgentMessage> messages, String before, int limit) {
+        if (before == null || before.isEmpty()) return recent(messages, limit);
+        for (int i = messages.size() - 1; i >= 0; i--)
+            if (before.equals(messages.get(i).getMessageId()))
+                return recent(messages.subList(0, i), limit);
+        throw new IllegalArgumentException("History cursor not found");
+    }
+
     public static Map<String, ToolCall> pendingTools(List<AgentMessage> messages) {
         Map<String, ToolCall> pending = new LinkedHashMap<>();
         for (AgentMessage message : messages) {

@@ -31,6 +31,11 @@ public interface MessageRepository {
         return ConversationHistory.recent(findBySessionId(sessionId), limit);
     }
 
+    default List<AgentMessage> findBefore(String sessionId, String before, int limit) {
+        if (before == null || before.isEmpty()) return findRecentBySessionId(sessionId, limit);
+        return ConversationHistory.before(findBySessionId(sessionId), before, limit);
+    }
+
     /**
      * Literal, case-insensitive phrase search, scoped by the caller. Stores may index this query.
      */
