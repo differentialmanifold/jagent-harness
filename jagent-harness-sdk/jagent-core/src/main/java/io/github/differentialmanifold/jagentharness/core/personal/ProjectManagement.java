@@ -55,7 +55,7 @@ public final class ProjectManagement {
                 "before", text("Optional beforeMessageId cursor to read earlier messages."));
         ops.register(
                 "projects.inspect",
-                "Read project settings and a page of session messages. This does not transfer project ownership to mainbot.",
+                "Read project settings and a page of bounded message excerpts. Pass the returned beforeMessageId as before for earlier messages. This does not transfer project ownership to mainbot.",
                 object(inspectFields, "sessionId"),
                 (ctx, a) -> {
                     requireProject(projects.get(), a.get("sessionId").asText());

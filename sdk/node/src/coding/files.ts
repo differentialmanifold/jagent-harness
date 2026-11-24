@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { preview } from '../output.js'
 import { missing } from '../files.js'
 import { success, type Arguments, type ToolContext } from '../types.js'
 
@@ -100,6 +101,8 @@ export async function read(args: Arguments, ctx: ToolContext) {
     }
     consume(decoder.decode())
     if (remainder && ++totalLines >= offset && lines.length < limit) lines.push(remainder)
+    const selected = lines.join('\n')
+    const content = preview(selected, 8 * 1024)
     return success({
       path: name,
       type: 'text',
@@ -107,9 +110,9 @@ export async function read(args: Arguments, ctx: ToolContext) {
       limit,
       lines: lines.length,
       totalLines,
-      truncated: offset - 1 + lines.length < totalLines,
+      truncated: content !== selected || offset - 1 + lines.length < totalLines,
       contentHash: hash.digest('hex'),
-      content: lines.join('\n'),
+      content,
     })
   } finally {
     await file.close()

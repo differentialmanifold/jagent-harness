@@ -108,6 +108,50 @@ class AgentRunnerCompactionTest {
     }
 
     @Test
+    void resumesTheSameSessionAfterAPreviousToolReturnedAMillionCharacters() {
+        FakeSessionStore store = new FakeSessionStore();
+        String huge = "BEGIN" + repeated("界", 1000000) + "END";
+        store.messages.add(AgentMessage.user("s1", "Check this file"));
+        store.messages.add(
+                AgentMessage.assistant(
+                        "s1",
+                        "",
+                        Collections.singletonList(new ToolCall("call-bash", "bash", "{}"))));
+        store.messages.add(AgentMessage.tool("s1", "call-bash", "bash", huge));
+
+        FakeModelProvider provider = new FakeModelProvider();
+        ModelProviderRegistry providers = new ModelProviderRegistry();
+        providers.register(provider);
+        ObjectMapper mapper = new ObjectMapper();
+        DefaultAgentEventPublisher events = new DefaultAgentEventPublisher(mapper);
+        AgentSettings settings = settings();
+        settings.setCompactionRecentMessages(20);
+        AgentRunner runner =
+                new AgentRunner(
+                        settings,
+                        store,
+                        events,
+                        new StaticPromptProvider(),
+                        new ToolRegistry(),
+                        providers,
+                        new DefaultToolContextFactory(),
+                        new DefaultConversationContextManager(
+                                settings, new FakeCompactionStore(), events, mapper),
+                        mapper);
+
+        assertEquals("final answer", runner.run("s1", "Continue here").getAnswer());
+        assertEquals(1, provider.normalRequests.size());
+        ModelRequest sent = provider.normalRequests.get(0);
+        AgentMessage tool = sent.getMessages().get(2);
+        assertEquals("call-bash", tool.getToolCallId());
+        assertTrue(tool.getContent().contains("[truncated]"));
+        assertTrue(
+                tool.getContent().getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 4096);
+        assertEquals("Continue here", sent.getMessages().get(3).getContent());
+        assertEquals(huge, store.messages.get(2).getContent());
+    }
+
+    @Test
     void savesModelUsageAfterAssistantMessageIsPersisted() {
         FakeSessionStore store = new FakeSessionStore();
         CapturingUsageStore usageStore = new CapturingUsageStore();
@@ -262,8 +306,8 @@ class AgentRunnerCompactionTest {
         settings.setProvider("fake");
         settings.setModel("fake-model");
         settings.setCompactionEnabled(true);
-        settings.setContextWindowTokens(60);
-        settings.setCompactionThresholdRatio(0.5d);
+        settings.setContextWindowTokens(4096);
+        settings.setCompactionThresholdRatio(30d / 4096);
         settings.setCompactionRecentMessages(2);
         settings.setCompactionTargetTokens(100);
         return settings;

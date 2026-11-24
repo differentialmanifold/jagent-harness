@@ -22,7 +22,7 @@ From the repository root, run:
 cd sdk/node
 npm ci
 npm pack
-npm install --global ./jagent-0.1.0.tgz
+npm install --global ./jagent-0.1.1.tgz
 jagent version
 ```
 

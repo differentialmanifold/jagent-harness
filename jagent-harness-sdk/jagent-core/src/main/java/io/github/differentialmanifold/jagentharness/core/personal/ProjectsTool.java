@@ -43,7 +43,7 @@ public final class ProjectsTool extends PersonalTool {
                 new String[] {"projects_create"});
         action(
                 "inspect",
-                "Read execution state and the latest 40 messages, including stored image references for attach_images. Use beforeMessageId to paginate.",
+                "Read execution state and bounded message excerpts, newest page first. Use the returned beforeMessageId to read earlier messages. imageAttachments contains references for attach_images.",
                 fields(
                         "sessionId",
                         text("Owned project session."),

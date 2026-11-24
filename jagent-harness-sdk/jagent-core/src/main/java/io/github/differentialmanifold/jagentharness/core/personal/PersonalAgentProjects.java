@@ -123,18 +123,12 @@ final class PersonalAgentProjects {
     public Map<String, Object> inspect(String agent, String session, String before) {
         requireProject(agent, session);
         Map<String, Object> out = projects.inspect(session, before);
-        // A scoped reference can be used by attach_images; the model never needs image bytes in
-        // text.
-        Map<String, String> images = new LinkedHashMap<>();
-        for (Object row : (List<?>) out.get("messages")) {
-            AgentMessage message = (AgentMessage) row;
-            List<String> ids = ConversationImages.ids(message);
-            for (int i = 0; i < ids.size(); i++)
-                images.put(ids.get(i), message.getImages().get(i).getName());
-        }
-        if (!images.isEmpty()) out.put("imageAttachments", images);
         try {
-            out.put("state", runs.state(session));
+            ChatResponse state = runs.status(session);
+            Map<String, String> progress = new LinkedHashMap<>();
+            progress.put("runId", state.runId);
+            progress.put("status", state.status);
+            out.put("state", progress);
         } catch (ProtocolException missing) {
             if (missing.status != 404) throw missing;
         }

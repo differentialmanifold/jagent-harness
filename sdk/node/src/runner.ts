@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { digest, Journal, lease, load, save, type Identity } from './files.js'
+import { MAX_RESULT_BYTES, preview } from './output.js'
 import { Harness, HttpError, origin } from './http.js'
 import {
   errorText,
@@ -47,7 +48,10 @@ const descriptor = ({ name, description, parameters }: ToolDescriptor) => ({
   parameters,
 })
 function toolMessage(call: ToolCall, result: ToolResult) {
-  return { role: 'tool', toolCallId: call.toolCallId, ...result }
+  const text = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
+  const content =
+    text && Buffer.byteLength(text) > MAX_RESULT_BYTES ? preview(text, MAX_RESULT_BYTES) : result.content
+  return { role: 'tool', toolCallId: call.toolCallId, ...result, content }
 }
 export async function connection(server: string, token: string, home: string, expectedUser?: string) {
   server = origin(server)

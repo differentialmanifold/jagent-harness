@@ -63,7 +63,7 @@
     }
   }, {
     "name" : "grep",
-    "description" : "Search file contents with a regular expression by default. Returns matching lines with file paths and line numbers. Set literal to true for exact text. Hidden files are included; ripgrep honors repository ignore files, while Node.js fallback uses fixed directory exclusions.",
+    "description" : "Search file contents with a regular expression by default. Returns bounded excerpts with file paths and line numbers. Narrow the pattern or path when results are truncated. Set literal to true for exact text. Hidden files are included; ripgrep honors repository ignore files, while Node.js fallback uses fixed directory exclusions.",
     "parameters" : {
       "type" : "object",
       "properties" : {
@@ -156,7 +156,7 @@
     }
   }, {
     "name" : "bash",
-    "description" : "Execute a shell command and return exit code, stdout, and stderr. Relative cwd resolves from the workspace; absolute cwd is allowed. Prefer dedicated tools first when they directly cover finding, reading, searching, or editing files.",
+    "description" : "Execute a shell command and return its exit code and the tail of stdout and stderr. Redirect output to a workspace file when the full log is needed. Relative cwd resolves from the workspace; absolute cwd is allowed. Prefer dedicated tools first when they directly cover finding, reading, searching, or editing files.",
     "parameters" : {
       "type" : "object",
       "properties" : {

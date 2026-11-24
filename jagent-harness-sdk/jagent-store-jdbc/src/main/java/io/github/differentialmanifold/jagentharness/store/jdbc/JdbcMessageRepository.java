@@ -120,6 +120,31 @@ public class JdbcMessageRepository implements MessageRepository {
     }
 
     @Override
+    public List<AgentMessage> findBefore(String sessionId, String before, int limit) {
+        if (before == null || before.isEmpty()) return findRecentBySessionId(sessionId, limit);
+        if (limit < 1) throw new IllegalArgumentException("Message limit must be positive");
+        String app = applicationId();
+        List<Long> cursor =
+                jdbcTemplate.queryForList(
+                        "select id from messages where application_id = ? and session_id = ? and message_id = ?",
+                        Long.class,
+                        app,
+                        sessionId,
+                        before);
+        if (cursor.isEmpty()) throw new IllegalArgumentException("History cursor not found");
+        List<AgentMessage> rows =
+                jdbcTemplate.query(
+                        "select * from messages where application_id = ? and session_id = ? and id < ? order by id desc limit ?",
+                        mapper(),
+                        app,
+                        sessionId,
+                        cursor.get(0),
+                        limit);
+        java.util.Collections.reverse(rows);
+        return rows;
+    }
+
+    @Override
     public List<AgentMessage> findContextBySessionId(String sessionId) {
         Long cursor =
                 jdbcTemplate.queryForObject(
