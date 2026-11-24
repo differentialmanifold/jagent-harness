@@ -99,7 +99,3 @@ This check covers both server tools and Runner results across requests. Successf
 ## mainbot’s Runner
 
 **System Settings → Runners** marks the Runner bound to mainbot. Ask mainbot for another Agent when you need a separate role. It can share its own Runner or create the Agent on another registered Runner for work on a different machine.
-
-## Offline Runner packages
-
-Set `harness.console.runner-distribution-directory` to a directory containing `coding/runner.jar` and `coding/manifest.json`. It defaults to `./data/runners`; server-demo maps it to `JAGENT_RUNNER_DISTRIBUTION_DIR`. The development launchers use the build output automatically. The [Runner guide](../../examples/coding-runner/README.md#distribute-inside-your-network) covers package preparation, authenticated downloads and SSH forwarding for machines that cannot directly reach the Harness.

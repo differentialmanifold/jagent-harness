@@ -27,14 +27,20 @@ jobs:
           cache: maven
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20.19.0'
           cache: npm
           cache-dependency-path: |
             console/package-lock.json
             protocol/package-lock.json
-      - run: node --check scripts/lib/launch.mjs && node --test scripts/lib/*.test.mjs && node scripts/dev.mjs --help
+            sdk/node/package-lock.json
+      - run: node --test scripts/lib/*.test.mjs && node scripts/start.mjs --help
       - run: node --test skills/tests/*.test.mjs
       - run: mvn -B install
+      - name: Verify Node Runner with the packaged Harness
+        run: |
+          npm ci --prefix sdk/node
+          server=(examples/server-demo/target/server-demo-*.jar)
+          JAGENT_TEST_SERVER_JAR="$PWD/${server[0]}" npm test --prefix sdk/node
       - name: Verify packaged host with PostgreSQL on Linux
         env:
           JAGENT_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:${{ job.services.postgres.ports['5432'] }}/jagent
@@ -44,7 +50,7 @@ jobs:
           JAGENT_OPENAI_BASE_URL: http://127.0.0.1:1/v1
           JAGENT_STATE_DIR: ${{ runner.temp }}/harness-state
         run: |
-          node scripts/start-server.mjs --skip-build &
+          node scripts/start.mjs harness --skip-build &
           launcher=$!
           trap 'kill "$launcher" 2>/dev/null || true; wait "$launcher" || true' EXIT
           curl -fsS --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:18181/api/v1/health
@@ -53,16 +59,12 @@ jobs:
           java -jar "${server[0]}" users create --name pg-ci --output "$RUNNER_TEMP/pg-user.env"
           java -jar "${server[0]}" users list | grep -F pg-ci
           test ! -e "$JAGENT_STATE_DIR/data/agent-server.db"
-      - name: Install and remove the Runner CLI on Linux
+      - name: Install the packed npm CLI with an empty offline cache
+        working-directory: sdk/node
         run: |
-          package="$RUNNER_TEMP/runner-package"
-          unzip -q examples/coding-runner/target/*-offline.zip -d "$package"
-          export JAGENT_INSTALL_DIR="$RUNNER_TEMP/installed runner"
-          sh "$package/scripts/install.sh"
-          "$JAGENT_INSTALL_DIR/bin/jagent" runner --help
-          if "$JAGENT_INSTALL_DIR/bin/jagent" server; then exit 1; fi
-          sh "$package/scripts/uninstall.sh"
-          test ! -e "$JAGENT_INSTALL_DIR/bin/jagent"
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install --global --prefix "$RUNNER_TEMP/client" --cache "$RUNNER_TEMP/empty-cache" --offline --no-audit "$RUNNER_TEMP"/jagent-*.tgz
+          "$RUNNER_TEMP/client/bin/jagent" --help
       - run: npm ci --prefix protocol && npm test --prefix protocol
       - run: npm ci --prefix console && npm test --prefix console && npm run build --prefix console
   coding-windows:
@@ -72,20 +74,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check Windows launcher entry points
-        shell: cmd
+      - run: npm ci --prefix sdk/node
+      - run: npm test --prefix sdk/node
+      - run: node --test scripts/lib/local-shortcut.test.mjs
+      - name: Install the Windows npm command
+        working-directory: sdk/node
+        shell: pwsh
         run: |
-          call scripts\dev.cmd --help
-          if errorlevel 1 exit /b 1
-          call scripts\start-server.cmd --help
-          if errorlevel 1 exit /b 1
-          call scripts\start-client.cmd --help
-          if errorlevel 1 exit /b 1
-          call scripts\start-frontend.cmd --help
-          if errorlevel 1 exit /b 1
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '8'
-          cache: maven
-      - run: mvn -B -pl examples/coding-runner -am test
+          npm pack --pack-destination $env:RUNNER_TEMP
+          $archive = (Get-ChildItem "$env:RUNNER_TEMP/jagent-*.tgz").FullName
+          npm install -g --offline --prefix "$env:RUNNER_TEMP/client" $archive
+          & "$env:RUNNER_TEMP/client/jagent.cmd" --help

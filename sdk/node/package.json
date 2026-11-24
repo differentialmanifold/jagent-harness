@@ -1,0 +1,51 @@
+{
+  "name": "jagent",
+  "version": "0.1.0",
+  "description": "Node.js Coding Runner and local tool SDK for JAgentHarness",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/differentialmanifold/jagent-harness.git",
+    "directory": "sdk/node"
+  },
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "bin": {
+    "jagent": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README*.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test",
+    "prepack": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest"
+  },
+  "dependencies": {
+    "diff": "^8.0.2",
+    "minimatch": "^11.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "~20.19.43",
+    "typescript": "~5.9.3"
+  },
+  "bundleDependencies": [
+    "diff",
+    "minimatch"
+  ],
+  "homepage": "https://github.com/differentialmanifold/jagent-harness"
+}

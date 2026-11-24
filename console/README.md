@@ -14,7 +14,7 @@ export JAGENT_SERVER_URL='https://agent.example.com'
 npm --prefix console run dev
 ```
 
-Start your authorized Runner with `--console http://127.0.0.1:5175` to open the page automatically. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and forwards the browser's own session cookie. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start-frontend.mjs` does.
+Start your authorized Runner with `--console http://127.0.0.1:5175` to open the page automatically. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and forwards the browser's own session cookie. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start.mjs frontend` does.
 
 For using the UI, see [Projects](../docs/guides/projects.md), [Personal Agents](../docs/guides/agents.md), and [Configuration](../docs/guides/configuration.md).
 

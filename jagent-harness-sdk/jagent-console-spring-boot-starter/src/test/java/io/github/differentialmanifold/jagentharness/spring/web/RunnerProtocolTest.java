@@ -3,15 +3,12 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
-import io.github.differentialmanifold.jagentharness.client.*;
 import io.github.differentialmanifold.jagentharness.core.execution.ConversationService;
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
-import io.github.differentialmanifold.jagentharness.core.message.AgentMessage;
-import io.github.differentialmanifold.jagentharness.core.provider.ModelRequest;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivation;
 import io.github.differentialmanifold.jagentharness.core.session.*;
-import io.github.differentialmanifold.jagentharness.core.tool.*;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -69,7 +66,7 @@ class RunnerProtocolTest {
                 api.management("GET", "/api/v1/vfs/files?scope=global&prefix=" + main, null)
                         .size());
 
-        runner.capabilities.add("browser-research");
+        runner.capabilities.add("coding");
         api.management("POST", "/api/v1/runners", runner);
         String prompt =
                 api.management("POST", "/api/v1/agent/prompt-preview", chat)
@@ -83,6 +80,14 @@ class RunnerProtocolTest {
         assertEquals("builtin", api.management("GET", read + main, null).path("source").asText());
         Map<String, Object> call = new LinkedHashMap<>(chat);
         call.put("toolName", "skill");
+        call.put("arguments", Collections.singletonMap("path", "skills/playwright-cli/SKILL.md"));
+        String cliSkill =
+                json.readTree(api.management("POST", "/api/v1/tools/call", call).path("result").asText())
+                        .path("content")
+                        .asText();
+        String sessionName = "ja-" + SkillActivation.digest(session).substring(0, 20);
+        assertTrue(cliSkill.contains("playwright-cli -s=" + sessionName + " snapshot"));
+        assertFalse(cliSkill.contains("{{browserSession}}"));
         call.put("arguments", Collections.singletonMap("path", reference));
         JsonNode result =
                 json.readTree(
@@ -292,7 +297,7 @@ class RunnerProtocolTest {
         assertEquals(
                 403,
                 assertThrows(
-                                AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         frontend.management(
                                                 "POST", "/api/v1/runners/chat", serverOnly))
@@ -332,7 +337,7 @@ class RunnerProtocolTest {
                             ChatMessage.tool(call.toolCallId, "SUCCEEDED", "local result"));
                 assertEquals(
                         400,
-                        assertThrows(AgentHttpException.class, () -> frontend.submit(results, null))
+                        assertThrows(TestHttpClient.HttpError.class, () -> frontend.submit(results, null))
                                 .status);
                 ChatResponse answer = executor.chat(results, null);
                 assertEquals("COMPLETED", answer.status);
@@ -407,233 +412,6 @@ class RunnerProtocolTest {
         return request;
     }
 
-    @org.junit.jupiter.api.io.TempDir java.nio.file.Path runnerHome;
-
-    @Test
-    void sdkHostsWorkspaceFreeToolsAndSteersBeforeTheNextModelRequest() throws Exception {
-        Object device = new Object();
-        java.util.concurrent.atomic.AtomicInteger effects =
-                new java.util.concurrent.atomic.AtomicInteger();
-        List<ToolDefinition> local = new ArrayList<>();
-        for (String name : Arrays.asList("client_a", "client_b")) {
-            local.add(
-                    new ToolDefinition() {
-                        public String getName() {
-                            return name;
-                        }
-
-                        public String getDescription() {
-                            return "Device API";
-                        }
-
-                        public JsonNode getParametersSchema() {
-                            return json.createObjectNode().put("type", "object");
-                        }
-
-                        public ToolExecutionResult execute(ToolContext context, JsonNode args)
-                                throws Exception {
-                            assertNull(context.getWorkspaceRoot());
-                            assertSame(device, context.requireLocalContext(Object.class));
-                            if (effects.incrementAndGet() == 1) {
-                                Map<String, String> input = new LinkedHashMap<>();
-                                input.put("inputId", "steer_" + UUID.randomUUID());
-                                input.put("content", "Keep the existing device configuration");
-                                new TestHttpClient("http://127.0.0.1:" + port, "test-token")
-                                        .management(
-                                                "POST",
-                                                "/api/v1/runs/" + context.getRunId() + "/inputs",
-                                                input);
-                            }
-                            return ToolExecutionResult.success(
-                                    Collections.singletonMap("device", "ready"));
-                        }
-                    });
-        }
-        ExecutorService receiver = Executors.newSingleThreadExecutor();
-        try (AgentRunner runner =
-                AgentRunner.builder("http://127.0.0.1:" + port, runnerHome)
-                        .token("test-token")
-                        .name("Device without filesystem tools")
-                        .tools(local)
-                        .toolContext(device)
-                        .build()) {
-            Future<?> running =
-                    receiver.submit(
-                            () -> {
-                                runner.serve();
-                                return null;
-                            });
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            while (store.runner(runner.runnerId()) == null && System.nanoTime() < deadline)
-                Thread.sleep(20);
-            RunnerInfo registered = store.runner(runner.runnerId());
-            assertNotNull(registered);
-            assertFalse(registered.workspaces);
-            TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
-            JsonNode created =
-                    frontend.management(
-                            "POST",
-                            "/api/v1/sessions",
-                            Collections.singletonMap("runnerId", runner.runnerId()));
-            assertTrue(created.path("workspacePath").isNull());
-            ChatRequest request = new ChatRequest();
-            request.sessionId = created.path("sessionId").asText();
-            request.runId = "run_" + UUID.randomUUID();
-            request.messages.add(ChatMessage.user("mixed"));
-            assertEquals("COMPLETED", frontend.submit(request, null).status);
-            while (!"COMPLETED".equals(store.job(request.runId).status)
-                    && System.nanoTime() < deadline) Thread.sleep(20);
-            assertEquals("COMPLETED", store.job(request.runId).status);
-            assertNull(store.job(request.runId).workspace);
-            assertEquals(2, effects.get());
-            List<ModelRequest> modelRequests = new ArrayList<>();
-            for (ModelRequest call : model.requests)
-                if (request.sessionId.equals(call.getMessages().get(0).getSessionId()))
-                    modelRequests.add(call);
-            assertEquals(2, modelRequests.size());
-            List<AgentMessage> messages = modelRequests.get(1).getMessages();
-            assertEquals("user", messages.get(messages.size() - 1).getRole());
-            assertEquals(
-                    "Keep the existing device configuration",
-                    messages.get(messages.size() - 1).getContent());
-            runner.close();
-            running.get(5, TimeUnit.SECONDS);
-        } finally {
-            receiver.shutdownNow();
-        }
-    }
-
-    @Test
-    void sessionsOnOneRunnerExecuteConcurrentlyAndCancelIndependently() throws Exception {
-        Map<String, CountDownLatch> entered = new ConcurrentHashMap<>();
-        Map<String, CountDownLatch> release = new ConcurrentHashMap<>();
-        Set<String> stopped = ConcurrentHashMap.newKeySet();
-        List<ToolDefinition> tools = new ArrayList<>();
-        for (String name : Arrays.asList("client_a", "client_b")) {
-            tools.add(
-                    new ToolDefinition() {
-                        public String getName() {
-                            return name;
-                        }
-
-                        public String getDescription() {
-                            return "Concurrent test tool";
-                        }
-
-                        public JsonNode getParametersSchema() {
-                            return json.createObjectNode().put("type", "object");
-                        }
-
-                        public ToolExecutionResult execute(ToolContext context, JsonNode args)
-                                throws Exception {
-                            if ("client_a".equals(name)) {
-                                String session = context.getSessionId();
-                                try (io.github.differentialmanifold.jagentharness.core.agent
-                                                .StopRegistration
-                                        ignored =
-                                                context.getStopSignal()
-                                                        .onStop(
-                                                                () -> {
-                                                                    stopped.add(session);
-                                                                    release.get(session)
-                                                                            .countDown();
-                                                                })) {
-                                    entered.get(session).countDown();
-                                    assertTrue(release.get(session).await(15, TimeUnit.SECONDS));
-                                }
-                            }
-                            return ToolExecutionResult.success(context.getSessionId());
-                        }
-                    });
-        }
-        ExecutorService receiver = Executors.newSingleThreadExecutor();
-        try (AgentRunner runner =
-                AgentRunner.builder("http://127.0.0.1:" + port, runnerHome)
-                        .token("test-token")
-                        .tools(tools)
-                        .build()) {
-            Future<?> receiving =
-                    receiver.submit(
-                            () -> {
-                                runner.serve();
-                                return null;
-                            });
-            awaitCondition(() -> store.runner(runner.runnerId()) != null);
-            TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
-            List<ChatRequest> requests = new ArrayList<>();
-            String projectId = null;
-            for (int i = 0; i < 6; i++) {
-                Map<String, Object> create = new LinkedHashMap<>();
-                create.put("runnerId", runner.runnerId());
-                if (projectId != null) create.put("projectId", projectId);
-                JsonNode session = frontend.management("POST", "/api/v1/sessions", create);
-                projectId = session.path("projectId").asText();
-                ChatRequest request = new ChatRequest();
-                request.sessionId = session.path("sessionId").asText();
-                request.runId = "run_" + UUID.randomUUID();
-                request.messages.add(ChatMessage.user("mixed"));
-                entered.put(request.sessionId, new CountDownLatch(1));
-                release.put(request.sessionId, new CountDownLatch(1));
-                requests.add(request);
-            }
-            for (ChatRequest request : requests) runners.submit(request);
-            for (ChatRequest request : requests)
-                assertTrue(
-                        entered.get(request.sessionId).await(10, TimeUnit.SECONDS),
-                        "All six sessions must execute the same tool before any finishes");
-            ChatRequest first = requests.get(0);
-            ChatRequest overlapping = new ChatRequest();
-            overlapping.sessionId = first.sessionId;
-            overlapping.runId = "run_" + UUID.randomUUID();
-            overlapping.messages.add(ChatMessage.user("another turn"));
-            assertThrows(ProtocolException.class, () -> runners.submit(overlapping));
-            frontend.stop(first.runId);
-            awaitCondition(() -> "CANCELLED".equals(store.job(first.runId).status));
-            assertEquals(Collections.singleton(first.sessionId), stopped);
-            List<ChatRequest> remaining = requests.subList(1, requests.size());
-            for (ChatRequest request : remaining) {
-                assertEquals("CLAIMED", store.job(request.runId).status);
-                release.get(request.sessionId).countDown();
-            }
-            awaitCondition(
-                    () ->
-                            remaining.stream()
-                                    .allMatch(
-                                            request ->
-                                                    "COMPLETED"
-                                                            .equals(
-                                                                    store.job(request.runId)
-                                                                            .status)));
-            for (ChatRequest request : requests) {
-                assertEquals(
-                        1,
-                        history.findMessages(request.sessionId).stream()
-                                .filter(message -> "user".equals(message.getRole()))
-                                .count());
-                assertTrue(
-                        history.findMessages(request.sessionId).stream()
-                                .filter(
-                                        message ->
-                                                "tool".equals(message.getRole())
-                                                        && "client_a".equals(message.getToolName()))
-                                .allMatch(
-                                        message ->
-                                                message.getContent().contains(request.sessionId)));
-            }
-            runner.close();
-            receiving.get(5, TimeUnit.SECONDS);
-        } finally {
-            release.values().forEach(CountDownLatch::countDown);
-            receiver.shutdownNow();
-        }
-    }
-
-    private void awaitCondition(java.util.function.BooleanSupplier condition) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(20);
-        assertTrue(condition.getAsBoolean());
-    }
-
     @Test
     void projectsPersistIndependentWorkspacesAndToolSelections() throws Exception {
         RunnerInfo info = register();
@@ -694,7 +472,7 @@ class RunnerProtocolTest {
         assertEquals(
                 400,
                 assertThrows(
-                                AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         frontend.management(
                                                 "PUT",
@@ -704,7 +482,7 @@ class RunnerProtocolTest {
         assertEquals(
                 400,
                 assertThrows(
-                                AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         frontend.management(
                                                 "PUT",
@@ -716,77 +494,6 @@ class RunnerProtocolTest {
                         .status);
         runners.cancel(first.runId);
         runners.cancel(next.runId);
-    }
-
-    @Test
-    void frontendBrowsesRunnerFilesystemThroughOutboundPoll() throws Exception {
-        java.nio.file.Path folder =
-                java.nio.file.Files.createDirectories(runnerHome.resolve("remote-project"));
-        java.nio.file.Files.createDirectory(folder.resolve("src"));
-        ToolDefinition tool =
-                new ToolDefinition() {
-                    public String getName() {
-                        return "unused";
-                    }
-
-                    public String getDescription() {
-                        return "unused";
-                    }
-
-                    public JsonNode getParametersSchema() {
-                        return json.createObjectNode().put("type", "object");
-                    }
-
-                    public ToolExecutionResult execute(ToolContext context, JsonNode args) {
-                        throw new AssertionError("Browsing is not a model tool invocation");
-                    }
-                };
-        ExecutorService receiver = Executors.newSingleThreadExecutor();
-        try (AgentRunner runner =
-                AgentRunner.builder("http://127.0.0.1:" + port, runnerHome.resolve("state"))
-                        .token("test-token")
-                        .tools(Collections.singletonList(tool))
-                        .workspaces(new LocalWorkspaces())
-                        .build()) {
-            Future<?> running =
-                    receiver.submit(
-                            () -> {
-                                runner.serve();
-                                return null;
-                            });
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            while (store.runner(runner.runnerId()) == null && System.nanoTime() < deadline)
-                Thread.sleep(20);
-            String endpoint = "/api/v1/runners/" + runner.runnerId() + "/workspaces?path=";
-            TestHttpClient frontend = new TestHttpClient("http://127.0.0.1:" + port, "test-token");
-            JsonNode listing =
-                    frontend.management(
-                            "GET",
-                            endpoint + java.net.URLEncoder.encode(folder.toString(), "UTF-8"),
-                            null);
-            assertEquals(folder.toRealPath().toString(), listing.path("path").asText());
-            assertEquals(
-                    folder.resolve("src").toRealPath().toString(),
-                    listing.path("directories").get(0).asText());
-            assertEquals(
-                    400,
-                    assertThrows(
-                                    AgentHttpException.class,
-                                    () ->
-                                            frontend.management(
-                                                    "GET",
-                                                    endpoint
-                                                            + java.net.URLEncoder.encode(
-                                                                    folder.resolve("missing")
-                                                                            .toString(),
-                                                                    "UTF-8"),
-                                                    null))
-                            .status);
-            runner.close();
-            running.get(5, TimeUnit.SECONDS);
-        } finally {
-            receiver.shutdownNow();
-        }
     }
 
     @Test
@@ -844,7 +551,7 @@ class RunnerProtocolTest {
         assertEquals(
                 409,
                 assertThrows(
-                                AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () -> http.management("POST", recoverPath, Collections.emptyMap()))
                         .status);
         ChatRequest results = new ChatRequest();
@@ -967,14 +674,14 @@ class RunnerProtocolTest {
         tampered.modelId = "runner-picked-another-model";
         runners.authorizeChat(tampered, owner.runnerId, secret);
         assertEquals("default", tampered.modelId);
-        AgentHttpException error =
+        TestHttpClient.HttpError error =
                 assertThrows(
-                        AgentHttpException.class, () -> http(other.runnerId).chat(request, null));
+                        TestHttpClient.HttpError.class, () -> http(other.runnerId).chat(request, null));
         assertEquals(409, error.status);
         assertEquals(
                 400,
                 assertThrows(
-                                AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         new TestHttpClient("http://127.0.0.1:" + port, "test-token")
                                                 .management("POST", "/api/v1/runners", owner))

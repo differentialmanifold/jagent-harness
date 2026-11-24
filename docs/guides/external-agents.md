@@ -8,7 +8,7 @@ Let an external assistant delegate a goal to JAgent without operating the Consol
 
 1. Start the JAgent server and, for local execution, a Runner on the intended machine. Use [Quick start](../../QUICK_START.md) if they are not running yet.
 2. Copy the complete [`skills/jagent/`](../../skills/jagent) directory into the external assistant's Skill directory. Keep `SKILL.md`, `scripts/` and `references/` together.
-3. Make Node.js 22+ available to that assistant. Set `JAGENT_SERVER_URL` to the Harness address and export the intended user’s Harness-issued `JAGENT_USER_TOKEN` in the assistant’s environment. The local URL defaults to `http://127.0.0.1:18181`. [Personal access](access.md)
+3. Make Node.js 20 (20.19 or later) or Node.js 22.12+ available to that assistant. Set `JAGENT_SERVER_URL` to the Harness address and export the intended user’s Harness-issued `JAGENT_USER_TOKEN` in the assistant’s environment. The local URL defaults to `http://127.0.0.1:18181`. [Personal access](access.md)
 4. Ask the external assistant to use the JAgent Skill. For example:
 
 > Use JAgent to build and test a tiny Java TODO program. Ask mainbot to use my coding Runner. Follow its progress and report the verified result.

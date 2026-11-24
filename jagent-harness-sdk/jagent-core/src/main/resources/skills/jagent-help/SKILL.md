@@ -51,7 +51,7 @@ Start with `docs/README.md` and the relevant guide. For implementation questions
 - `docs/guides/agents.md`: Agent tasks, projects and delegation.
 - `QUICK_START.md`: startup and configuration reference.
 - `jagent-harness-sdk/`: server, persistence and Agent implementations.
-- `sdk/java/`, `examples/coding-runner/`, `console/`: Runner SDK, local coding tools and UI.
+- `sdk/node/`, `console/`: Runner SDK, local coding tools and UI.
 
 Use `readOnly: true` for investigation that makes no environment changes. This is a scheduling declaration, not an OS sandbox. Build, tests and edits need a writable independent copy and a normal run. Do not reset, pull over or edit an operator's working checkout as part of answering a question.
 

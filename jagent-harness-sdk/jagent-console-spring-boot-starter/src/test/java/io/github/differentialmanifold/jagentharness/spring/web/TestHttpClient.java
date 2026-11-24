@@ -1,7 +1,6 @@
 package io.github.differentialmanifold.jagentharness.spring.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.differentialmanifold.jagentharness.client.AgentHttpException;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.io.*;
 import java.net.*;
@@ -10,6 +9,15 @@ import java.util.function.Consumer;
 
 /** Test-only probe for public submissions and authenticated Runner exchanges. */
 public final class TestHttpClient {
+    public static final class HttpError extends IOException {
+        public final int status;
+
+        HttpError(int status, String message) {
+            super(message);
+            this.status = status;
+        }
+    }
+
     private final URL endpoint;
     private boolean runnerProtocol;
     private final String token;
@@ -78,7 +86,7 @@ public final class TestHttpClient {
             int status = c.getResponseCode();
             if (status >= 400) {
                 String error = read(c.getErrorStream());
-                throw new AgentHttpException(status, error);
+                throw new HttpError(status, error);
             }
             if (!stream) {
                 try (InputStream in = c.getInputStream()) {
@@ -97,7 +105,7 @@ public final class TestHttpClient {
                             if ("response".equals(type))
                                 response = json.readValue(data.toString(), ChatResponse.class);
                             else if ("error".equals(type))
-                                throw new AgentHttpException(
+                                throw new HttpError(
                                         json.readTree(data.toString()).path("status").asInt(500),
                                         data.toString());
                             else if (events != null)
@@ -186,7 +194,7 @@ public final class TestHttpClient {
                 }
             }
             int status = c.getResponseCode();
-            if (status >= 400) throw new AgentHttpException(status, read(c.getErrorStream()));
+            if (status >= 400) throw new HttpError(status, read(c.getErrorStream()));
             try (InputStream in = c.getInputStream()) {
                 return json.readTree(in);
             }

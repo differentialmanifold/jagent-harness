@@ -62,10 +62,10 @@ test('shows truncation and the selected search backend', () => {
         glob: '*.java',
         matches: [],
         truncated: false,
-        engine: 'java'
+        engine: 'node'
       })
     }),
-    '"class" in src · *.java · literal · ignore case | 0 matches | Java fallback'
+    '"class" in src · *.java · literal · ignore case | 0 matches | Node.js fallback'
   )
 })
 
