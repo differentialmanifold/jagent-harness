@@ -34,8 +34,6 @@
   </issueManagement>
   <modules>
     <module>jagent-api</module>
-    <module>sdk/java</module>
-    <module>examples/coding-runner</module>
     <module>jagent-harness-sdk</module>
     <module>examples/server-demo</module>
   </modules>

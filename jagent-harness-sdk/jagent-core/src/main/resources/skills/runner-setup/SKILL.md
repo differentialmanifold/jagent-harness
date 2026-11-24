@@ -25,20 +25,11 @@ Ask the Project to identify its actual running Runner process and state director
 
 This address works from the current Runner, not necessarily from the target. The SSH destination is a machine address, not the Harness URL. Do not assume you can read the Harness host's configuration or that its bind address is remotely reachable.
 
-## Obtain the package inside this environment
+## Install the Coding Runner
 
-The Harness can serve operator-installed packages at these paths, relative to its base URL:
+On the authorized target, check `node --version` (20.x from 20.19, or 22.12+), `npm --version` and the configured npm registry. Check the current Runner's registered version, then install the approved version with `npm install --global jagent@<version>`. Verify `jagent --version` and the executable's location under the service account. Windows requires Git for Windows for the bash tool.
 
-- `/api/v1/distributions/runners/coding/manifest.json`
-- `/api/v1/distributions/runners/coding/runner.jar`
-
-The manifest contains `kind`, `version`, `artifact`, `sha256` and `javaVersion`. Use the existing Runner's configured `JAGENT_USER_TOKEN`, or load it from its credential file, for Bearer authentication, without placing its value in chat or logs. Missing credentials are a prerequisite to resolve, not a reason to disable authentication.
-
-Download the manifest and JAR through the current Runner. Check the expected kind and artifact, verify SHA-256, and check the target's Java version. SCP both files to the target if it cannot fetch them directly; verify the checksum there before starting. The JAR includes the SDK and coding tools, but not Java itself.
-
-A 404 means the package has not been installed on this Harness. Inspect the current Coding Runner's installation for a compatible offline package or reuse its actual working JAR, recording its version and SHA-256 and verifying the transferred bytes. Do not assume a source checkout, Maven, GitHub or public internet access exists. A 503 means the published package failed verification; have that package corrected or use a verified local installation. Never invent download URLs or silently switch to an arbitrary latest release.
-
-For operators with a source checkout, `mvn -pl examples/coding-runner -am package` produces `examples/coding-runner/target/runners/coding/{runner.jar,manifest.json}` and an offline ZIP. Copy the `coding` directory into the Harness's configured distribution directory, normally `data/runners/`. This is a preparation step, not something required on every new machine. An isolated network also needs a suitable Java runtime available locally; report that blocker if it is missing.
+If the version is unavailable from that registry, use the operator-supplied `jagent-<version>.tgz`, verify it against the release checksum and install that file with npm. The tarball includes its runtime dependencies.
 
 ## Establish a usable network path
 
@@ -57,14 +48,14 @@ The SSH initiator maintains the tunnel. Supervise and reconnect it there; manage
 For the Coding Runner, the basic command is:
 
 ```sh
-java -jar runner.jar --server <address-reachable-from-target> --name <name> --credentials <private-user.env> --no-browser
+jagent runner --server <address-reachable-from-target> --name <name> --credentials <private-user.env> --no-browser
 ```
 
 `serve` is optional; `recover` is not a second startup step. Use the same user's Harness-issued token to keep the new Runner in that user's space. Supply it through a private credential file or environment. This token grants access to the user's personal space, so deploy it only to an authorized, trusted machine; do not claim that it is execution-only. Never create another Harness user merely to add an execution environment. Use `--description` to describe this machine's capabilities. Keep credentials out of command text, output and persistent Agent memory.
 
 `--home` selects persistent identity and execution state, not a workspace. Concurrent Runner processes against the same Harness need distinct state directories. Do not copy `config.json` or clone identities. A state lock usually means an existing process should be reused. Workspace conflicts require waiting or a separate checkout; ownership or permission errors require the authorized owner or correct access. Creating another identity does not resolve these conflicts.
 
-Require the Project to return machine identity, Runner ID, package version/checksum, non-secret startup logs, and how both the Runner and any tunnel are kept running. Use `agents discover` again to match the expected online Runner to that evidence. Only then create or reuse an Agent bound to its registered ID and verify a small task through it. Your original Agent stays on its own Runner. A successful start command or an acknowledgement alone is not completion; report any remaining limitation accurately.
+Require the Project to return machine identity, Runner ID, installed package version, non-secret startup logs, and how both the Runner and any tunnel are kept running. Use `agents discover` again to match the expected online Runner to that evidence. Only then create or reuse an Agent bound to its registered ID and verify a small task through it. Your original Agent stays on its own Runner. A successful start command or an acknowledgement alone is not completion; report any remaining limitation accurately.
 
 ## Stop and reuse a temporary environment
 

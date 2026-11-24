@@ -8,7 +8,7 @@ The application has its own Spring Boot parent, startup class, and configuration
 
 ## Run as part of the coding demo
 
-Follow the root [quick start](../../QUICK_START.md) and run `node scripts/dev.mjs` from the repository root. The launcher starts this server together with the coding runner and frontend. Local file and shell tools are built into the runner; model access, conversation storage, skills, and virtual files belong to this server. The frontend calls this server directly wherever it is hosted.
+Follow the root [quick start](../../QUICK_START.md) and run `node scripts/start.mjs local` from the repository root. The launcher starts this server together with the coding runner and frontend. Local file and shell tools are built into the runner; model access, conversation storage, skills, and virtual files belong to this server. The frontend calls this server directly wherever it is hosted.
 
 ## Build and deploy independently
 
@@ -25,7 +25,7 @@ The application listens on `127.0.0.1:18181` and by default stores conversations
 
 ## Extend the server
 
-This application hosts the harness for local or remote clients. Use the [server integration guide](../../jagent-harness-sdk/README.md) to configure it, or the [client SDK guide](../../sdk/java/README.md) to connect tools in another application.
+This application hosts the harness for local or remote clients. Use the [server integration guide](../../jagent-harness-sdk/README.md) to configure it, or the [client SDK guide](../../sdk/node/README.md) to connect tools in another application.
 
 The packaged host includes SQLite and PostgreSQL JDBC drivers. Set the JDBC URL and credentials to use PostgreSQL; the same selection applies to the server and its local user commands. SQLite defaults to five pooled connections and a five-second lock wait per connection. [Database setup](../../QUICK_START.md#choose-a-database) · [Server integration](../../jagent-harness-sdk/README.md#storage).
 

@@ -8,7 +8,7 @@ allowed-tools: Bash(playwright-cli:*) Bash(npx playwright:*) Bash(npx --no-insta
 
 ## Run on a Coding Runner
 
-Use the Project's `bash` tool. The Runner sets `PLAYWRIGHT_CLI_SESSION` per conversation. Keep that session and its isolated profile for every action. Close it with `close` when finished. Other chats can share this machine, so avoid commands such as `close-all` and `kill-all`.
+Use the Project's `bash` tool. Pass `-s={{browserSession}}` to every browser command for this conversation, for example `playwright-cli -s={{browserSession}} snapshot`. With the npx fallback, put this option immediately after `playwright-cli`. Reuse the same isolated profile for every action. Close it with `close` when finished. Other chats can share this machine, so avoid commands such as `close-all` and `kill-all`.
 
 Check for `playwright-cli` on PATH. When it is missing, run each command below using `npx --yes --prefer-offline --package=@playwright/cli@0.1.25 playwright-cli` in its place. This needs Node.js 20+ and npm; the first call may download the pinned package into the user's npm cache. Keep the Project workspace free of package installations.
 

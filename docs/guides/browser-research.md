@@ -16,7 +16,7 @@ Then ask in the same chat:
 
 The Project chooses the search terms and sources. It can start at a known documentation site, or use a search website that permits automated queries. To prefer a particular search page, put its URL in the Project instructions. Search snippets help select sources. The answer should cite the pages the Project actually read and identify anything it could not verify.
 
-Each Project chat gets a distinct Playwright session on the Runner, including chats sharing a workspace. The browser starts on demand. If a site requires interactive verification, the Project can use another source or report the gap.
+Each Project chat gets a distinct Playwright session on the Runner, including chats sharing a workspace. The Harness supplies the session name and Skill instructions. Updating these Skills only requires deploying the Harness. The browser starts on demand. If a site requires interactive verification, the Project can use another source or report the gap.
 
 ## Runner requirements
 

@@ -1,44 +1,24 @@
-# Releasing Maven artifacts
+# Releasing
 
-[Documentation](README.md) · [Development](../CONTRIBUTING.md)
+[Documentation](README.md) · [Development checks](../CONTRIBUTING.md#build-and-check)
 
-Framework artifacts use the `io.github.differentialmanifold` group. The root and SDK parent POMs, shared `jagent-api`, Java client, and server modules are published together. Applications under `examples/` are excluded from publication.
+## Runner on npm
 
-## Verify locally
+`sdk/node` is the `jagent` npm package. Its independent version starts at `0.1.0`. It exports the SDK and installs the `jagent` CLI. Run `jagent version` to check the installed version. The package includes compiled JavaScript, declarations, runtime dependencies and the license. Client machines need Node.js 20 (20.19 or later) or Node.js 22.12+.
 
-From the repository root, run the checks in the [development guide](../CONTRIBUTING.md#build-and-check), then build release attachments without uploading or signing:
+1. Set the package version and update `package-lock.json` in `sdk/node`. Run `npm ci` and `npm test` there. Set `JAGENT_TEST_SERVER_JAR` to the absolute path of the packaged Harness to include the protocol integration test.
+2. Run `npm publish --dry-run` to inspect the files. Run `npm pack` and test the resulting archive with `npm install -g /path/to/jagent-<version>.tgz`. A private npm registry or an operator-supplied tarball can serve an internal deployment.
+3. **First public release.** Confirm the unscoped name is available, sign in to the intended npm account with publishing permissions and 2FA, then run `npm publish ./jagent-<version>.tgz --access public` from `sdk/node`. If the name is unavailable, choose a scope you own and update package references before releasing. The executable can still be called `jagent`.
+4. **Subsequent releases.** In the npm package settings, configure GitHub Actions as a trusted publisher for `differentialmanifold/jagent-harness` and workflow `publish-runner.yml`. Push a `runner-v<package-version>` tag for a new version. The workflow checks the tag, tests against the real Harness, installs the packed CLI, and publishes that tarball with the `latest` tag via OIDC. [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
 
-```sh
-mvn -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release -Dgpg.skip verify
-```
+## Harness and application releases
 
-The release profile creates source and Javadoc JARs. Normal `package`, `verify`, and `install` builds do not upload artifacts.
+The Maven reactor publishes the shared API and server libraries under `io.github.differentialmanifold`. Applications under `examples/` are excluded from Central. Set the framework versions, the server-demo dependency, Console/protocol metadata and documentation for the release. Run the development checks first.
 
-## Publish
-
-1. Set a non-SNAPSHOT version in the root POM. Update module parents, framework dependencies, the demo's `jagent.version`, Console/protocol package versions and lockfile roots, and OpenAPI metadata. Keep Maven snippets and executable JAR names in the READMEs and Quick start aligned; do not change third-party dependency versions as part of this update.
-2. Verify the complete build and tests.
-3. Configure repository secrets: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE`.
-4. Push a `v<version>` tag or manually run the **Publish Maven artifacts** workflow. A tag must match the root POM version.
-
-The workflow runs the checks and then publishes with:
+Configure `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` as repository secrets. Push a matching `v<version>` tag to publish via the Maven workflow. To verify source and Javadoc attachments locally, use:
 
 ```sh
-mvn -B -pl jagent-api,sdk/java,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release deploy
+mvn -pl jagent-api,jagent-harness-sdk/jagent-console-spring-boot-starter,jagent-harness-sdk/jagent-store-jdbc -am -P release -Dgpg.skip verify
 ```
 
-For local publication, configure the `central` server in Maven settings and provide `MAVEN_GPG_KEY` and `MAVEN_GPG_PASSPHRASE` in the environment. The Central plugin has `autoPublish=true`; a release `deploy` uploads and publishes the artifacts.
-
-Keep the API version, JSON Schema, OpenAPI, and protocol fixtures consistent when changing the public contract.
-
-Tagged releases attach the Coding Runner offline ZIP (JAR plus version/checksum manifest), the web frontend archive, and SHA256SUMS. Operators can install the offline package on their Harness once and distribute it inside an isolated network. Runner deployment does not depend on reaching GitHub. The executable includes its coding tools and is not a Central library. See [local distribution](../examples/coding-runner/README.md#distribute-inside-your-network).
-
-Release assets also include `jagent-skill-<version>.zip`, containing the complete standalone `jagent/` skill and its dependency-free Node.js client.
-
-## Offline application package
-
-Run `node scripts/package.mjs` from a checkout. It builds the existing Maven examples and Console, includes a filtered source snapshot and version/revision metadata, and writes `target/jagent-<version>.zip`. It does not publish anything. Tagged releases attach this package alongside the existing artifacts.
-
-After extraction, users only need Java 8+, Node.js 22.12+ and model configuration. `node scripts/dev.mjs` starts the server, Coding Runner and built Console at port 5175, and configures mainbot with the bundled source. Source acquisition needs no internet at runtime. Build from a clean checkout for releases; dirty development builds are marked explicitly. Maven consumers can continue using the libraries independently.
-
-The Coding Runner embeds its Maven product version and `harness.source.revision` in `coding-runner-build.properties` and reports them at registration. The launcher, packaging script and release workflow already pass the source revision (including the dirty marker for local builds). For direct Maven builds, supply `-Dharness.source.revision=<commit-or-build-id>` when available; otherwise the build revision is reported as unknown. Runner versions are visible through `/api/v1/runners` and System Settings → Runners without inspecting the JAR.
+`node scripts/package.mjs` builds an application ZIP with the server JAR, Console, installed Node Runner and corresponding source snapshot, plus an installable Runner tarball in `target/`. The release attaches these, the standalone Harness JAR, Console and external Agent Skill ZIPs, and SHA256 checksums. The ZIP follows the Harness version and records the bundled npm version in `distribution.json` as `runnerVersion`. Maven and npm have separate release tags so each can ship independently.

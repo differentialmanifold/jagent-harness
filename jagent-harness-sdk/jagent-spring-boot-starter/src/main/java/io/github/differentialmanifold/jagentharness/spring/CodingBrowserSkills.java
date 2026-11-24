@@ -6,6 +6,7 @@ import io.github.differentialmanifold.jagentharness.core.prompt.SkillDescriptor;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillFileParser;
 import io.github.differentialmanifold.jagentharness.core.prompt.SkillProvider;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivation;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerInfo;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerProject;
 import java.io.IOException;
@@ -16,7 +17,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.util.StreamUtils;
 
-/** Read-only Project defaults for Runners that advertise browser research through bash. */
+/** Built-in browser Skills for Coding Projects with a local shell. */
 public final class CodingBrowserSkills implements SkillProvider {
     private static final String ROOT = "/jagent-coding/";
     private final RunnerStore runners;
@@ -67,7 +68,7 @@ public final class CodingBrowserSkills implements SkillProvider {
         if (project == null || !project.enabledTools.contains("bash")) return false;
         RunnerInfo runner = runners.runner(project.runnerId);
         return runner != null
-                && runner.capabilities.contains("browser-research")
+                && (runner.capabilities.contains("coding") || runner.capabilities.contains("browser-research"))
                 && runner.tools.stream().anyMatch(tool -> "bash".equals(tool.name));
     }
 
@@ -85,6 +86,13 @@ public final class CodingBrowserSkills implements SkillProvider {
     @Override
     public String readResource(AgentContext context, String path) {
         KnowledgeFile file = files.get(path);
-        return file != null && available(context) ? file.getContent() : null;
+        if (file == null || !available(context)) return null;
+        String content = file.getContent();
+        if (!content.contains("{{browserSession}}")) return content;
+        String sessionId = context.getSessionId();
+        if (sessionId == null || sessionId.isEmpty()) return null;
+        // Keep the same session name as existing Coding Runners, including across upgrades.
+        String browserSession = "ja-" + SkillActivation.digest(sessionId).substring(0, 20);
+        return content.replace("{{browserSession}}", browserSession);
     }
 }

@@ -6,9 +6,9 @@ Each user has their own mainbot, Agents, Projects, conversations, memory, Skills
 
 ## Local startup
 
-`node scripts/dev.mjs` starts the server and frontend, then the Runner opens your personal Console automatically. The standard server creates a local identity and writes its credential to `data/user.env` on first startup. The local launcher and `RunnerMain` read that file automatically. Keep the database and credential file across restarts.
+`node scripts/start.mjs local` starts the server and frontend, then the Runner opens your personal Console automatically. The standard server creates a local identity and writes its credential to `data/user.env` on first startup. The local launcher and the npm CLI read that file automatically. Keep the database and credential file across restarts.
 
-For separate processes, start the server, frontend, then Runner. In IDEA, use the repository root as the working directory of both Java applications, or set `JAGENT_USER_CREDENTIALS` to the credential file's absolute path.
+For separate processes, start the server, frontend, then Runner. Use the repository root as the working directory for a source launch, or set `JAGENT_USER_CREDENTIALS` to the credential file's absolute path.
 
 ## Issue a user credential
 
@@ -27,17 +27,17 @@ The output file contains `JAGENT_USER_TOKEN`. Its permissions are restricted to 
 
 Host the Console and `/api/` under one public origin. Forward `/api/` to the Harness without injecting a shared Authorization header. Preserve the browser's Cookie, original Host and request scheme; configure trusted reverse-proxy forwarding if TLS terminates at a proxy. Disable SSE buffering. See [Console hosting](../../console/README.md).
 
-On the user's computer:
+On the user's computer, [install the npm CLI](../../QUICK_START.md#use-a-remote-harness), then run:
 
 ```sh
-java -jar jagent-coding-runner-2.4.0.jar \
+jagent runner \
   --server http://harness.example.com \
   --credentials /path/to/alice.env
 ```
 
 The Runner connects outbound and opens the remote Console. If the frontend has a different address from the Harness API origin, add `--console http://console.example.com`; that frontend must proxy `/api/` to the same Harness. Environment equivalents are `JAGENT_SERVER_URL`, `JAGENT_USER_CREDENTIALS` (or `JAGENT_USER_TOKEN`) and `JAGENT_CONSOLE_URL`.
 
-A source checkout can use `node scripts/start-client.mjs` with those variables. Only the Runner runs on the user's computer. Use `--no-browser` or `JAGENT_OPEN_BROWSER=false` for an unattended execution terminal.
+Only the Runner runs on the user's computer. Use `--no-browser` or `JAGENT_OPEN_BROWSER=false` to skip opening the Console on an unattended terminal.
 
 The first authorized Runner becomes the user's mainbot environment. Later Runners leave that binding unchanged. Using the same user's token on another machine adds another Runner to the same personal space; different users have different tokens and spaces. Runner state is separated by server and stable user ID. Resetting a token preserves the identity and execution records.
 
@@ -51,7 +51,7 @@ If you have access to the Runner machine, you can sign in even after every brows
 2. On the machine running your authenticated Runner, execute that command, for example `jagent pair K7MD-P4TX`. Check the browser, code, Harness and user in the terminal, then type `yes`.
 3. Return to the original browser. It signs in automatically and opens the workspace when mainbot is online.
 
-To open another browser on the same machine, `jagent open --link` prints a single-use link valid for 60 seconds. `jagent open` opens the default browser. Both commands reuse the existing Runner identity. For a standalone JAR, use `java -jar runner.jar open --link` or `java -jar runner.jar pair CODE`.
+To open another browser on the same machine, `jagent open --link` prints a single-use link valid for 60 seconds. `jagent open` opens the default browser. Both commands reuse the existing Runner identity.
 
 Each successful Coding Runner registration records the Harness address, Console address, state directory, user ID and credential file path in a local profile. If multiple profiles match, the command lists their IDs; repeat it with `--profile <id>`. When the Runner used only `JAGENT_USER_TOKEN`, supply the same environment variable in the command's shell. A profile does not store that token. The browser making the pairing request holds the private claim in memory; refreshing the page requires a new code.
 

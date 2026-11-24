@@ -18,8 +18,8 @@ JAgentHarness 为每位用户提供一个 **mainbot**。它是可以长期对话
 
 ## 第一次和 mainbot 对话
 
-1. 在完整应用 ZIP 的解压目录或源码仓库中安装。macOS/Linux 运行 `sh scripts/install.sh`，Windows 运行 `scripts\install.cmd`。环境要求和模型配置见[快速启动](QUICK_START.md#install-and-start)。
-2. 在 `~/.jagent/.env.local` 填好模型配置，新开终端运行 `jagent`。本地 Runner 会打开网页，进入 **Agents → mainbot → Chat** 即可对话。
+1. 在源码仓库或本版本应用 ZIP 的解压目录中，将 `.env.example` 复制为 `.env.local`，填入模型名称和服务地址。[运行环境和模型配置](QUICK_START.md#install-and-start)
+2. 运行 `node scripts/start.mjs local`。Node Runner 打开控制台后，进入 **Agents → mainbot → Chat**。
 3. 发一个能当场核对结果的请求：
 
    > 帮我在新工作目录准备一份发布清单。把“运行测试”和“写发布说明”写入 CHECKLIST.md，勾选“运行测试”，再读回文件，告诉我文件路径和剩下的一项。
@@ -63,4 +63,4 @@ sequenceDiagram
 
 </details>
 
-[服务端库](jagent-harness-sdk/README.md) · [Java Runner SDK](sdk/java/README.md) · [HTTP 协议](protocol/README.md) · [开发指南](CONTRIBUTING.md) · [MIT 许可证](LICENSE)
+[服务端库](jagent-harness-sdk/README.md) · [Node.js Runner](sdk/node/README.zh-CN.md) · [HTTP 协议](protocol/README.md) · [开发指南](CONTRIBUTING.md) · [MIT 许可证](LICENSE)

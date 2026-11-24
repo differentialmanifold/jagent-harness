@@ -2,6 +2,8 @@ package io.github.differentialmanifold.jagentharness.core.personal;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
@@ -636,14 +638,12 @@ class PersonalAgentIntegrationTest {
 
     @Test
     void externalAgentSubmitsToMainbotAndReadsProgressAndHistory() throws Exception {
-        io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient api =
-                new io.github.differentialmanifold.jagentharness.spring.web.TestHttpClient(
+        TestHttpClient api = new TestHttpClient(
                         "http://127.0.0.1:" + port, "test-token");
         assertEquals(
                 400,
                 assertThrows(
-                                io.github.differentialmanifold.jagentharness.client
-                                        .AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         api.management(
                                                 "POST",
@@ -694,8 +694,7 @@ class PersonalAgentIntegrationTest {
         assertEquals(
                 404,
                 assertThrows(
-                                io.github.differentialmanifold.jagentharness.client
-                                        .AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         api.management(
                                                 "GET",
@@ -707,8 +706,7 @@ class PersonalAgentIntegrationTest {
         assertEquals(
                 400,
                 assertThrows(
-                                io.github.differentialmanifold.jagentharness.client
-                                        .AgentHttpException.class,
+                                TestHttpClient.HttpError.class,
                                 () ->
                                         api.management(
                                                 "GET", endpoint + "/history?after=missing", null))

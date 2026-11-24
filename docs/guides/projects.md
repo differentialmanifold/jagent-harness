@@ -24,7 +24,7 @@ New coding projects enable all registered client tools. Change the selection und
 
 Open **Configuration → Runtime Context** for **Runtime Preview**, **Context** and **Tools**. It shows the current model, prompt, discoverable Skills and tool catalog. Runtime Preview is generated from current settings, not a captured historical request. A discoverable Skill has not necessarily been read by the model.
 
-See [Configuration and Skills](configuration.md) for project overrides, defaults and tool selection. See the [Runner guide](../../examples/coding-runner/README.md#state-cancellation-and-recovery) for local journals and recovery.
+See [Configuration and Skills](configuration.md) for project overrides, defaults and tool selection. See the [Runner guide](../../sdk/node/README.md#use-the-cli) for local journals and recovery.
 
 ## User projects and Agent projects
 

@@ -18,8 +18,8 @@ Project results and scheduled checks bring mainbot back to a task while the Harn
 
 ## Try mainbot
 
-1. Install the full application with `sh scripts/install.sh` on macOS/Linux or `scripts\install.cmd` on Windows. Use an extracted application ZIP or build from this checkout. See [prerequisites and model settings](QUICK_START.md#install-and-start).
-2. Set your model connection in `~/.jagent/.env.local`, open a new terminal and run `jagent`. The local Runner opens the Console. Your **Agents → mainbot → Chat** is ready.
+1. In the checkout or extracted ZIP for this revision, copy `.env.example` to `.env.local` and enter your model connection. [Prerequisites and model settings](QUICK_START.md#install-and-start)
+2. Run `node scripts/start.mjs local`. The Node Runner opens the Console at **Agents → mainbot → Chat**.
 3. Send a request you can verify:
 
    > Make a release checklist in a new workspace. Write two items to CHECKLIST.md, “Run tests” and “Write release notes”. Mark “Run tests” complete, read the file back, and tell me its path and what is still open.
@@ -63,4 +63,4 @@ sequenceDiagram
 
 </details>
 
-[Server libraries](jagent-harness-sdk/README.md) · [Java Runner SDK](sdk/java/README.md) · [HTTP protocol](protocol/README.md) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)
+[Server libraries](jagent-harness-sdk/README.md) · [Node.js Runner](sdk/node/README.md) · [HTTP protocol](protocol/README.md) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)

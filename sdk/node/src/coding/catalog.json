@@ -1,0 +1,180 @@
+{
+  "instructions" : "### Coding Tool Usage\n- Prefer dedicated tools over bash when a tool directly covers the operation.\n- Use find with a glob pattern to locate files; use ls to inspect a directory.\n- Use grep with a regular expression to search file contents; set literal when searching exact text.\n- Use read to inspect file contents; use offset and limit to read only the relevant line range.\n- Before edit, read the current file. Each oldText must come from the current file content and include enough surrounding context to match exactly one location.\n- Use edit for localized changes to existing files. When changing multiple locations in the same file, include all replacements in one edit call's edits array; every oldText is matched against the same original snapshot.\n- Delete text with an empty newText. To insert text, keep a unique anchor in oldText and include that anchor plus the insertion in newText.\n- If edit reports a conflict or that text was not found, read the current file again and retry using its latest content.\n- Use write only when creating a new file or intentionally replacing a whole file.\n- When enabled, bash is available for general shell commands; prefer dedicated tools first when they directly cover the operation.",
+  "tools" : [ {
+    "name" : "read",
+    "description" : "Read a PNG, JPEG, GIF or WebP as an image attachment, or read UTF-8 text lines with the file's SHA-256 hash. Relative paths resolve from the workspace; absolute paths are allowed. Text supports offset and limit for reading a specific line range.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute file path."
+        },
+        "offset" : {
+          "type" : "integer",
+          "description" : "One-based line number to start reading from. Default 1."
+        },
+        "limit" : {
+          "type" : "integer",
+          "description" : "Maximum number of lines to return. Default and maximum 2000."
+        }
+      },
+      "required" : [ "path" ],
+      "additionalProperties" : false
+    }
+  }, {
+    "name" : "ls",
+    "description" : "List files and directories. Relative paths resolve from the workspace; absolute paths are allowed.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute directory path. Default ."
+        }
+      },
+      "additionalProperties" : false
+    }
+  }, {
+    "name" : "find",
+    "description" : "Find files by glob pattern. Relative paths resolve from the workspace. Use / as the path separator and use ls to inspect a directory. Hidden files are included; ripgrep honors repository ignore files, while Node.js fallback uses fixed directory exclusions.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "pattern" : {
+          "type" : "string",
+          "description" : "Glob pattern relative to path, such as *.java, **/*.json, or src/**/*.spec.ts. A pattern without / matches file names at any depth. Use /."
+        },
+        "path" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute directory to search. Default .",
+          "default" : "."
+        },
+        "limit" : {
+          "type" : "integer",
+          "description" : "Maximum number of files to return. Default 100, maximum 1000.",
+          "minimum" : 1,
+          "maximum" : 1000,
+          "default" : 100
+        }
+      },
+      "required" : [ "pattern" ],
+      "additionalProperties" : false
+    }
+  }, {
+    "name" : "grep",
+    "description" : "Search file contents with a regular expression by default. Returns matching lines with file paths and line numbers. Set literal to true for exact text. Hidden files are included; ripgrep honors repository ignore files, while Node.js fallback uses fixed directory exclusions.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "pattern" : {
+          "type" : "string",
+          "description" : "Portable single-line regular expression to search for. Look-around and backreferences are not supported. Set literal to true for exact text."
+        },
+        "path" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute file or directory to search. Default .",
+          "default" : "."
+        },
+        "glob" : {
+          "type" : "string",
+          "description" : "Optional include glob relative to path when searching a directory, such as *.java or **/*.spec.ts. A glob without / matches file names at any depth."
+        },
+        "ignoreCase" : {
+          "type" : "boolean",
+          "description" : "Case-insensitive search. Default false.",
+          "default" : false
+        },
+        "literal" : {
+          "type" : "boolean",
+          "description" : "Treat pattern as exact text instead of a regular expression. Default false.",
+          "default" : false
+        },
+        "limit" : {
+          "type" : "integer",
+          "description" : "Maximum number of matching lines to return. Default 100, maximum 1000.",
+          "minimum" : 1,
+          "maximum" : 1000,
+          "default" : 100
+        }
+      },
+      "required" : [ "pattern" ],
+      "additionalProperties" : false
+    }
+  }, {
+    "name" : "write",
+    "description" : "Create a new UTF-8 text file or intentionally overwrite a whole file. Relative paths resolve from the workspace; absolute paths are allowed. Prefer edit for localized changes to existing files.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute file path."
+        },
+        "content" : {
+          "type" : "string",
+          "description" : "File content."
+        }
+      },
+      "required" : [ "path", "content" ],
+      "additionalProperties" : false
+    }
+  }, {
+    "name" : "edit",
+    "description" : "Modify one or more locations in an existing UTF-8 file. Read the file first, then provide one edits array whose oldText values each identify exactly one location in the same current file snapshot. All edits are validated together and written once.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute file path."
+        },
+        "edits" : {
+          "type" : "array",
+          "description" : "All non-overlapping replacements for this file, matched against one original snapshot.",
+          "minItems" : 1,
+          "maxItems" : 100,
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "oldText" : {
+                "type" : "string",
+                "description" : "Text from the current file that uniquely identifies the location to replace."
+              },
+              "newText" : {
+                "type" : "string",
+                "description" : "Replacement text. Use an empty string to delete oldText."
+              }
+            },
+            "required" : [ "oldText", "newText" ],
+            "additionalProperties" : false
+          }
+        }
+      },
+      "required" : [ "path", "edits" ],
+      "additionalProperties" : false
+    }
+  }, {
+    "name" : "bash",
+    "description" : "Execute a shell command and return exit code, stdout, and stderr. Relative cwd resolves from the workspace; absolute cwd is allowed. Prefer dedicated tools first when they directly cover finding, reading, searching, or editing files.",
+    "parameters" : {
+      "type" : "object",
+      "properties" : {
+        "command" : {
+          "type" : "string",
+          "description" : "Shell command to execute."
+        },
+        "cwd" : {
+          "type" : "string",
+          "description" : "Workspace-relative or absolute working directory. Default ."
+        },
+        "timeoutSeconds" : {
+          "type" : "integer",
+          "description" : "Timeout in seconds. Default 60."
+        }
+      },
+      "required" : [ "command" ],
+      "additionalProperties" : false
+    }
+  } ]
+}

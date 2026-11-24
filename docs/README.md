@@ -32,9 +32,9 @@ These references stay beside the code they describe. Start with the component yo
 | --- | --- |
 | Share a Harness with separate personal spaces; issue user credentials | [Personal access](guides/access.md) |
 | Change addresses, tokens or local startup defaults | [Quick start configuration](../QUICK_START.md#configuration-reference) |
-| Run coding tools on another machine; inspect recovery behavior | [Coding Runner](../examples/coding-runner/README.md) · [中文](../examples/coding-runner/README.zh-CN.md) |
+| Run coding tools on another machine; inspect recovery behavior | [Coding Runner](../sdk/node/README.md) · [中文](../sdk/node/README.zh-CN.md) |
 | Build a server application with Maven, add server tools, choose storage | [Server integration](../jagent-harness-sdk/README.md) and [runnable server host](../examples/server-demo/README.md) |
-| Build a custom Runner or embed a Runner in an existing Java application | [Java client SDK](../sdk/java/README.md) |
+| Build a custom Runner or embed one in your application | [Node.js SDK](../sdk/node/README.md) |
 | Host the web UI or build another frontend | [Console deployment](../console/README.md) |
 | Implement a client or Runner in another language | [HTTP/JSON protocol](../protocol/README.md), [OpenAPI](../protocol/openapi.json), [JSON Schema](../protocol/schema.json) |
 | Call Personal Agents from code | [External Agent HTTP/SDK reference](../skills/jagent/references/api.md) |

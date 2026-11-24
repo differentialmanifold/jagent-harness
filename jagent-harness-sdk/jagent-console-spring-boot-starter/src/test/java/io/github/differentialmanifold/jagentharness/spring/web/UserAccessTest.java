@@ -3,20 +3,15 @@ package io.github.differentialmanifold.jagentharness.spring.web;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.*;
-import io.github.differentialmanifold.jagentharness.client.AgentRunner;
 import io.github.differentialmanifold.jagentharness.core.fs.*;
 import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.core.personal.*;
 import io.github.differentialmanifold.jagentharness.core.provider.*;
-import io.github.differentialmanifold.jagentharness.core.tool.*;
 import java.io.*;
 import java.net.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.*;
 import org.springframework.context.annotation.*;
@@ -44,7 +39,6 @@ class UserAccessTest {
     @Autowired Model model;
     @Autowired UserAccessService access;
     @org.springframework.boot.web.server.LocalServerPort int port;
-    @TempDir Path home;
     final ObjectMapper json = new ObjectMapper();
 
     String base() {
@@ -575,69 +569,6 @@ class UserAccessTest {
             assertTrue(
                     done,
                     "Background result must be written to the originating user's conversation");
-        }
-    }
-
-    @Test
-    void sdkUsesDistinctStateForUsersAndOpensOnlyAShortLivedConsoleTicket() throws Exception {
-        String a = token("SDK A"), b = token("SDK B");
-        AtomicReference<String> link = new AtomicReference<>();
-        ToolDefinition tool =
-                new ToolDefinition() {
-                    public String getName() {
-                        return "read";
-                    }
-
-                    public String getDescription() {
-                        return "Test";
-                    }
-
-                    public JsonNode getParametersSchema() {
-                        return json.createObjectNode().put("type", "object");
-                    }
-
-                    public ToolExecutionResult execute(ToolContext c, JsonNode v) {
-                        return ToolExecutionResult.success("ok");
-                    }
-                };
-        try (AgentRunner ra =
-                        AgentRunner.builder(base(), home)
-                                .userToken(a)
-                                .tools(Collections.singletonList(tool))
-                                .onConsole(base(), link::set)
-                                .build();
-                AgentRunner rb =
-                        AgentRunner.builder(base(), home)
-                                .userToken(b)
-                                .tools(Collections.singletonList(tool))
-                                .build()) {
-            assertNotEquals(ra.stateDirectory(), rb.stateDirectory());
-            assertNotEquals(ra.runnerId(), rb.runnerId());
-            ExecutorService worker = Executors.newSingleThreadExecutor();
-            Future<?> running =
-                    worker.submit(
-                            () -> {
-                                try {
-                                    ra.serve();
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            });
-            try {
-                long end = System.currentTimeMillis() + 5000;
-                while (link.get() == null && System.currentTimeMillis() < end) Thread.sleep(20);
-                assertNotNull(link.get());
-                assertFalse(link.get().contains(a));
-                assertTrue(link.get().contains("#jagent-ticket=jht_"));
-            } finally {
-                ra.close();
-                assertEquals(
-                        0,
-                        api("GET", "/api/v1/runners", a, null).get(0).path("lastSeen").asLong(),
-                        "close must notify the server before a JVM shutdown hook can return");
-                running.get(5, TimeUnit.SECONDS);
-                worker.shutdownNow();
-            }
         }
     }
 

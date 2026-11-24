@@ -7,7 +7,7 @@ import java.util.*;
 public class RunnerInfo {
     public String runnerId;
     public String name;
-    public String runtime = "java";
+    public String runtime = "";
     /** Optional Runner application version and build provenance, supplied at registration. */
     public String version, buildRevision;
     /** Wire API major version ("1" for /api/v1), not the product or Java version. */

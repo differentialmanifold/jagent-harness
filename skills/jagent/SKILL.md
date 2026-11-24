@@ -7,7 +7,7 @@ description: Delegate a goal to the user’s JAgentHarness mainbot and follow it
 
 Each user has one mainbot. It plans work, tracks tasks and uses Projects and Runners to carry it out. Give it a goal and acceptance criteria. You do not need to create a Project, select its tools, or implement the Runner protocol.
 
-Use the bundled `scripts/jagent.mjs`. It is both a CLI and an importable SDK, requires Node.js 22+, and needs no npm packages or MCP configuration. Resolve its path from **this skill directory**, not the user's working directory. All successful command output is JSON; errors go to stderr with a nonzero exit code.
+Use the bundled `scripts/jagent.mjs`. It is both a CLI and an importable SDK, requires Node.js 20 (20.19 or later) or Node.js 22.12+, and needs no npm packages or MCP configuration. Resolve its path from **this skill directory**, not the user's working directory. All successful command output is JSON; errors go to stderr with a nonzero exit code.
 
 ## Connect to mainbot
 
@@ -17,13 +17,12 @@ Use the intended user's existing `JAGENT_USER_TOKEN` with the Harness that issue
 node "<skill-dir>/scripts/jagent.mjs" conversations
 ```
 
-**Local Harness.** On first startup the Harness writes the local user's token to a credential file. For a standard `jagent` installation, the default is `~/.jagent/data/user.env` (Windows: `%USERPROFILE%\.jagent\data\user.env`). If the environment has no token, let Node load that file for each command. For example, on macOS or Linux:
+**Local Harness.** The launcher writes the local user's credential to `data/user.env` in the checkout, extracted application or configured `JAGENT_STATE_DIR`. Use the operator-issued file for this Harness. From its state directory, run:
 
 ```sh
-node --env-file="$HOME/.jagent/data/user.env" "<skill-dir>/scripts/jagent.mjs" conversations
+node --env-file=data/user.env "<skill-dir>/scripts/jagent.mjs" conversations
 ```
 
-For a source launch with `node scripts/dev.mjs`, use `<JAgentHarness-checkout>/data/user.env`. A custom `JAGENT_STATE_DIR` puts the default file under its `data/` directory. If the installation uses an explicit credential path, pass that file to `--env-file`.
 
 **Remote Harness.** Have the user or operator inject the existing user's token through the external assistant's secret settings as `JAGENT_USER_TOKEN`, and set `JAGENT_SERVER_URL` to the matching Harness. Keep the token out of chat, logs and command arguments. If credentials are missing or the server returns `401`, ask for the credential for that user and server to be configured. Creating a user would open a different mainbot.
 

@@ -1,7 +1,7 @@
 {
   "runnerId": "runner_linux",
   "name": "Linux build machine",
-  "runtime": "java",
+  "runtime": "node",
   "instructions": "",
   "tools": [
     {

@@ -29,9 +29,9 @@
 | 想做什么 | 阅读文档 |
 | --- | --- |
 | 调整地址、令牌和启动默认值 | [Quick start 配置表](../QUICK_START.md#configuration-reference) |
-| 在另一台机器运行工具、恢复中断的工作 | [Coding Runner](../examples/coding-runner/README.zh-CN.md) |
+| 在另一台机器运行工具、恢复中断的工作 | [Coding Runner](../sdk/node/README.zh-CN.md) |
 | 通过 Maven 部署服务、扩展服务端工具和数据库 | [服务端集成](../jagent-harness-sdk/README.md)、[服务端示例](../examples/server-demo/README.md) |
-| 开发自定义 Runner，或将 Runner 嵌入现有 Java 应用 | [Java 客户端 SDK](../sdk/java/README.md) |
+| 开发自定义 Runner，或将 Runner 嵌入 Node.js 应用 | [Node.js SDK](../sdk/node/README.zh-CN.md) |
 | 部署网页或开发其他形式的前端 | [Console 部署](../console/README.md) |
 | 实现其他语言的客户端或 Runner | [HTTP/JSON 协议](../protocol/README.md)、[OpenAPI](../protocol/openapi.json)、[JSON Schema](../protocol/schema.json) |
 | 通过代码调用个人 Agent | [外部 Agent HTTP/SDK 参考](../skills/jagent/references/api.md) |

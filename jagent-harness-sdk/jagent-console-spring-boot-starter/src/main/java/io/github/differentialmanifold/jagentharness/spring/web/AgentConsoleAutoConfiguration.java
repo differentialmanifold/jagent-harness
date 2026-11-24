@@ -46,13 +46,6 @@ import org.springframework.web.servlet.DispatcherServlet;
 public class AgentConsoleAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    public RunnerDistributionController runnerDistributionController(
-            ConsoleProperties properties, ObjectMapper json) {
-        return new RunnerDistributionController(properties, json);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
     public ModelController modelController(ModelCatalog catalog) {
         return new ModelController(catalog);
     }

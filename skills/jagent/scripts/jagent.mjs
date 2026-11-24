@@ -147,7 +147,7 @@ export class JAgentClient {
   }
 }
 
-const help = `JAgent mainbot client (Node.js 22+, no npm install)
+const help = `JAgent mainbot client (Node.js ^20.19.0 or >=22.12.0, no npm install)
 Environment: JAGENT_SERVER_URL (default http://127.0.0.1:18181), JAGENT_USER_TOKEN
 
   models

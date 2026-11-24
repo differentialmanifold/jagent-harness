@@ -1,0 +1,33 @@
+name: Publish Runner to npm
+on:
+  push:
+    tags: ['runner-v*']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Check package version against tag
+        run: node -e "require('node:assert/strict').equal(process.env.GITHUB_REF_NAME,'runner-v'+require('./sdk/node/package.json').version)"
+      - run: mvn -B -pl examples/server-demo -am -DskipTests package
+      - run: npm ci --prefix sdk/node
+      - name: Verify and publish the packed CLI
+        working-directory: sdk/node
+        run: |
+          server=(../../examples/server-demo/target/server-demo-*.jar)
+          JAGENT_TEST_SERVER_JAR="$(realpath "${server[0]}")" npm test
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install --global --offline --no-audit --prefix "$RUNNER_TEMP/client" "$RUNNER_TEMP"/jagent-*.tgz
+          test "$("$RUNNER_TEMP/client/bin/jagent" version)" = "${GITHUB_REF_NAME#runner-v}"
+          npm publish "$RUNNER_TEMP"/jagent-*.tgz --access public --tag latest

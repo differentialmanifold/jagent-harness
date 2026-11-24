@@ -177,7 +177,7 @@ function toolResultCount(result) {
 
 function searchEngineLabel(engine) {
   if (engine === 'ripgrep') return 'rg'
-  if (engine === 'java') return 'Java fallback'
+  if (engine === 'node') return 'Node.js fallback'
   return ''
 }
 

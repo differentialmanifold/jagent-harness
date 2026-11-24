@@ -136,11 +136,11 @@ mainbot 会加载 `jagent-help`，读取登记的源码位置和版本，通过�
 
 > 把 `deploy@build.example.com` 配置成当前 Harness 的 Linux 执行环境。如果已有合适的 Runner 就复用，否则部署一个并保持运行。为它创建 Build Agent，最后告诉我验证过的 Runner ID 和 Agent ID。当前 Runner 已经配置好 SSH 登录；目标机器能访问的 Harness 地址是 `https://harness.example.com`。
 
-在 mainbot 对话中要求准备执行环境时，它会通过 `skill` 工具加载内置的 `runner-setup` Skill。普通聊天只看到简短的目录说明，系统提示词不会常驻完整部署步骤，也不需要手动安装 Skill。Skill 会指引它从当前 Harness 获取安装包、检查当前 Runner 的连接地址，再选择直连或 SSH 隧道。提前准备安装包的方法见 [内网分发](../../examples/coding-runner/README.zh-CN.md#在内网分发)。
+在 mainbot 对话中要求准备执行环境时，它会通过 `skill` 工具加载内置的 `runner-setup` Skill。普通聊天只看到简短的目录说明，系统提示词不会常驻完整部署步骤，也不需要手动安装 Skill。Skill 会引导它安装经确认的 npm 包，并从目标机器验证到 Harness 的连接。[Runner 安装](../../sdk/node/README.zh-CN.md)
 
 替换成实际地址。SSH 地址是要操作的机器，Harness 地址是现有的控制服务。Agent 仍然创建在当前 Harness 中，远程机器运行 Runner 来执行工具。不要把密码、私钥或 API Token 放进聊天，使用执行环境中已配置的凭据；缺少登录权限、必要软件或目标到 Harness 的网络连接时，需要先解决对应条件。
 
-JAgent 先发现已有的 Runner 和 Agent，再通过自己当前 Runner 上的 Project 检查远程机器，按需部署 Coding Runner、按使用周期配置启动方式和日志。随后通过自己的 `agents` 工具检查注册与在线状态，用 Project 返回的部署证据核对 Runner ID，再创建或复用绑定该 Runner 的 Agent。这是 JAgent 自身的工作流程，不依赖外部助手的 Skill。启动方式见 [Coding Runner 指南](../../examples/coding-runner/README.zh-CN.md)。
+JAgent 先发现已有的 Runner 和 Agent，再通过自己当前 Runner 上的 Project 检查远程机器，按需部署 Coding Runner、按使用周期配置启动方式和日志。随后通过自己的 `agents` 工具检查注册与在线状态，用 Project 返回的部署证据核对 Runner ID，再创建或复用绑定该 Runner 的 Agent。这是 JAgent 自身的工作流程，不依赖外部助手的 Skill。启动方式见 [Coding Runner 指南](../../sdk/node/README.zh-CN.md)。
 
 对于一次性环境，可以要求整个任务验收后停止专用 Runner，保留 Agent 和项目文件以便复用。`runner-setup` 会在控制端 Project 中记录停止、重启方式及隧道归属；已有共享 Runner 保持原有生命周期。恢复时通过另一台仍在线的终端 SSH 启动，或在目标机器本地启动；已停止的 Runner 不能靠聊天自我唤醒。
 

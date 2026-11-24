@@ -10,6 +10,8 @@ Run from the repository root:
 
 ```sh
 mvn clean install
+npm ci --prefix sdk/node
+npm test --prefix sdk/node
 node --test scripts/lib/*.test.mjs skills/tests/*.test.mjs
 npm ci --prefix protocol
 npm test --prefix protocol
@@ -26,13 +28,12 @@ Run the checks relevant to a change during development; CI runs the full build o
 | --- | --- |
 | `jagent-api/` | Shared tool contracts and wire types |
 | `jagent-harness-sdk/` | Server core, persistence, Spring configuration and Web/channel adapters |
-| `sdk/java/` | Lightweight client and Runner runtime |
+| `sdk/node/` | npm CLI, Runner SDK and native coding tools |
 | `examples/server-demo/` | Runnable server host |
-| `examples/coding-runner/` | Runnable native coding tools |
 | `console/` | Web frontend |
 | `protocol/` | HTTP/JSON contract, schemas and conformance tests |
 | `skills/jagent/` | Distributable external Agent Skill and client |
-| `scripts/` | Local launchers and platform shortcuts |
+| `scripts/` | Cross-platform startup and release packaging |
 
 ## Where documentation belongs
 
