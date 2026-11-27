@@ -52,9 +52,10 @@
     </el-checkbox-group>
 
     <p v-if="sessionId && !loading && !clientTools.length && !clientError">No Runner tools are registered for this project.</p>
+    <p v-if="clientRunnerHidden">This Runner was removed. Restore it in System Settings or reconnect it to run this project.</p>
     <p v-if="clientError" class="mcp-error" role="alert">{{ clientError }}</p>
     <section v-if="!loading && clientTools.length" class="client-tools-section">
-      <h3 class="tool-location-heading">Client tools <el-tag size="small" type="success">{{ clientTools.length }}</el-tag></h3>
+      <h3 class="tool-location-heading">{{ clientRunnerName }} tools <el-tag size="small" type="success">{{ clientTools.length }}</el-tag></h3>
       <p class="client-tools-description">{{ clientSelection.length }} of {{ clientTools.length }} tools enabled for this project. Full access · changes apply to the next run.</p>
       <div class="built-in-tools-actions">
         <el-button text :disabled="clientSaving" @click="clientSelection = clientTools.map(tool => tool.name)">Select all</el-button>
@@ -130,6 +131,7 @@ const props = defineProps({
 const emit = defineEmits(['changed'])
 const tools = ref([])
 const clientTools = ref([])
+const clientRunnerName = ref(''), clientRunnerHidden = ref(false)
 const clientSelection = ref([])
 const originalClientSelection = ref([])
 const clientProjectId = ref('')
@@ -140,6 +142,8 @@ let catalogVersion = 0
 watch(() => props.sessionId, async (sessionId) => {
   const version = ++catalogVersion
   clientTools.value = []
+  clientRunnerName.value = ''
+  clientRunnerHidden.value = false
   clientProjectId.value = ''
   clientSelection.value = []
   originalClientSelection.value = []
@@ -148,12 +152,13 @@ watch(() => props.sessionId, async (sessionId) => {
   try {
     const detail = await request('/api/v1/sessions/detail', { method: 'POST', body: JSON.stringify({ sessionId }) })
     if (!detail.session?.runnerId || version !== catalogVersion) return
-    const [runners, project] = await Promise.all([
-      request('/api/v1/runners'),
+    const [runner, project] = await Promise.all([
+      request(`/api/v1/runners/${encodeURIComponent(detail.session.runnerId)}`),
       request(`/api/v1/runners/projects/${encodeURIComponent(detail.session.projectId)}`)
     ])
     if (version !== catalogVersion) return
-    const runner = runners.find(item => item.runnerId === detail.session.runnerId)
+    clientRunnerName.value = runner.name
+    clientRunnerHidden.value = runner.hidden
     clientTools.value = (runner?.tools || []).map(tool => ({ ...tool, parametersSchema: tool.parameters, diagnostic: runner?.toolDiagnostics?.[tool.name] }))
     clientProjectId.value = project.projectId
     clientSelection.value = project.enabledTools.filter(name => clientTools.value.some(tool => tool.name === name))

@@ -426,6 +426,10 @@
           ],
           "description": "SHA-256 of the synchronized Harness source archive.",
           "pattern": "^[a-f0-9]{64}$"
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Server-managed directory visibility. Successful registration restores the Runner."
         }
       },
       "required": [
@@ -752,6 +756,76 @@
         "defaultModelId",
         "models"
       ]
+    },
+    "RunnerSummary": {
+      "type": "object",
+      "description": "Discovery metadata for one terminal, without its local tool catalog or instructions.",
+      "properties": {
+        "runnerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128,
+          "description": "Runner application version; omitted or null when unknown."
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "platform": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "workspaces": {
+          "type": "boolean",
+          "description": "Supports directory browsing and a workspace per project."
+        },
+        "workspaceRoot": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048,
+          "description": "Optional absolute root on the Runner for automatic user/<projectId> and agents/<agentId>/<projectId> directories. The Runner creates managed directories on first execution."
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "lastSeen": {
+          "type": "integer"
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Server-managed directory visibility. Successful registration restores the Runner."
+        }
+      },
+      "required": [
+        "runnerId",
+        "name",
+        "online",
+        "hidden"
+      ],
+      "additionalProperties": false
     }
   }
 }

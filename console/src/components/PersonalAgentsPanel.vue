@@ -227,6 +227,8 @@
                   /></el-form-item>
                   <el-form-item label="Bound Runner">
                     <select v-model="profile.runnerId" :disabled="!!selected.runnerId">
+                      <option v-if="selected.runnerId && !runners.some(r => r.runnerId === selected.runnerId)"
+                        :value="selected.runnerId">{{ boundRunner?.name || selected.runnerId }}{{ boundRunner?.hidden ? ' · Removed' : '' }}</option>
 
                       <option
                         v-for="runner in runners"
@@ -239,7 +241,8 @@
                     </select>
                   </el-form-item>
                   <el-form-item v-if="selectedId === mainbotId" label="JAgentHarness source directory on Runner">
-                    <el-input v-if="sourceRunner?.runnerSourceWorkspace" readonly :model-value="sourceRunner.harnessSourceWorkspace || 'Waiting for source sync'" />
+                    <el-input v-if="selected.runnerId && !boundRunner" readonly :model-value="boundRunnerError || 'Loading Runner…'" />
+                    <el-input v-else-if="boundRunner?.runnerSourceWorkspace" readonly :model-value="boundRunner.harnessSourceWorkspace || 'Waiting for source sync'" />
                     <el-input v-else v-model="profile.sourceWorkspace" placeholder="Optional source checkout on this Runner" />
                     <p class="personal-muted">mainbot opens this directory as a Project to inspect the Harness and Console source.</p>
                   </el-form-item>
@@ -634,7 +637,7 @@ const chatStatus = computed(() =>
 const displayMessages = computed(() => activeConversation.value
   ? personalChatMessages(timeline.value, messages.value, agents.value)
   : []);
-const sourceRunner = computed(() => runners.value.find(r => r.runnerId === profile.value?.runnerId));
+const boundRunner = ref(null), boundRunnerError = ref("");
 const mainbotId = ref("");
 const orderedAgents = computed(() => [...agents.value].sort((a, b) => Number(b.id === mainbotId.value) - Number(a.id === mainbotId.value)));
 const agents = ref([]),
@@ -642,7 +645,7 @@ const agents = ref([]),
   conversations = ref([]),
   sessionId = ref("");
 const defaultWorkspace = computed(() => {
-  const root = runners.value.find(
+  const root = boundRunner.value?.workspaceRoot || runners.value.find(
     (r) => r.runnerId === profile.value?.runnerId,
   )?.workspaceRoot;
   return root && selectedId.value
@@ -891,6 +894,23 @@ async function loadFeishu() {
     if (id === selectedId.value) feishu.value = { available: false };
   }
 }
+watch(
+  () => tab.value === "settings" && configTab.value === "general" ? selected.value?.runnerId : null,
+  async (id, _, onCleanup) => {
+    let current = true;
+    onCleanup(() => { current = false });
+    boundRunner.value = null;
+    boundRunnerError.value = "";
+    if (!id) return;
+    try {
+      const detail = await request("/api/v1/runners/" + encodeURIComponent(id));
+      if (current) boundRunner.value = detail;
+    } catch (e) {
+      if (current) boundRunnerError.value = e.message;
+    }
+  },
+  { immediate: true },
+);
 watch(
   () => feishu.value.authorizationUrl,
   async (url) => {

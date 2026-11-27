@@ -11,6 +11,7 @@ import io.github.differentialmanifold.jagentharness.core.support.Utf8Preview;
 import io.github.differentialmanifold.jagentharness.core.tool.ToolCall;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerInfo;
 import io.github.differentialmanifold.jagentharness.protocol.RunnerProject;
+import io.github.differentialmanifold.jagentharness.protocol.RunnerSummary;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,8 +29,12 @@ public class ProjectService {
         this.runners = runners;
     }
 
-    public List<RunnerInfo> runners() {
-        return runners == null ? Collections.emptyList() : runners.list();
+    public List<RunnerSummary> runners(boolean includeHidden) {
+        return runners == null ? Collections.emptyList() : runners.list(includeHidden);
+    }
+
+    public RunnerInfo runner(String id) {
+        return runners == null || id == null ? null : runners.find(id);
     }
 
     public String canonicalWorkspace(String runnerId, String path) {

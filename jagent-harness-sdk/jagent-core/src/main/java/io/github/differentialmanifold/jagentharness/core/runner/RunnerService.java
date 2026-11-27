@@ -22,7 +22,15 @@ import java.util.function.Consumer;
 public class RunnerService implements AutoCloseable {
     private static final java.util.logging.Logger LOG =
             java.util.logging.Logger.getLogger(RunnerService.class.getName());
+    private static final long ONLINE_WINDOW_MS = 65000;
+    private java.util.function.Supplier<String> mainbotRunner = () -> null;
     private boolean databaseFailure;
+
+    public RunnerService withMainbotRunner(java.util.function.Supplier<String> lookup) {
+        this.mainbotRunner = lookup;
+        return this;
+    }
+
     private UserDirectory users = UserDirectory.LOCAL;
 
     public RunnerService withUsers(UserDirectory users) {
@@ -114,10 +122,13 @@ public class RunnerService implements AutoCloseable {
                 || info.platform.length() > 256
                 || (info.version != null && info.version.length() > 128)
                 || (info.buildRevision != null && info.buildRevision.length() > 160)
-                || (info.runnerSourceWorkspace != null && info.runnerSourceWorkspace.length() > 2048)
-                || (info.harnessSourceWorkspace != null && info.harnessSourceWorkspace.length() > 2048)
+                || (info.runnerSourceWorkspace != null
+                        && info.runnerSourceWorkspace.length() > 2048)
+                || (info.harnessSourceWorkspace != null
+                        && info.harnessSourceWorkspace.length() > 2048)
                 || ((info.harnessSourceWorkspace == null) != (info.harnessSourceSha256 == null))
-                || (info.harnessSourceSha256 != null && !info.harnessSourceSha256.matches("[a-f0-9]{64}"))
+                || (info.harnessSourceSha256 != null
+                        && !info.harnessSourceSha256.matches("[a-f0-9]{64}"))
                 || (info.protocolVersion != null && info.protocolVersion.length() > 32)
                 || info.capabilities == null
                 || info.capabilities.size() > 64
@@ -145,6 +156,9 @@ public class RunnerService implements AutoCloseable {
                 throw new ProtocolException(
                         409, "RUNNER_BUSY", "Finish pending jobs before changing tools");
         }
+        info.hidden = false;
+        info.online = true;
+        info.lastSeen = System.currentTimeMillis();
         store.register(info, hash(secret));
         // Re-registration starts a new receiver after reconnect or process restart.
         Waiter previousPoll = waiters.get().remove(info.runnerId);
@@ -158,16 +172,42 @@ public class RunnerService implements AutoCloseable {
         if (w != null) w.result.complete(new RunnerPoll());
     }
 
-    public List<RunnerInfo> list() {
-        List<RunnerInfo> runners = store.runners();
-        for (RunnerInfo info : runners)
-            info.online = System.currentTimeMillis() - info.lastSeen < 65000;
+    public List<RunnerSummary> list(boolean includeHidden) {
+        List<RunnerSummary> runners = store.runners(includeHidden);
+        long cutoff = System.currentTimeMillis() - ONLINE_WINDOW_MS;
+        for (RunnerSummary info : runners) info.online = info.lastSeen > cutoff;
         return runners;
     }
 
-    public RunnerInfo require(String id) {
+    public void setHidden(String id, boolean hidden) {
+        if (hidden && id.equals(mainbotRunner.get()))
+            throw new ProtocolException(
+                    409,
+                    "MAINBOT_RUNNER",
+                    "The Runner bound to mainbot must stay in the directory.");
+        store.setHidden(id, hidden, System.currentTimeMillis() - ONLINE_WINDOW_MS);
+    }
+
+    public RunnerInfo find(String id) {
         RunnerInfo info = store.runner(id);
+        if (info != null)
+            info.online = info.lastSeen > System.currentTimeMillis() - ONLINE_WINDOW_MS;
+        return info;
+    }
+
+    public RunnerInfo require(String id) {
+        RunnerInfo info = find(id);
         if (info == null) throw new ProtocolException(404, "RUNNER_NOT_FOUND", "Runner not found");
+        return info;
+    }
+
+    private RunnerInfo available(String id) {
+        RunnerInfo info = require(id);
+        if (info.hidden)
+            throw new ProtocolException(
+                    409,
+                    "RUNNER_HIDDEN",
+                    "Restore the removed Runner in System Settings or reconnect it before starting work.");
         return info;
     }
 
@@ -176,11 +216,10 @@ public class RunnerService implements AutoCloseable {
     }
 
     public CompletableFuture<WorkspaceListing> browse(String runner, String path) {
-        RunnerInfo info = require(runner);
+        RunnerInfo info = available(runner);
         if (!info.workspaces)
             throw new ProtocolException(400, "NO_WORKSPACES", "Runner does not use workspaces");
-        if (System.currentTimeMillis() - info.lastSeen > 65000)
-            throw new ProtocolException(409, "RUNNER_OFFLINE", "Runner is offline");
+        if (!info.online) throw new ProtocolException(409, "RUNNER_OFFLINE", "Runner is offline");
         CompletableFuture<WorkspaceListing> result = workspaces.browse(runner, path);
         wake(runner);
         return result;
@@ -228,8 +267,8 @@ public class RunnerService implements AutoCloseable {
             RunnerProject existing,
             String ownerAgentId) {
         RunnerProject project = existing;
+        RunnerInfo info = available(project == null ? request.getRunnerId() : project.runnerId);
         if (project == null) {
-            RunnerInfo info = require(request.getRunnerId());
             project = new RunnerProject();
             project.runnerId = info.runnerId;
             project.workspace = info.workspaces ? request.getWorkspacePath() : null;
@@ -325,7 +364,7 @@ public class RunnerService implements AutoCloseable {
         String runner = binding(request.sessionId);
         if (runner == null)
             throw new ProtocolException(400, "NO_RUNNER", "Session has no remote runner");
-        RunnerInfo info = require(runner);
+        RunnerInfo info = available(runner);
         try {
             if ("REQUIRES_ACTION".equals(chat.state(request.sessionId).status))
                 throw new ProtocolException(
@@ -348,6 +387,8 @@ public class RunnerService implements AutoCloseable {
         request.stream = true;
         try {
             store.submit(job);
+        } catch (ProtocolException e) {
+            throw e;
         } catch (RuntimeException e) {
             throw new ProtocolException(409, "RUNNER_BUSY", e.getMessage());
         }

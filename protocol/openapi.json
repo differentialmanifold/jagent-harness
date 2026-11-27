@@ -279,22 +279,33 @@
     "/runners": {
       "get": {
         "operationId": "listRunners",
-        "summary": "List registered terminals",
+        "summary": "Discover terminals in the current user space",
         "responses": {
           "200": {
-            "description": "Runner catalog",
+            "description": "Runner summaries",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "schema.json#/definitions/RunnerInfo"
+                    "$ref": "schema.json#/definitions/RunnerSummary"
                   }
                 }
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "includeHidden",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Include manually removed terminals for management."
+          }
+        ]
       },
       "post": {
         "operationId": "registerRunner",
@@ -1506,6 +1517,97 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/runners/{id}": {
+      "get": {
+        "operationId": "getRunner",
+        "summary": "Read one registered terminal and its advertised tool definitions, including removed terminals",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runner details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schema.json#/definitions/RunnerInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown Runner"
+          }
+        }
+      }
+    },
+    "/runners/{id}/visibility": {
+      "put": {
+        "operationId": "setRunnerVisibility",
+        "summary": "Remove an unused offline Runner from discovery or restore it",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hidden": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "hidden"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated visibility",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hidden": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hidden"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown Runner"
+          },
+          "409": {
+            "description": "The Runner is online, bound to mainbot, or has unfinished jobs"
           }
         }
       }

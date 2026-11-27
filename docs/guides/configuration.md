@@ -26,9 +26,11 @@ The model beside **Send** applies to the next run. Agents and Projects do not ha
 
 A text-only model receives attachment references, not pixels. It can return an image or pass it to a Project session or another Agent for inspection. Original images selected for a final web reply remain in that conversation after the Runner disconnects.
 
-**System Settings → Runners** shows each terminal's purpose, platform, declared capabilities, tools and online state. Give Runners useful descriptions when starting or embedding them. These are discovery hints; projects must still verify installed software and permissions. An Agent is bound to one Runner when created, and its projects inherit that Runner. Existing Agents on other Runners can receive delegated work. Offline jobs wait for their Runner to reconnect; directory browsing requires an online Runner.
+**System Settings → Runners** shows each terminal’s purpose, platform, capabilities and online state. Open **Details** to inspect that machine’s tools and build. Give Runners useful descriptions when starting or embedding them. These are discovery hints; projects must still verify installed software and permissions. An Agent is bound to one Runner when created, and its projects inherit that Runner. Existing Agents on other Runners can receive delegated work. Offline jobs wait for their Runner to reconnect; directory browsing requires an online Runner.
 
 Each user has a mainbot. The first authorized Runner binds to it. The Coding Runner synchronizes the Harness source on registration and shows its local path in mainbot’s General settings. Its built-in `jagent-help` and `runner-setup` Skills are scoped to its identity within the current user space.
+
+Choose **Remove from list** on an unused offline Runner to hide it from the Console, new execution-target choices and Agent discovery. The mainbot Runner and Runners with unfinished jobs are protected. Existing Projects keep their history. Use **Show removed → Restore**, or reconnect the same Runner, to use it again.
 
 ## Ask mainbot to configure JAgentHarness
 
@@ -45,7 +47,7 @@ mainbot's `harness` tool discovers operation schemas on demand and calls the sam
 | Models | List, add, edit, remove, set default, test text connectivity |
 | Agents | Profiles, tools, task viewing, conversations, private knowledge and undo |
 | Projects | List/inspect sessions, create/rename/delete sessions, select Runner tools |
-| Runners | List terminals and browse directories |
+| Runners | Discover terminals, inspect one machine, browse directories, remove or restore an unused Runner |
 | Knowledge | Read/write/remove Instructions and text Skill files in project/default scopes |
 
 Changes stay inside the current user's space and appear through the existing Console interfaces. Other Agents and project conversations do not receive `harness`; they can delegate support requests to mainbot. It is listed under mainbot's **Configuration → Tools** and can be disabled there.

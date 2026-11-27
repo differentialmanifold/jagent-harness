@@ -226,6 +226,12 @@ create table if not exists tool_runners (
     last_seen bigint not null,
     primary key (application_id, runner_id)
 );
+create table if not exists hidden_runners (
+    application_id varchar(128) not null,
+    runner_id varchar(128) not null,
+    hidden_at bigint not null,
+    primary key (application_id, runner_id)
+);
 create table if not exists runner_sessions (
     application_id varchar(128) not null,
     session_id varchar(128) not null,

@@ -127,13 +127,7 @@ public class PersonalAgentService implements AutoCloseable {
                     PersonalAgentException.Kind.CONFLICT,
                     "MAINBOT_ALREADY_BOUND",
                     "mainbot is already bound to another Runner; its environment was kept unchanged");
-        final String targetRunner = runnerId;
-        RunnerInfo runner =
-                runners().stream()
-                        .filter(r -> r.runnerId.equals(targetRunner))
-                        .findFirst()
-                        .orElseThrow(
-                                () -> new IllegalArgumentException("Choose an existing Runner"));
+        RunnerInfo runner = bindingTarget(runnerId);
         Set<String> names =
                 runner.tools.stream().map(t -> t.name).collect(java.util.stream.Collectors.toSet());
         if (!runner.workspaces || !names.contains("read") || !names.contains("bash"))
@@ -200,16 +194,7 @@ public class PersonalAgentService implements AutoCloseable {
                 p.workspacePath == null || p.workspacePath.trim().isEmpty()
                         ? null
                         : text(p.workspacePath, "workspacePath", 2048);
-        if (p.runnerId != null) {
-            RunnerInfo runner =
-                    runners().stream()
-                            .filter(r -> p.runnerId.equals(r.runnerId))
-                            .findFirst()
-                            .orElseThrow(
-                                    () ->
-                                            new IllegalArgumentException(
-                                                    "Choose an existing Runner"));
-        }
+        if (p.runnerId != null && (old == null || old.runnerId == null)) bindingTarget(p.runnerId);
         // Project directories are allocated by the selected Runner, per owner and project.
         p.workspacePath = null;
         p.instructions = PersonalAgentKnowledge.limited(p.instructions, 16000, "Instructions");
@@ -222,6 +207,14 @@ public class PersonalAgentService implements AutoCloseable {
         } else require(p.id);
         knowledge.saveProfile(p);
         return p;
+    }
+
+    private RunnerInfo bindingTarget(String id) {
+        RunnerInfo info = projects.runner(id);
+        if (info == null) throw new IllegalArgumentException("Choose an existing Runner");
+        if (info.hidden)
+            throw new IllegalArgumentException("Restore this Runner before binding an Agent");
+        return info;
     }
 
     public Map<String, String> defaults() {
@@ -366,39 +359,39 @@ public class PersonalAgentService implements AutoCloseable {
     public Map<String, Object> discoverAgents(String query) {
         String needle = query == null ? "" : query.toLowerCase(Locale.ROOT);
         Map<String, Object> out = new LinkedHashMap<>();
-        List<Map<String, Object>> available = new ArrayList<>();
-        Map<String, Map<String, Object>> environments = new LinkedHashMap<>();
-        for (RunnerInfo runner : runners()) {
-            Map<String, Object> env = new LinkedHashMap<>();
-            env.put("runnerId", runner.runnerId);
-            env.put("name", runner.name);
-            env.put("description", runner.description);
-            env.put("platform", runner.platform);
-            env.put("capabilities", runner.capabilities);
-            env.put("online", runner.online);
-            env.put("workspaces", runner.workspaces);
-            env.put("workspaceRoot", runner.workspaceRoot);
-            env.put(
-                    "tools",
-                    runner.tools.stream()
-                            .map(t -> t.name)
-                            .collect(java.util.stream.Collectors.toList()));
-            environments.put(runner.runnerId, env);
+        Map<String, RunnerSummary> visible = new LinkedHashMap<>();
+        Set<String> matching = new LinkedHashSet<>();
+        Map<String, RunnerSummary> found = new LinkedHashMap<>();
+        for (RunnerSummary runner : runners()) {
+            visible.put(runner.runnerId, runner);
+            if (Arrays.asList(
+                            runner.runnerId,
+                            runner.name,
+                            runner.description,
+                            runner.platform,
+                            runner.runtime,
+                            runner.capabilities)
+                    .toString()
+                    .toLowerCase(Locale.ROOT)
+                    .contains(needle)) matching.add(runner.runnerId);
         }
+        List<Map<String, Object>> colleagues = new ArrayList<>();
         for (Profile p : store.profiles()) {
+            RunnerSummary environment = visible.get(p.runnerId);
+            if (p.runnerId != null && environment == null) continue;
             Map<String, Object> row = agentDescription(p);
-            row.put("environment", environments.get(p.runnerId));
-            if (row.toString().toLowerCase(Locale.ROOT).contains(needle)) available.add(row);
+            if (!matching.contains(p.runnerId)
+                    && !row.toString().toLowerCase(Locale.ROOT).contains(needle)) continue;
+            colleagues.add(row);
+            if (environment != null) found.put(environment.runnerId, environment);
+            if (colleagues.size() == 50) break;
         }
-        out.put(
-                "agents",
-                available.stream().limit(50).collect(java.util.stream.Collectors.toList()));
-        out.put(
-                "runners",
-                environments.values().stream()
-                        .filter(r -> r.toString().toLowerCase(Locale.ROOT).contains(needle))
-                        .limit(50)
-                        .collect(java.util.stream.Collectors.toList()));
+        for (String id : matching) {
+            if (found.size() == 50) break;
+            found.put(id, visible.get(id));
+        }
+        out.put("agents", colleagues);
+        out.put("runners", new ArrayList<>(found.values()));
         return out;
     }
 
@@ -823,7 +816,7 @@ public class PersonalAgentService implements AutoCloseable {
         return projects.list(agent);
     }
 
-    public List<RunnerInfo> runners() {
+    public List<RunnerSummary> runners() {
         return projects.runners();
     }
 

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.*;
 import io.github.differentialmanifold.jagentharness.core.event.AgentEventPublisher;
 import io.github.differentialmanifold.jagentharness.core.execution.*;
+import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentService;
+import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentStore;
 import io.github.differentialmanifold.jagentharness.core.project.ProjectService;
 import io.github.differentialmanifold.jagentharness.core.runner.*;
 import io.github.differentialmanifold.jagentharness.core.session.*;
@@ -63,9 +65,19 @@ public class ExecutionAutoConfiguration {
             ConversationService conversations,
             AgentEventPublisher publisher,
             ObjectMapper json,
+            ObjectProvider<PersonalAgentStore> agents,
             ObjectProvider<io.github.differentialmanifold.jagentharness.core.identity.UserDirectory>
                     users) {
         return new RunnerService(store, sessions, conversations, publisher, json)
+                .withMainbotRunner(
+                        () -> {
+                            PersonalAgentStore profiles = agents.getIfAvailable();
+                            PersonalAgentStore.Profile main =
+                                    profiles == null
+                                            ? null
+                                            : profiles.profile(PersonalAgentService.MAINBOT_ID);
+                            return main == null ? null : main.runnerId;
+                        })
                 .withUsers(
                         users.getIfAvailable(
                                 () ->
