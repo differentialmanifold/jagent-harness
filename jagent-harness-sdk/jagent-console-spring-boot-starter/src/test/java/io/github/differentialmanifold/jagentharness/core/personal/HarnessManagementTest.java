@@ -232,6 +232,41 @@ class HarnessManagementTest {
                                 p ->
                                         p.id.equals(agent)
                                                 && "Configured by mainbot".equals(p.description)));
+        JsonNode summary = call("runners.list", "{}").get(0);
+        assertEquals("runner-one", summary.path("runnerId").asText());
+        assertFalse(summary.has("tools"));
+        assertFalse(summary.has("instructions"));
+        JsonNode newSession =
+                call("projects.createSession", "{\"title\":\"Bound\",\"runnerId\":\"runner-one\"}");
+        ObjectNode selection =
+                json.createObjectNode().put("sessionId", newSession.path("sessionId").asText());
+        selection.putArray("enabledTools");
+        call("projects.selectTools", selection);
+        selection.remove("enabledTools");
+        JsonNode toolNames = call("projects.tools", selection);
+        assertEquals("read", toolNames.path("availableTools").get(0).asText());
+        assertTrue(toolNames.path("enabledTools").isEmpty());
+        assertTrue(
+                call("runners.inspect", "{\"runnerId\":\"runner-one\"}")
+                        .path("tools")
+                        .get(0)
+                        .isTextual());
+        call("agents.create", "{\"name\":\"Second Helper\",\"runnerId\":\"runner-one\"}");
+        Map<String, Object> discovery = agents.discoverAgents("Helper");
+        JsonNode discovered = json.valueToTree(discovery);
+        assertEquals(2, discovered.path("agents").size());
+        assertEquals(1, discovered.path("runners").size());
+        assertEquals("runner-one", discovered.path("runners").get(0).path("runnerId").asText());
+        assertFalse(discovered.path("agents").get(0).has("environment"));
+        agents.bindMainbotIfUnbound("runner-one");
+        runners.disconnect("runner-one");
+        assertEquals(
+                "MAINBOT_RUNNER",
+                assertThrows(
+                                io.github.differentialmanifold.jagentharness.core.execution
+                                        .ProtocolException.class,
+                                () -> runners.setHidden("runner-one", true))
+                        .code);
         JsonNode project =
                 call(
                         "projects.createSession",

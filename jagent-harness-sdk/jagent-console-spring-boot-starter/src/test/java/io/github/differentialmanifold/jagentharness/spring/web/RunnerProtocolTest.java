@@ -7,8 +7,8 @@ import io.github.differentialmanifold.jagentharness.core.execution.ConversationS
 import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
-import io.github.differentialmanifold.jagentharness.core.skill.SkillActivation;
 import io.github.differentialmanifold.jagentharness.core.session.*;
+import io.github.differentialmanifold.jagentharness.core.skill.SkillActivation;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -43,6 +43,53 @@ class RunnerProtocolTest {
     @LocalServerPort int port;
     final ObjectMapper json = new ObjectMapper();
     final String secret = "secret-for-tests-with-at-least-32-characters";
+
+    @Test
+    void removingAnOfflineRunnerKeepsHistoryAndVerifiedRegistrationRestoresIt() throws Exception {
+        register(); // Keep this user's mainbot on its first terminal.
+        RunnerInfo target = register();
+        String id = target.runnerId;
+        TestHttpClient api = http(id);
+        String path = "/api/v1/runners/" + id;
+        ChatRequest first = request(target);
+        assertEquals(
+                "RUNNER_ONLINE",
+                assertThrows(ProtocolException.class, () -> runners.setHidden(id, true)).code);
+        runners.disconnect(id);
+        runners.submit(first);
+        assertEquals(
+                "RUNNER_BUSY",
+                assertThrows(ProtocolException.class, () -> runners.setHidden(id, true)).code);
+        runners.cancel(first.runId);
+
+        api.management("PUT", path + "/visibility", Collections.singletonMap("hidden", true));
+        assertFalse(
+                api.management("GET", "/api/v1/runners", null)
+                        .findValuesAsText("runnerId")
+                        .contains(id));
+        JsonNode removed = api.management("GET", path, null);
+        assertTrue(removed.path("hidden").asBoolean());
+        assertEquals(2, removed.path("tools").size());
+        assertTrue(
+                api.management("GET", "/api/v1/runners?includeHidden=true", null)
+                        .findValuesAsText("runnerId")
+                        .contains(id));
+        assertEquals(id, runners.binding(first.sessionId));
+        first.runId = "run_" + UUID.randomUUID();
+        assertEquals(
+                "RUNNER_HIDDEN",
+                assertThrows(ProtocolException.class, () -> runners.submit(first)).code);
+        assertThrows(ProtocolException.class, () -> runners.register(target, secret + "-wrong"));
+        assertTrue(runners.require(id).hidden);
+        api.management("PUT", path + "/visibility", Collections.singletonMap("hidden", false));
+        assertFalse(runners.require(id).online);
+        runners.setHidden(id, true);
+        api.management("POST", "/api/v1/runners", target);
+        assertFalse(runners.require(id).hidden);
+        assertTrue(runners.require(id).online);
+        runners.submit(first);
+        runners.cancel(first.runId);
+    }
 
     @Test
     void browserSkillsFollowTheProjectRunnerAndItsBashSelection() throws Exception {
@@ -82,7 +129,10 @@ class RunnerProtocolTest {
         call.put("toolName", "skill");
         call.put("arguments", Collections.singletonMap("path", "skills/playwright-cli/SKILL.md"));
         String cliSkill =
-                json.readTree(api.management("POST", "/api/v1/tools/call", call).path("result").asText())
+                json.readTree(
+                                api.management("POST", "/api/v1/tools/call", call)
+                                        .path("result")
+                                        .asText())
                         .path("content")
                         .asText();
         String sessionName = "ja-" + SkillActivation.digest(session).substring(0, 20);
@@ -337,7 +387,9 @@ class RunnerProtocolTest {
                             ChatMessage.tool(call.toolCallId, "SUCCEEDED", "local result"));
                 assertEquals(
                         400,
-                        assertThrows(TestHttpClient.HttpError.class, () -> frontend.submit(results, null))
+                        assertThrows(
+                                        TestHttpClient.HttpError.class,
+                                        () -> frontend.submit(results, null))
                                 .status);
                 ChatResponse answer = executor.chat(results, null);
                 assertEquals("COMPLETED", answer.status);
@@ -676,7 +728,8 @@ class RunnerProtocolTest {
         assertEquals("default", tampered.modelId);
         TestHttpClient.HttpError error =
                 assertThrows(
-                        TestHttpClient.HttpError.class, () -> http(other.runnerId).chat(request, null));
+                        TestHttpClient.HttpError.class,
+                        () -> http(other.runnerId).chat(request, null));
         assertEquals(409, error.status);
         assertEquals(
                 400,

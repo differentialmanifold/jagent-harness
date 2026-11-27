@@ -26,8 +26,23 @@ public class RunnerController {
     }
 
     @GetMapping
-    public List<RunnerInfo> list() {
-        return service.list();
+    public List<RunnerSummary> list(@RequestParam(defaultValue = "false") boolean includeHidden) {
+        return service.list(includeHidden);
+    }
+
+    @GetMapping("/{id}")
+    public RunnerInfo detail(@PathVariable String id) {
+        return service.require(id);
+    }
+
+    @PutMapping("/{id}/visibility")
+    public Map<String, Boolean> visibility(
+            @PathVariable String id, @RequestBody Map<String, Boolean> body) {
+        Boolean hidden = body.get("hidden");
+        if (hidden == null)
+            throw new ProtocolException(400, "INVALID_REQUEST", "hidden is required");
+        service.setHidden(id, hidden);
+        return Collections.singletonMap("hidden", hidden);
     }
 
     @PostMapping

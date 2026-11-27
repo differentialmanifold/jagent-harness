@@ -7,8 +7,7 @@
           <el-option v-for="runner in runners" :key="runner.runnerId" :value="runner.runnerId"
             :label="runner.name + (runner.online ? ' · Online' : ' · Offline')" :disabled="!runner.online" />
         </el-select>
-        <p v-if="selectedRunner" class="runner-workspace">{{ selectedRunner.tools?.length || 0 }} local tools on this terminal.</p>
-        <p v-else-if="!runners.length" class="runner-workspace">Start a runner to use tools on another machine.</p>
+        <p v-if="!runners.length" class="runner-workspace">Start a runner to use tools on another machine.</p>
       </el-form-item>
       <el-form-item v-if="selectedRunner?.workspaces" label="Workspace (optional)">
         <p v-if="selectedRunner.workspaceRoot" class="runner-workspace">Leave empty to create a new project directory in your default workspace.</p>

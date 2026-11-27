@@ -1,6 +1,7 @@
 package io.github.differentialmanifold.jagentharness.store.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.differentialmanifold.jagentharness.core.execution.ProtocolException;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
 import io.github.differentialmanifold.jagentharness.protocol.*;
 import java.util.*;
@@ -42,29 +43,97 @@ public class JdbcRunnerStore implements RunnerStore {
         }
     }
 
-    public List<RunnerInfo> runners() {
+    private static final String DIRECTORY =
+            "select r.info_json, r.last_seen, h.hidden_at from tool_runners r "
+                    + "left join hidden_runners h on h.application_id = r.application_id and h.runner_id = r.runner_id "
+                    + "where r.application_id = ?";
+
+    private <T extends RunnerSummary> T entry(java.sql.ResultSet row, Class<T> type)
+            throws java.sql.SQLException {
+        T info = decode(row.getString(1), type);
+        info.lastSeen = row.getLong(2);
+        info.hidden = row.getObject(3) != null;
+        return info;
+    }
+
+    public List<RunnerSummary> runners(boolean includeHidden) {
         return db.query(
-                "select info_json, last_seen from tool_runners where application_id = ? order by runner_id",
-                (r, n) -> {
-                    RunnerInfo info = decode(r.getString(1), RunnerInfo.class);
-                    info.lastSeen = r.getLong(2);
-                    return info;
-                },
+                DIRECTORY
+                        + (includeHidden ? "" : " and h.hidden_at is null")
+                        + " order by r.runner_id",
+                (r, n) -> entry(r, RunnerSummary.class),
                 app());
     }
 
     public RunnerInfo runner(String id) {
         List<RunnerInfo> values =
                 db.query(
-                        "select info_json, last_seen from tool_runners where application_id = ? and runner_id = ?",
-                        (r, n) -> {
-                            RunnerInfo info = decode(r.getString(1), RunnerInfo.class);
-                            info.lastSeen = r.getLong(2);
-                            return info;
-                        },
+                        DIRECTORY + " and r.runner_id = ?",
+                        (r, n) -> entry(r, RunnerInfo.class),
                         app(),
                         id);
         return values.isEmpty() ? null : values.get(0);
+    }
+
+    // Serialize removal, registration and job acceptance on this terminal across Harness processes.
+    private void lockRunner(String id) {
+        if (db.update(
+                        "update tool_runners set last_seen = last_seen where application_id = ? and runner_id = ?",
+                        app(),
+                        id)
+                == 0) throw new ProtocolException(404, "RUNNER_NOT_FOUND", "Runner not found");
+    }
+
+    private void restore(String id) {
+        db.update(
+                "delete from hidden_runners where application_id = ? and runner_id = ?", app(), id);
+    }
+
+    public void setHidden(String id, boolean hidden, long offlineBefore) {
+        tx.execute(
+                status -> {
+                    lockRunner(id);
+                    if (!hidden) {
+                        restore(id);
+                        return null;
+                    }
+                    RunnerInfo current = runner(id);
+                    if (current.hidden) return null;
+                    if (current.lastSeen > offlineBefore)
+                        throw new ProtocolException(
+                                409, "RUNNER_ONLINE", "Disconnect this Runner before removing it.");
+                    Integer jobs =
+                            db.queryForObject(
+                                    "select count(*) from runner_jobs where application_id = ? and runner_id = ? and status in ('QUEUED','CLAIMED')",
+                                    Integer.class,
+                                    app(),
+                                    id);
+                    if (jobs > 0)
+                        throw new ProtocolException(
+                                409,
+                                "RUNNER_BUSY",
+                                "Finish or cancel this Runner's jobs before removing it.");
+                    db.update(
+                            "insert into hidden_runners (application_id, runner_id, hidden_at) values (?, ?, ?)",
+                            app(),
+                            id,
+                            System.currentTimeMillis());
+                    return null;
+                });
+    }
+
+    private void lockAvailableRunner(String id) {
+        lockRunner(id);
+        if (db.queryForObject(
+                        "select count(*) from hidden_runners where application_id = ? and runner_id = ?",
+                        Integer.class,
+                        app(),
+                        id)
+                != 0)
+            throw new ProtocolException(
+                    409,
+                    "RUNNER_HIDDEN",
+                    "Restore the removed Runner in System Settings or reconnect it before starting work.");
     }
 
     public String credentialHash(String id) {
@@ -78,29 +147,48 @@ public class JdbcRunnerStore implements RunnerStore {
     }
 
     public void register(RunnerInfo info, String hash) {
-        if (credentialHash(info.runnerId) == null)
-            db.update(
-                    "insert into tool_runners (application_id, runner_id, credential_hash, info_json, last_seen) values (?, ?, ?, ?, ?)",
-                    app(),
-                    info.runnerId,
-                    hash,
-                    encode(info),
-                    System.currentTimeMillis());
-        else
-            db.update(
-                    "update tool_runners set info_json = ?, last_seen = ? where application_id = ? and runner_id = ?",
-                    encode(info),
-                    System.currentTimeMillis(),
-                    app(),
-                    info.runnerId);
+        tx.execute(
+                status -> {
+                    if (credentialHash(info.runnerId) == null)
+                        db.update(
+                                "insert into tool_runners (application_id, runner_id, credential_hash, info_json, last_seen) values (?, ?, ?, ?, ?)",
+                                app(),
+                                info.runnerId,
+                                hash,
+                                encode(info),
+                                System.currentTimeMillis());
+                    else {
+                        if (db.update(
+                                        "update tool_runners set info_json = ?, last_seen = ? where application_id = ? and runner_id = ? and credential_hash = ?",
+                                        encode(info),
+                                        System.currentTimeMillis(),
+                                        app(),
+                                        info.runnerId,
+                                        hash)
+                                != 1)
+                            throw new ProtocolException(
+                                    403, "RUNNER_AUTH", "Invalid runner credentials");
+                        restore(info.runnerId);
+                    }
+                    return null;
+                });
     }
 
     public void heartbeat(String id, long now) {
-        db.update(
-                "update tool_runners set last_seen = ? where application_id = ? and runner_id = ?",
-                now,
-                app(),
-                id);
+        String visible =
+                now == 0
+                        ? ""
+                        : " and not exists (select 1 from hidden_runners where application_id = tool_runners.application_id and runner_id = tool_runners.runner_id)";
+        if (db.update(
+                                "update tool_runners set last_seen = ? where application_id = ? and runner_id = ?"
+                                        + visible,
+                                now,
+                                app(),
+                                id)
+                        == 0
+                && now > 0)
+            throw new ProtocolException(
+                    409, "RUNNER_RECONNECT", "Register again to restore this Runner.");
     }
 
     public void bind(String session, String runner) {
@@ -173,6 +261,7 @@ public class JdbcRunnerStore implements RunnerStore {
     public void submit(RunnerJob job) {
         tx.execute(
                 status -> {
+                    lockAvailableRunner(job.runnerId);
                     int locked =
                             db.update(
                                     "update runner_sessions set active_run_id = ? where application_id = ? and session_id = ? and runner_id = ? and active_run_id is null",
@@ -241,6 +330,7 @@ public class JdbcRunnerStore implements RunnerStore {
                     RunnerJob job = job(run);
                     if (job == null || !"INTERRUPTED".equals(job.status))
                         throw new IllegalStateException("Only interrupted jobs can be recovered");
+                    lockAvailableRunner(job.runnerId);
                     if (db.update(
                                     "update runner_sessions set active_run_id = ? where application_id = ? and session_id = ? and active_run_id is null",
                                     run,

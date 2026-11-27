@@ -53,8 +53,12 @@ final class PersonalAgentProjects {
         return projects.canonicalWorkspace(runner, path);
     }
 
-    public List<RunnerInfo> runners() {
-        return projects.runners();
+    public List<RunnerSummary> runners() {
+        return projects.runners(false);
+    }
+
+    public RunnerInfo runner(String id) {
+        return projects.runner(id);
     }
 
     public SessionRecord open(String agent, CreateSessionRequest request, boolean newSession) {

@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.differentialmanifold.jagentharness.core.project.*;
 import io.github.differentialmanifold.jagentharness.core.runner.RunnerService;
 import io.github.differentialmanifold.jagentharness.core.session.SessionRecord;
+import io.github.differentialmanifold.jagentharness.protocol.RunnerInfo;
+import io.github.differentialmanifold.jagentharness.protocol.RunnerProject;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -23,9 +25,45 @@ public final class ProjectManagement {
             ObjectMapper json) {
         ops.register(
                 "runners.list",
-                "List this user's registered execution terminals and capabilities. Does not expose Runner secrets.",
-                object(fields()),
-                (ctx, a) -> projects.get().runners());
+                "List execution terminals and capabilities in this user's space.",
+                object(
+                        fields(
+                                "includeHidden",
+                                property("boolean", "Include removed Runners for management."))),
+                (ctx, a) -> projects.get().runners(a.path("includeHidden").asBoolean(false)));
+        ops.register(
+                "runners.inspect",
+                "Read one Runner's installed tool names, diagnostics and source locations.",
+                object(fields("runnerId", text("Existing Runner ID.")), "runnerId"),
+                (ctx, a) -> {
+                    RunnerInfo info = runners.get().require(a.get("runnerId").asText());
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("runnerId", info.runnerId);
+                    result.put("version", info.version);
+                    result.put("buildRevision", info.buildRevision);
+                    result.put("protocolVersion", info.protocolVersion);
+                    result.put("runnerSourceWorkspace", info.runnerSourceWorkspace);
+                    result.put("harnessSourceWorkspace", info.harnessSourceWorkspace);
+                    result.put("tools", toolNames(info));
+                    result.put("toolDiagnostics", info.toolDiagnostics);
+                    return result;
+                });
+        ops.register(
+                "runners.setVisibility",
+                "Remove an unused offline Runner from discovery or restore it, when requested by the user.",
+                object(
+                        fields(
+                                "runnerId",
+                                text("Existing Runner ID."),
+                                "hidden",
+                                property("boolean", "True to remove, false to restore.")),
+                        "runnerId",
+                        "hidden"),
+                (ctx, a) -> {
+                    boolean hidden = a.get("hidden").asBoolean();
+                    runners.get().setHidden(a.get("runnerId").asText(), hidden);
+                    return Collections.singletonMap("hidden", hidden);
+                });
         ops.register(
                 "runners.browse",
                 "Browse directories on an existing Runner, as in Console's workspace selector. This does not read files or execute shell commands.",
@@ -113,13 +151,28 @@ public final class ProjectManagement {
                 });
         ops.register(
                 "projects.tools",
-                "Read the Runner tools enabled for this project. runners.list includes the Runner's available tool catalog.",
+                "Read available and enabled Runner tool names for one project.",
                 object(sessionFields, "sessionId"),
-                (ctx, a) ->
-                        runners.get()
-                                .project(
-                                        requireProject(projects.get(), a.get("sessionId").asText())
-                                                .getProjectId()));
+                (ctx, a) -> {
+                    String projectId =
+                            requireProject(projects.get(), a.get("sessionId").asText())
+                                    .getProjectId();
+                    RunnerService service = runners.get();
+                    RunnerProject project = service.project(projectId);
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("projectId", projectId);
+                    result.put("runnerId", project == null ? null : project.runnerId);
+                    result.put("workspace", project == null ? null : project.workspace);
+                    List<String> available =
+                            project == null
+                                    ? Collections.emptyList()
+                                    : toolNames(service.require(project.runnerId));
+                    List<String> enabled = new ArrayList<>(available);
+                    if (project != null) enabled.retainAll(project.enabledTools);
+                    result.put("availableTools", available);
+                    result.put("enabledTools", enabled);
+                    return result;
+                });
         ObjectNode toolsFields = sessionFields.deepCopy();
         toolsFields.set(
                 "enabledTools",
@@ -137,6 +190,12 @@ public final class ProjectManagement {
                                         Arrays.asList(
                                                 json.treeToValue(
                                                         a.get("enabledTools"), String[].class))));
+    }
+
+    private static List<String> toolNames(RunnerInfo info) {
+        List<String> names = new ArrayList<>();
+        info.tools.forEach(tool -> names.add(tool.name));
+        return names;
     }
 
     private static SessionRecord requireProject(ProjectService projects, String session) {

@@ -5,7 +5,9 @@ import java.util.List;
 
 /** Durable runner registrations, session bindings and ordinary conversation dispatch. */
 public interface RunnerStore {
-    List<RunnerInfo> runners();
+    List<RunnerSummary> runners(boolean includeHidden);
+
+    void setHidden(String id, boolean hidden, long offlineBefore);
 
     RunnerInfo runner(String id);
 

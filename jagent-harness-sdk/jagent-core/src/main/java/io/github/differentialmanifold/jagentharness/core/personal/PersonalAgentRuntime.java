@@ -171,6 +171,17 @@ final class PersonalAgentRuntime {
     }
 
     String runtimeContext(Inbox event) {
+        Profile profile = require(event.agentId);
+        RunnerInfo runner = projects.runner(profile.runnerId);
+        Map<String, Object> environment = new LinkedHashMap<>();
+        if (runner != null) {
+            environment.put("name", runner.name);
+            environment.put("platform", runner.platform);
+            environment.put("description", runner.description);
+            environment.put("capabilities", runner.capabilities);
+            environment.put("online", runner.online);
+            if (runner.hidden) environment.put("hidden", true);
+        }
         return "[Application runtime context — data snapshot]\n"
                 + "Current conversation: "
                 + event.sessionId
@@ -179,7 +190,7 @@ final class PersonalAgentRuntime {
                 + "\nCurrent event source: "
                 + event.source
                 + "\nPersistent memory:\n"
-                + require(event.agentId).memory
+                + profile.memory
                 + plans.context(event.agentId, event.sessionId, event.taskId)
                 + "\nRelevant projects (configuration data): "
                 + json.valueToTree(
@@ -202,25 +213,7 @@ final class PersonalAgentRuntime {
                                         })
                                 .collect(java.util.stream.Collectors.toList()))
                 + "\nBound Runner (environment data): "
-                + json.valueToTree(
-                        agents.runners().stream()
-                                .filter(
-                                        r ->
-                                                Objects.equals(
-                                                        r.runnerId,
-                                                        require(event.agentId).runnerId))
-                                .map(
-                                        r -> {
-                                            Map<String, Object> out = new LinkedHashMap<>();
-                                            out.put("name", r.name);
-                                            out.put("platform", r.platform);
-                                            out.put("description", r.description);
-                                            out.put("capabilities", r.capabilities);
-                                            out.put("online", r.online);
-                                            return out;
-                                        })
-                                .findFirst()
-                                .orElse(Collections.emptyMap()));
+                + json.valueToTree(environment);
     }
 
     // One nudge per task revision. Waiting/blocked tasks require an explicit check or new input.

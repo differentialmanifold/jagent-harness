@@ -235,7 +235,10 @@ test(
     ])
     const runner = await until(async () => {
       runnerLog()
-      return (await api('runners')).find((r) => r.online && r.runtime === 'node')
+      const row = (await api('runners')).find((r) => r.online && r.runtime === 'node')
+      if (!row) return
+      assert.equal(row.tools, undefined)
+      return api('runners/' + row.runnerId)
     })
     for (const path of ['source/manifest', 'source/archive'])
       assert.equal((await fetch(server + '/api/v1/' + path)).status, 401)
