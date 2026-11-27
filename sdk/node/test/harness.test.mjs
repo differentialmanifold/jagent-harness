@@ -6,14 +6,15 @@ import { spawn, execFile } from 'node:child_process'
 import { once } from 'node:events'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, writeFile, rm, access } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdtemp, readFile, writeFile, rm, access, realpath } from 'node:fs/promises'
+import { tmpdir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 
+const sshd = process.env.JAGENT_TEST_SSHD
 const jar = process.env.JAGENT_TEST_SERVER_JAR
-const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url))
+const cli = process.env.JAGENT_TEST_RUNNER_CLI || fileURLToPath(new URL('../dist/cli.js', import.meta.url))
 async function until(check) {
   for (let i = 0; i < 150; i++) {
     const value = await check()
@@ -34,6 +35,8 @@ test(
       const last = messages.at(-1),
         slow = JSON.stringify(last.content).includes('slow run')
       const device = messages.some((m) => m.role === 'user' && m.content === 'device clock')
+      const sourceQuestion = messages.some(m => m.role === 'user' && m.content === 'inspect console source')
+      const readArgs = sourceQuestion ? { path: 'console/src/App.vue', limit: 3 } : { path: 'example.txt' }
       const message =
         last.role === 'tool' || (device && messages.some((m) => m.role === 'tool'))
           ? { role: 'assistant', content: 'Tool returned ' + last.content }
@@ -53,7 +56,7 @@ test(
                             command: 'echo started > started.txt && sleep 30',
                           }),
                         }
-                      : { name: 'read', arguments: '{"path":"example.txt"}' },
+                      : { name: 'read', arguments: JSON.stringify(readArgs) },
                 },
               ],
             }
@@ -91,6 +94,8 @@ test(
       'JAGENT_SERVER_URL',
       'JAGENT_CONSOLE_URL',
       'JAGENT_RG_PATH',
+      'JAGENT_SSH',
+      'JAGENT_SSH_CONFIG',
     ])
       delete env[key]
     const children = []
@@ -143,30 +148,137 @@ test(
       assert.ok(res.ok, path + ' returned ' + res.status + (res.ok ? '' : ' ' + (await res.text())))
       return res.json()
     }
+    // Opt in to the same end-to-end suite through a disposable loopback OpenSSH server.
+    const sshConfig = join(dir, 'ssh_config')
+    const sshArgs = []
+    if (sshd) {
+      const key = join(dir, 'key'),
+        hostKey = join(dir, 'host_key')
+      for (const file of [key, hostKey])
+        await promisify(execFile)('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', file])
+      const probe = createServer().listen(0, '127.0.0.1')
+      await once(probe, 'listening')
+      const sshPort = probe.address().port
+      await new Promise((ok) => probe.close(ok))
+      const config = join(dir, 'sshd_config')
+      await writeFile(
+        config,
+        [
+          'ListenAddress 127.0.0.1',
+          'Port ' + sshPort,
+          'PidFile "' + join(dir, 'sshd.pid') + '"',
+          'HostKey "' + hostKey + '"',
+          'AuthorizedKeysFile "' + key + '.pub"',
+          'AuthenticationMethods publickey',
+          'UsePAM no',
+          'StrictModes no',
+          'AllowTcpForwarding local',
+          'PermitOpen 127.0.0.1:' + port,
+          'MaxSessions 0',
+        ].join('\n') + '\n',
+      )
+      const known = join(dir, 'known_hosts')
+      await writeFile(known, '[127.0.0.1]:' + sshPort + ' ' + (await readFile(hostKey + '.pub', 'utf8')))
+      await writeFile(
+        sshConfig,
+        [
+          'Host test-harness',
+          'HostName 127.0.0.1',
+          'Port ' + sshPort,
+          'User ' + userInfo().username,
+          'UserKnownHostsFile "' + known + '"',
+          'IdentityFile "' + key + '"',
+          'IdentitiesOnly yes',
+          'ControlMaster auto',
+          'ControlPath "' + join(dir, 'ssh-control') + '"',
+        ].join('\n') + '\n',
+      )
+      const sshLog = start(sshd, ['-D', '-e', '-f', config])
+      await until(() => sshLog().includes('Server listening'))
+      const untrusted = join(dir, 'untrusted.conf')
+      await writeFile(
+        untrusted,
+        (await readFile(sshConfig, 'utf8')).replace(known, join(dir, 'missing-known-hosts')),
+      )
+      await assert.rejects(
+        promisify(execFile)(
+          process.execPath,
+          [
+            cli,
+            'runner',
+            '--server',
+            server,
+            '--ssh',
+            'test-harness',
+            '--ssh-config',
+            untrusted,
+            '--credentials',
+            credential,
+            '--no-browser',
+          ],
+          { cwd: dir, env, timeout: 6000 },
+        ),
+        (e) => e.code === 1 && /Host key verification failed/i.test(e.stderr),
+      )
+      sshArgs.push('--ssh', 'test-harness', '--ssh-config', sshConfig)
+    }
     const runnerLog = start(process.execPath, [
       cli,
       'runner',
+      ...sshArgs,
       '--server',
       server,
       '--home',
       join(dir, 'runner'),
       '--credentials',
       credential,
-      '--no-browser',
     ])
     const runner = await until(async () => {
       runnerLog()
       return (await api('runners')).find((r) => r.online && r.runtime === 'node')
     })
+    for (const path of ['source/manifest', 'source/archive'])
+      assert.equal((await fetch(server + '/api/v1/' + path)).status, 401)
+    const { sha256, version: harnessVersion } = await api('source/manifest')
+    assert.match(sha256, /^[a-f0-9]{64}$/)
+    assert.equal(runner.harnessSourceSha256, sha256, runnerLog())
+    const support = await api('personal/agents/agent_mainbot/skill?path=skills/jagent-help/references/environment.json')
+    const environment = JSON.parse(support.content)
+    assert.equal(environment.sourceWorkspace, runner.harnessSourceWorkspace)
+    assert.equal(environment.sourceSha256, sha256)
+    assert.equal(environment.sourceVersion, harnessVersion)
+    assert.equal(environment.runnerVersion, runner.version)
+    assert.ok(environment.sourceWorkspace.startsWith(await realpath(join(dir, 'runner'))))
+    for (const path of ['console/src/App.vue', 'server/pom.xml', 'QUICK_START.md', 'sdk/node/src/cli.ts'])
+      await access(join(environment.sourceWorkspace, path))
+    await access(join(environment.runnerSourceWorkspace, 'cli.ts'))
+    if (sshd) {
+      // Drop the established transport just as a laptop losing its network would.
+      await promisify(execFile)('ssh', ['-F', sshConfig, '-O', 'exit', 'test-harness'])
+      await until(() => runnerLog().includes('Reconnecting:'))
+      await until(() =>
+        promisify(execFile)('ssh', ['-F', sshConfig, '-O', 'check', 'test-harness']).then(
+          () => true,
+          () => false,
+        ),
+      )
+    }
     const { stdout: version } = await promisify(execFile)(process.execPath, [cli, 'version'])
-    assert.equal(version.trim(), JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version)
+    assert.equal(
+      version.trim(),
+      JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version,
+    )
     assert.equal(runner.version, version.trim())
     const names = runner.tools.map((t) => t.name).sort()
     assert.deepEqual(names, ['bash', 'edit', 'find', 'grep', 'ls', 'read', 'write'])
-    const { stdout: link } = await promisify(execFile)(process.execPath, [cli, 'open', '--link'], {
-      env,
-      cwd: dir,
-    })
+    const { stdout: link } = await promisify(execFile)(
+      process.execPath,
+      [cli, 'open', '--link', '--console', server],
+      {
+        env,
+        cwd: dir,
+      },
+    )
     assert.ok(link.trim().startsWith(server + '/#jagent-ticket=jht_'))
     assert.ok(!link.includes(token))
     const cookie = await fetch(server + '/api/v1/access/exchange', {
@@ -193,6 +305,13 @@ test(
     await writeFile(join(dir, 'example.txt'), 'verified local tool')
     const submit = (sessionId, content, stream) =>
       api('chat', { sessionId, messages: [{ role: 'user', content }], stream })
+    const sourceProject = await api('sessions', {
+      title: 'Inspect Console', projectName: 'Harness source', runnerId: environment.runnerId,
+      workspacePath: environment.sourceWorkspace,
+    })
+    const inspection = await submit(sourceProject.sessionId, 'inspect console source', false)
+    assert.equal(inspection.status, 'COMPLETED', inspection.answer)
+    assert.match(inspection.answer, /app-shell/)
     const slow = submit(sessions[0].sessionId, 'slow run', false)
     // Attach the rejection handler immediately so assertion failures are visible while polling.
     slow.catch(() => {})
@@ -234,6 +353,9 @@ test(
     const serving = device.serve()
     try {
       await registered.promise
+      const online = (await api('runners')).filter((r) => r.online).map((r) => r.runnerId)
+      assert.ok(online.includes(device.identity.runnerId) && online.includes(runner.runnerId))
+      assert.notEqual(device.identity.runnerId, runner.runnerId)
       const session = await api('sessions', {
         title: 'Device',
         projectName: 'Device',

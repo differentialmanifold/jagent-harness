@@ -239,8 +239,9 @@
                     </select>
                   </el-form-item>
                   <el-form-item v-if="selectedId === mainbotId" label="JAgentHarness source directory on Runner">
-                    <el-input v-model="profile.sourceWorkspace" placeholder="Prepared automatically by the launcher; optional for manual setup" />
-                    <p class="personal-muted">Used by jagent-help through an ordinary Project. The directory must exist on the bound Runner.</p>
+                    <el-input v-if="sourceRunner?.runnerSourceWorkspace" readonly :model-value="sourceRunner.harnessSourceWorkspace || 'Waiting for source sync'" />
+                    <el-input v-else v-model="profile.sourceWorkspace" placeholder="Optional source checkout on this Runner" />
+                    <p class="personal-muted">mainbot opens this directory as a Project to inspect the Harness and Console source.</p>
                   </el-form-item>
                   <p class="personal-muted">
                     Each new project gets its own directory under this Agent's
@@ -633,6 +634,7 @@ const chatStatus = computed(() =>
 const displayMessages = computed(() => activeConversation.value
   ? personalChatMessages(timeline.value, messages.value, agents.value)
   : []);
+const sourceRunner = computed(() => runners.value.find(r => r.runnerId === profile.value?.runnerId));
 const mainbotId = ref("");
 const orderedAgents = computed(() => [...agents.value].sort((a, b) => Number(b.id === mainbotId.value) - Number(a.id === mainbotId.value)));
 const agents = ref([]),

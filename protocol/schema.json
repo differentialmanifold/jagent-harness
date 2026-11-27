@@ -199,7 +199,10 @@
           "type": "array",
           "maxItems": 4,
           "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}:[1-4]$" }
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}:[1-4]$"
+          }
         },
         "sessionId": {
           "type": "string",
@@ -399,6 +402,30 @@
           ],
           "maxLength": 32,
           "description": "Wire API major version: 1 for /api/v1; independent of product version."
+        },
+        "runnerSourceWorkspace": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Installed Runner source directory on this terminal.",
+          "maxLength": 2048
+        },
+        "harnessSourceWorkspace": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Verified Harness snapshot directory on this terminal.",
+          "maxLength": 2048
+        },
+        "harnessSourceSha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "SHA-256 of the synchronized Harness source archive.",
+          "pattern": "^[a-f0-9]{64}$"
         }
       },
       "required": [

@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { setupMainbot, sourceInfo } from './lib/mainbot.mjs'
+import { buildRevision, harnessVersion } from './lib/build-info.mjs'
 import { parseEnv } from 'node:util'
 import { createServer, createConnection } from 'node:net'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -30,9 +30,6 @@ async function launch() {
     ...(existsSync(localEnv) ? parseEnv(readFileSync(localEnv, 'utf8')) : {}),
     ...process.env,
   }
-  const distribution = existsSync(resolve(root, 'distribution.json'))
-    ? JSON.parse(readFileSync(resolve(root, 'distribution.json'), 'utf8'))
-    : null
   const local = component === 'local'
   const harness = local || component === 'harness'
   const frontend = local || component === 'frontend'
@@ -182,21 +179,15 @@ async function launch() {
       throw new Error('Server and Console ports must be distinct')
     if (harness) await available(serverPort)
     if (frontend) await available(frontendPort)
-    const build = !distribution && !options.includes('--skip-build')
-    const sourceDirectory = resolve(
-      root,
-      env.JAGENT_SOURCE_WORKSPACE || (distribution ? 'sources' : '.'),
-    )
-    const buildInfo = distribution || (harness ? sourceInfo(root) : {})
-    const source = local && env.JAGENT_SOURCE_WORKSPACE ? sourceInfo(sourceDirectory) : buildInfo
+    const build = !options.includes('--skip-build')
     if (build && harness)
       await command('mvn', [
         '-q',
         '-pl',
-        'examples/server-demo',
+        'server',
         '-am',
         '-DskipTests',
-        '-Dharness.source.revision=' + buildInfo.revision,
+        '-Dharness.source.revision=' + buildRevision(root),
         'package',
       ])
     if (build && frontend && !existsSync(resolve(root, 'console/node_modules')))
@@ -208,9 +199,7 @@ async function launch() {
     }
     if (harness) {
       mkdirSync(resolve(state, 'data'), { recursive: true })
-      const jar = distribution
-        ? 'server/server.jar'
-        : 'examples/server-demo/target/server-demo-' + buildInfo.version + '.jar'
+      const jar = 'server/target/jagent-server-' + harnessVersion(root) + '.jar'
       service('Harness', 'java', ['-jar', resolve(root, jar)], {
         ...env,
         AGENT_SERVER_PORT: String(serverPort),
@@ -221,31 +210,25 @@ async function launch() {
       console.log('Harness: ' + localServerUrl)
     }
     if (frontend) {
-      if (distribution)
-        service('Console', process.execPath, [resolve(root, 'scripts/lib/console-server.mjs')], toolsEnv, root)
-      else
-        service(
-          'Console',
-          process.execPath,
-          [
-            resolve(root, 'console/node_modules/vite/bin/vite.js'),
-            '--strictPort',
-            '--port',
-            String(frontendPort),
-            '--host',
-            env.JAGENT_CONSOLE_HOST || '127.0.0.1',
-          ],
-          toolsEnv,
-          resolve(root, 'console'),
-        )
+      service(
+        'Console',
+        process.execPath,
+        [
+          resolve(root, 'console/node_modules/vite/bin/vite.js'),
+          '--strictPort',
+          '--port',
+          String(frontendPort),
+          '--host',
+          env.JAGENT_CONSOLE_HOST || '127.0.0.1',
+        ],
+        toolsEnv,
+        resolve(root, 'console'),
+      )
       console.log('Console port: ' + frontendPort + ' (Harness: ' + serverUrl + ')')
     }
     if (local) {
       await ready('http://127.0.0.1:' + frontendPort)
-      const cli = resolve(
-        root,
-        distribution ? 'runner/node_modules/jagent/dist/cli.js' : 'sdk/node/dist/cli.js',
-      )
+      const cli = resolve(root, 'sdk/node/dist/cli.js')
       const runnerEnv = {
         ...toolsEnv,
         JAGENT_CONSOLE_URL: consoleUrl,
@@ -255,20 +238,11 @@ async function launch() {
       if (env.JAGENT_USER_TOKEN) runnerEnv.JAGENT_USER_TOKEN = env.JAGENT_USER_TOKEN
       else flags.push('--credentials', credentials)
       const runner = service('Runner', process.execPath, [cli, ...flags], runnerEnv, state, true)
-      runner.once('message', async (msg) => {
+      runner.once('message', (msg) => {
         if (msg?.type !== 'registered' || !msg.runnerId) return
-        try {
-          const token =
-            env.JAGENT_USER_TOKEN || parseEnv(readFileSync(credentials, 'utf8')).JAGENT_USER_TOKEN
-          const result = await setupMainbot(serverUrl, token, msg.runnerId, sourceDirectory, source)
-          console.log(
-            result.retained
-              ? result.message
-              : 'mainbot is ready. Source workspace: ' + result.agent.sourceWorkspace,
-          )
-        } catch (e) {
-          if (!stopping) console.error('mainbot source setup: ' + e.message)
-        }
+        if (env.JAGENT_OPEN_BROWSER?.toLowerCase() !== 'false')
+          command(process.execPath, [cli, 'open', '--profile', msg.profileId, '--console', consoleUrl], state, runnerEnv)
+            .catch(e => { if (!stopping) console.error('Open the Console with jagent open:', e.message) })
       })
     }
   } catch (e) {

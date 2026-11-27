@@ -28,7 +28,7 @@ A text-only model receives attachment references, not pixels. It can return an i
 
 **System Settings → Runners** shows each terminal's purpose, platform, declared capabilities, tools and online state. Give Runners useful descriptions when starting or embedding them. These are discovery hints; projects must still verify installed software and permissions. An Agent is bound to one Runner when created, and its projects inherit that Runner. Existing Agents on other Runners can receive delegated work. Offline jobs wait for their Runner to reconnect; directory browsing requires an online Runner.
 
-Each user has a mainbot. The first authorized Runner binds to it; the all-in-one launcher also registers the source directory. For manual startup, select a Runner and set **JAgentHarness source directory on Runner** in mainbot’s General settings. Its built-in `jagent-help` and `runner-setup` Skills are scoped to its identity within the current user space.
+Each user has a mainbot. The first authorized Runner binds to it. The Coding Runner synchronizes the Harness source on registration and shows its local path in mainbot’s General settings. Its built-in `jagent-help` and `runner-setup` Skills are scoped to its identity within the current user space.
 
 ## Ask mainbot to configure JAgentHarness
 

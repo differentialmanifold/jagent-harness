@@ -1,4 +1,4 @@
-package com.example.serverdemo;
+package io.github.differentialmanifold.jagentharness.server;
 
 import io.github.differentialmanifold.jagentharness.core.identity.*;
 import io.github.differentialmanifold.jagentharness.store.jdbc.*;
@@ -31,7 +31,7 @@ final class UserCommand {
             throw new IllegalArgumentException(
                     "--output is required; credentials are never printed to logs");
         try (ConfigurableApplicationContext context =
-                new SpringApplicationBuilder(ServerDemoApplication.class)
+                new SpringApplicationBuilder(HarnessApplication.class)
                         .web(WebApplicationType.NONE)
                         .run("--harness.enabled=false")) {
             DataSource source = context.getBean(DataSource.class);

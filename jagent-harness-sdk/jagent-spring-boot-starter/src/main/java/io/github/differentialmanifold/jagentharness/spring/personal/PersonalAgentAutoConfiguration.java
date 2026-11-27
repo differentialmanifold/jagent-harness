@@ -12,6 +12,7 @@ import io.github.differentialmanifold.jagentharness.core.personal.PersonalAgentS
 import io.github.differentialmanifold.jagentharness.core.project.ProjectService;
 import io.github.differentialmanifold.jagentharness.core.provider.ModelProviderRegistry;
 import io.github.differentialmanifold.jagentharness.core.session.*;
+import io.github.differentialmanifold.jagentharness.core.runner.RunnerStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -101,8 +102,11 @@ public class PersonalAgentAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PersonalAgentSkills personalAgentSkills(PersonalAgentStore store) {
-        return new PersonalAgentSkills(store);
+    public PersonalAgentSkills personalAgentSkills(PersonalAgentStore store, ObjectProvider<RunnerStore> runners) {
+        return new PersonalAgentSkills(store, id -> {
+            RunnerStore registry = runners.getIfAvailable();
+            return registry == null ? null : registry.runner(id);
+        });
     }
 
     @Bean

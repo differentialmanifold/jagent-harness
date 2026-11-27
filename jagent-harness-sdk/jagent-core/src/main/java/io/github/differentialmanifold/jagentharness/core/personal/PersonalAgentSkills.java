@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.differentialmanifold.jagentharness.core.agent.AgentContext;
 import io.github.differentialmanifold.jagentharness.core.fs.KnowledgeFile;
 import io.github.differentialmanifold.jagentharness.core.prompt.*;
+import io.github.differentialmanifold.jagentharness.protocol.RunnerInfo;
+import java.util.function.Function;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -14,10 +16,12 @@ public final class PersonalAgentSkills implements SkillProvider {
     private final PersonalAgentStore store;
     private final Map<String, String> resources = new LinkedHashMap<>();
     private final List<SkillDescriptor> descriptors = new ArrayList<>();
+    private final Function<String, RunnerInfo> runnerLookup;
     private final Properties build = new Properties();
 
-    public PersonalAgentSkills(PersonalAgentStore store) {
+    public PersonalAgentSkills(PersonalAgentStore store, Function<String, RunnerInfo> runnerLookup) {
         this.store = store;
+        this.runnerLookup = runnerLookup;
         for (String name : Arrays.asList("jagent-help", "runner-setup")) {
             String path = "skills/" + name + "/SKILL.md";
             String content = resource(path);
@@ -27,8 +31,12 @@ public final class PersonalAgentSkills implements SkillProvider {
                     new SkillDescriptor(
                             parsed.getName(), parsed.getDescription(), path, "builtin"));
         }
-        try (InputStream input =
-                PersonalAgentSkills.class.getResourceAsStream("/jagent-build.properties")) {
+        loadBuild("/jagent-build.properties");
+        loadBuild("/META-INF/jagent/source.properties");
+    }
+
+    private void loadBuild(String resource) {
+        try (InputStream input = PersonalAgentSkills.class.getResourceAsStream(resource)) {
             if (input != null) build.load(input);
         } catch (IOException e) {
             throw new IllegalStateException("Cannot load Harness build information", e);
@@ -75,6 +83,17 @@ public final class PersonalAgentSkills implements SkillProvider {
         data.put("sourceWorkspace", p == null ? null : p.sourceWorkspace);
         data.put("sourceVersion", p == null ? null : p.sourceVersion);
         data.put("sourceRevision", p == null ? null : p.sourceRevision);
+        RunnerInfo runner = p == null || p.runnerId == null ? null : runnerLookup.apply(p.runnerId);
+        if (runner != null && runner.runnerSourceWorkspace != null) {
+            boolean matched = runner.harnessSourceSha256 != null
+                    && runner.harnessSourceSha256.equals(build.getProperty("sha256"));
+            data.put("sourceWorkspace", matched ? runner.harnessSourceWorkspace : null);
+            data.put("sourceVersion", matched ? build.getProperty("version") : null);
+            data.put("sourceRevision", matched ? build.getProperty("revision") : null);
+            data.put("sourceSha256", matched ? runner.harnessSourceSha256 : null);
+            data.put("runnerSourceWorkspace", runner.runnerSourceWorkspace);
+            data.put("runnerVersion", runner.version);
+        }
         try {
             return new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(data);
         } catch (IOException e) {

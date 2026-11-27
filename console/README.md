@@ -14,11 +14,15 @@ export JAGENT_SERVER_URL='https://agent.example.com'
 npm --prefix console run dev
 ```
 
-Start your authorized Runner with `--console http://127.0.0.1:5175` to open the page automatically. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and forwards the browser's own session cookie. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start.mjs frontend` does.
+With your authorized Runner online, use `jagent open --console http://127.0.0.1:5175` to open the page. For a local Harness use `http://127.0.0.1:18181`. The Vite proxy forwards `/api` to `JAGENT_SERVER_URL` and forwards the browser's own session cookie. Model credentials belong only to the Harness. Direct npm commands do not read the repository's `.env.local`; `node scripts/start.mjs frontend` does.
 
 For using the UI, see [Projects](../docs/guides/projects.md), [Personal Agents](../docs/guides/agents.md), and [Configuration](../docs/guides/configuration.md).
 
 ## Build and host
+
+For a release, extract the Console ZIP, set `JAGENT_SERVER_URL`, and run `node serve.mjs` in the extracted directory. Its static files are under `dist/`; `/version.json` reports the version and revision of this UI build. Set `JAGENT_CONSOLE_HOST` and `JAGENT_CONSOLE_PORT` for your listener.
+
+To build from source:
 
 ```sh
 npm run build --prefix console

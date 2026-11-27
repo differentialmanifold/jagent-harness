@@ -30,12 +30,12 @@
 | --- | --- |
 | 调整地址、令牌和启动默认值 | [Quick start 配置表](../QUICK_START.md#configuration-reference) |
 | 在另一台机器运行工具、恢复中断的工作 | [Coding Runner](../sdk/node/README.zh-CN.md) |
-| 通过 Maven 部署服务、扩展服务端工具和数据库 | [服务端集成](../jagent-harness-sdk/README.md)、[服务端示例](../examples/server-demo/README.md) |
+| 部署 Harness JAR、扩展服务端工具和数据库 | [服务端集成](../jagent-harness-sdk/README.md)、[服务端部署](../server/README.md) |
 | 开发自定义 Runner，或将 Runner 嵌入 Node.js 应用 | [Node.js SDK](../sdk/node/README.zh-CN.md) |
 | 部署网页或开发其他形式的前端 | [Console 部署](../console/README.md) |
 | 实现其他语言的客户端或 Runner | [HTTP/JSON 协议](../protocol/README.md)、[OpenAPI](../protocol/openapi.json)、[JSON Schema](../protocol/schema.json) |
 | 通过代码调用个人 Agent | [外部 Agent HTTP/SDK 参考](../skills/jagent/references/api.md) |
 
-未标注中文的指南目前为英文。[开发与文档维护](../CONTRIBUTING.md) 说明新增功能时如何更新文档；[发布说明](releasing.md) 涵盖 Maven 和发布附件。
+未标注中文的指南目前为英文。[开发与文档维护](../CONTRIBUTING.md) 说明新增功能时如何更新文档；[发布说明](releasing.md) 介绍 Harness、Console 和 npm 包的发布。
 
 [个人身份、用户凭据与远程部署](guides/access.md)

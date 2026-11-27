@@ -4,6 +4,8 @@ English · [简体中文](README.zh-CN.md)
 
 Run Project tools on a machine with Node.js 20 (20.19 or later) or Node.js 22.12+. The Runner connects outbound to the Java Harness and registers seven tools: `read`, `ls`, `find`, `grep`, `write`, `edit` and `bash`. Coding Projects also discover the built-in browser skills. Windows requires Git for Windows to use `bash`. If ripgrep is available, `find` and `grep` use it. The Console shows the selected search backend.
 
+At startup and reconnection the Coding Runner verifies and caches the running Harness source under its identity directory, including the matching Console source. The installed npm package also contains its own TypeScript under `src/`. mainbot receives both local paths. Harness upgrades select a new snapshot; existing Project directories remain accessible. Upgrade the Runner separately with npm.
+
 ## Install and connect
 
 Once the package is published to your configured npm registry, run this on the machine that will execute tools:
@@ -13,7 +15,19 @@ npm install --global jagent
 jagent runner --server https://harness.example.com --credentials /path/to/user.env
 ```
 
-Before publication or in an isolated network, install a supplied tarball with `npm install --global /path/to/jagent-0.1.1.tgz`. It includes its runtime dependencies. To produce it from a checkout, run `npm ci` and `npm pack` in `sdk/node`. For the default local Harness use `jagent runner`. On a headless host add `--no-browser`. Use `npm uninstall --global jagent` to remove the CLI.
+Before publication or in an isolated network, install a supplied tarball with `npm install --global /path/to/jagent-0.2.0.tgz`. It includes its runtime dependencies. To produce it from a checkout, run `npm ci` and `npm pack` in `sdk/node`. For the default local Harness use `jagent runner`. The Runner starts headless. Use `npm uninstall --global jagent` to remove the CLI.
+
+## Connect through SSH
+
+When the Harness listens on the SSH host's default loopback address, start the Runner with:
+
+```sh
+jagent runner --ssh deploy@harness.example.com --credentials /path/to/user.env
+```
+
+For a gateway, add the Harness address as seen **from the gateway**, for example `--server https://harness.internal`. The system OpenSSH client must be on PATH, and the SSH server must allow TCP forwarding to that destination. SSH verifies the host key; unattended runs need a trusted host key and a working key or SSH agent. The Harness still authenticates the user credential. Use `jagent open --console https://console.example.com` to sign in to a browser-accessible frontend.
+
+An SSH config alias works with `--ssh`; set `Port`, `IdentityFile` or `ProxyJump` in that entry. Use `--ssh-config <file>` for another config file. The SDK equivalents are `ssh` and `sshConfig` on `AgentRunner.create`. Keep the same SSH alias, config path, Harness origin and home to reuse this Runner's identity. After registering with a credential file, `jagent runner`, `open`, `pair` and `recover` can reuse the saved profile.
 
 ## Use the CLI
 
@@ -27,7 +41,7 @@ Before publication or in an isolated network, install a supplied tarball with `n
 
 A Runner keeps its identity, job receipts and tool results under `~/.jagent-runner`, separated by server and user. The Harness owns the SQLite or PostgreSQL database. Runner machines need filesystem access to their workspaces and outbound HTTP(S) access to the Harness. Use HTTPS on untrusted networks.
 
-Use `--home` for another identity, `--name` and `--description` for its Console listing, or `--console` for a separate Console URL. When several profiles match, `--profile <id>` selects the ID printed at registration. An idle Runner exits after 24 hours of continuous disconnection by default. Set `--idle-disconnect-timeout <seconds>` to change this. The credential, server and timeout environment variables match the [configuration reference](../../QUICK_START.md#configuration-reference).
+Use `--home` for another identity, `--name` and `--description` for its Console listing, or `--console` for a separate Console URL. When several profiles match, `--profile <id>` selects the ID printed at registration. After registration, a lost poll triggers re-registration with the same identity and backoff up to 60 seconds, including after a laptop wakes. An idle Runner exits after 24 hours of continuous disconnection by default. Set `--idle-disconnect-timeout <seconds>` to change this. The credential, server and timeout environment variables match the [configuration reference](../../QUICK_START.md#configuration-reference).
 
 ## Embed your own tools
 

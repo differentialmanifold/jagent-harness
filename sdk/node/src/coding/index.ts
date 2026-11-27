@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import catalog from './catalog.json' with { type: 'json' }
 import type { ToolDefinition } from '../types.js'
 import { LocalWorkspaces } from '../workspaces.js'
@@ -41,6 +42,7 @@ export function codingEnvironment(options: { rg?: string; workspaceRoot?: string
   }))
   return {
     tools,
+    runnerSourceWorkspace: fileURLToPath(new URL('../../src/', import.meta.url)),
     diagnostics: { find: backend, grep: backend },
     instructions: catalog.instructions,
     capabilities: ['coding', 'browser-research'],

@@ -33,13 +33,12 @@ Normal configuration work does not require a source Project. If a needed resourc
 
 ## Locate the matching source
 
-Load `references/environment.json` with the `skill` tool. It contains the running Harness library version/revision and the source workspace registered by the launcher, on the indicated Runner. A server path is not automatically a Runner path.
+Read `references/environment.json` with the `skill` tool. The standard Coding Runner synchronizes the running Harness build automatically, including over SSH. All paths in this reference belong to the indicated Runner.
 
-Use `projects list` to reuse your source project, or `projects open` with the registered `sourceWorkspace`. Use a new session for an independent issue and reuse that session for follow-ups. Projects do not inherit this Skill: include the applicable instructions and the user's problem in `projects send`.
+- For Harness behavior, documentation or its companion web UI, open `sourceWorkspace`. The server source is under `server/` and `jagent-harness-sdk/`; the frontend is under `console/src/`. For a separately deployed Console compare its `/version.json` with the Harness version and revision. Report any mismatch.
+- For the installed Runner, open `runnerSourceWorkspace` and use `runnerVersion`. The copy under `sdk/node/` in the Harness snapshot describes the Runner at the Harness revision. For another terminal, look up that Runner’s registration and ask its bound Agent to investigate there.
 
-If no source workspace is registered, ask a Project on your Runner to find an operator-provided checkout or offline source bundle. Verify its origin and version before reuse. Otherwise obtain the recorded repository at the running version's tag or exact commit in a separate project directory, when network access allows. Do not silently substitute latest main. If no matching source is accessible, state the blocker and qualify any analysis based on another version. If no Runner is bound, request the all-in-one launcher or operator setup; do not invent a Runner or local path.
-
-The launcher records source metadata; a development checkout may have changed since then. Have the Project inspect its actual revision and modifications. A dirty checkout, unknown build revision, or matching version number alone is not proof that the source matches the running binary.
+Reuse the Project whose workspace matches the reported directory, or use `projects open` for that directory. An upgrade can select a new directory. Include the user’s question in `projects send`. If the workspace is unavailable, check the bound Coding Runner’s connection and source-sync status. Use a writable copy for changes and builds.
 
 ## Investigate and verify
 

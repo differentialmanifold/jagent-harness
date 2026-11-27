@@ -18,8 +18,8 @@ JAgentHarness 为每位用户提供一个 **mainbot**。它是可以长期对话
 
 ## 第一次和 mainbot 对话
 
-1. 在源码仓库或本版本应用 ZIP 的解压目录中，将 `.env.example` 复制为 `.env.local`，填入模型名称和服务地址。[运行环境和模型配置](QUICK_START.md#install-and-start)
-2. 运行 `node scripts/start.mjs local`。Node Runner 打开控制台后，进入 **Agents → mainbot → Chat**。
+1. 在源码仓库中，将 `.env.example` 复制为 `.env.local`，填入模型名称和服务地址。[运行环境和模型配置](QUICK_START.md#install-and-start)
+2. 运行 `node scripts/start.mjs local`。本地启动器打开控制台后，进入 **Agents → mainbot → Chat**。
 3. 发一个能当场核对结果的请求：
 
    > 帮我在新工作目录准备一份发布清单。把“运行测试”和“写发布说明”写入 CHECKLIST.md，勾选“运行测试”，再读回文件，告诉我文件路径和剩下的一项。
@@ -30,7 +30,7 @@ Linux 无桌面部署可以使用服务账户安装命令，在其他设备打�
 
 ## 还能怎样使用 mainbot
 
-- **询问或配置 JAgentHarness。** 一键启动会为 mainbot 登记配套源码。你可以让它通过 Project 查代码解释运行原理，也可以让它添加模型、安装 Skill 等。[配置指南](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
+- **询问或配置 JAgentHarness。** Coding Runner 会从运行中的 Harness 同步对应版本的源码。即使在隔离网络，mainbot 也能通过 Runner 本机的 Project 查阅服务端和前端代码、解释运行原理，也可以让它添加模型、安装 Skill 等。[配置指南](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
 - **让文件留在实际工作机器上。** Harness 和网页可部署在远程服务器，笔记本或另一台服务器只运行轻量 Runner。其他浏览器配对后也能进入同一个用户空间。[远程部署与浏览器配对](docs/guides/access.md)
 - **换一种交互入口。** 连接飞书即可收发消息和进展，也可以让其他 AI 助手通过接口使用 Agent。[飞书接入](docs/guides/feishu.md) · [外部 Agent 接入](docs/guides/external-agents.md)
 

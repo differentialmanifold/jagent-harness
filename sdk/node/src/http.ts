@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import type { ChatRequest, ChatResponse } from './types.js'
+import type { SshTunnel } from './ssh.js'
 export class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -29,6 +30,7 @@ export class Harness {
     readonly server: string,
     private token: string,
     private identity?: { runnerId: string; secret: string },
+    private tunnel?: SshTunnel,
   ) {}
   private async exchange(path: string, body: unknown, accept: string, signal: AbortSignal) {
     const headers: Record<string, string> = { Authorization: 'Bearer ' + this.token, Accept: accept }
@@ -37,15 +39,32 @@ export class Harness {
       headers['X-Runner-Secret'] = this.identity.secret
     }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
-    const res = await fetch(this.server + '/api/v1/' + path, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers,
-      redirect: 'error',
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    })
+    const route = '/api/v1/' + path
+    const payload = body === undefined ? undefined : JSON.stringify(body)
+    const res = this.tunnel
+      ? await this.tunnel.exchange(route, headers, payload, signal)
+      : await fetch(this.server + route, {
+          method: body === undefined ? 'GET' : 'POST',
+          headers,
+          redirect: 'error',
+          body: payload,
+          signal,
+        })
     if (!res.ok) throw new HttpError(res.status, (await res.text()).slice(0, 1500))
     return res
+  }
+  async download(path: string, limit: number, signal: AbortSignal) {
+    const timeout = AbortSignal.any([signal, AbortSignal.timeout(30000)])
+    const res = await this.exchange(path, undefined, 'application/zip', timeout)
+    if (!res.body) throw new Error('Missing source archive body')
+    const chunks: Buffer[] = []
+    let length = 0
+    for await (const chunk of Readable.fromWeb(res.body)) {
+      length += chunk.length
+      if (length > limit) throw new Error('Source archive is too large')
+      chunks.push(chunk)
+    }
+    return Buffer.concat(chunks, length)
   }
   async request<T>(path: string, body?: unknown, signal?: AbortSignal, timeout = 35000): Promise<T> {
     const deadline = AbortSignal.timeout(timeout)

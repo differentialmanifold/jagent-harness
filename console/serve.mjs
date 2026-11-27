@@ -38,9 +38,9 @@ export function createConsoleServer(directory, serverUrl) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+  const root = dirname(fileURLToPath(import.meta.url))
   const port = Number(process.env.JAGENT_CONSOLE_PORT || 5175)
   const host = process.env.JAGENT_CONSOLE_HOST || '127.0.0.1'
-  const server = createConsoleServer(resolve(root, 'console'), process.env.JAGENT_SERVER_URL || 'http://127.0.0.1:18181')
+  const server = createConsoleServer(resolve(root, 'dist'), process.env.JAGENT_SERVER_URL || 'http://127.0.0.1:18181')
   server.listen(port, host, () => console.log(`Console: http://${host}:${port}`))
 }

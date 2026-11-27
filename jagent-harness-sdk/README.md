@@ -1,63 +1,20 @@
 # Server integration
 
-[Documentation](../docs/README.md) · [Server host example](../examples/server-demo/README.md)
+[Documentation](../docs/README.md) · [Harness server](../server/README.md)
 
-Run the harness independently of the applications that execute its tools. This Maven integration hosts the agent loop, model connection, and conversation state; clients embed the lightweight SDK and connect over HTTP. Your server application owns deployment, configuration, and storage.
+These modules implement the standalone [Harness server](../server/README.md). They supply the Agent loop, model providers, persistence, server tools and HTTP endpoints. The Java build targets Java 8 and Spring Boot 2.7.18.
 
-The Spring modules target Java 8 and Spring Boot 2.7.18. For a complete runnable application, see [server-demo](../examples/server-demo/README.md).
+Build the application and its internal libraries together from the repository root:
 
-## Add Maven dependencies
-
-Add these dependencies to a Spring Boot application:
-
-```xml
-<dependency>
-  <groupId>io.github.differentialmanifold</groupId>
-  <artifactId>jagent-console-spring-boot-starter</artifactId>
-  <version>2.4.0</version>
-</dependency>
-<dependency>
-  <groupId>io.github.differentialmanifold</groupId>
-  <artifactId>jagent-store-jdbc</artifactId>
-  <version>2.4.0</version>
-</dependency>
-<dependency>
-  <groupId>org.xerial</groupId>
-  <artifactId>sqlite-jdbc</artifactId>
-  <version>3.45.3.0</version>
-  <scope>runtime</scope>
-</dependency>
+```sh
+mvn -pl server -am package
 ```
-
-For local source builds, first run `mvn install` in the framework repository. The server libraries are ordinary JARs; package your host application with Spring Boot's Maven plugin and deploy its executable JAR.
-
-Provide a `@SpringBootApplication` entry point and application configuration:
-
-```yaml
-server:
-  address: 127.0.0.1
-  port: 18181
-spring:
-  datasource:
-    url: jdbc:sqlite:agent.db
-    driver-class-name: org.sqlite.JDBC
-harness:
-  protocol:
-    token: ${JAGENT_CLIENT_TOKEN:}
-  model:
-    provider: openai-compatible
-    model: ${JAGENT_MODEL}
-    base-url: ${JAGENT_OPENAI_BASE_URL}
-    api-key: ${JAGENT_OPENAI_API_KEY:}
-```
-
-Set the model environment variables before launching. Configure a shared API token when binding to a non-loopback address, and terminate HTTPS at your deployment boundary. Use persistent storage for the database. The shared console is a separate web application; configure its API proxy to point at your server.
 
 ## Execution boundary
 
 The server owns the agent loop, model calls, and conversation history. Applications host an `AgentRunner` that registers local tools and receives work over the [protocol](../protocol/README.md). Users submit messages through `/api/v1/chat`; the server selects the project's execution target. Only the assigned Runner exchanges tool calls and results through `/api/v1/runners/chat`. No device callback endpoint is needed.
 
-The host may also register server-side tools as `ToolDefinition` beans or use `ToolProvider`. Client tools implement the same Java contract but stay in their own application. Tool names must be unique across the combined catalog.
+The host may also register server-side tools as `ToolDefinition` beans or use `ToolProvider`. Runner tools implement the corresponding tool definition in their host language. Tool names must be unique across the combined catalog.
 
 Skills are Markdown instructions stored through the Console or knowledge-file API. See [Configuration and Skills](../docs/guides/configuration.md) for scopes and ZIP import, and [Skills and MCP](../docs/guides/skills-and-mcp.md) for optional tool activation. Tool implementations remain in their server or Runner host.
 
@@ -103,13 +60,13 @@ Frontend messages use `/api/v1/chat` regardless of execution target. Registered 
 | `harness.personal.learning.timeout-ms` | `30000` | Review cancellation deadline, clamped to 1–60 seconds; providers must honor `StopSignal` |
 | `harness.personal.feishu.enabled` | `true` | Enable Feishu when its optional SDK is present; connection requires account configuration |
 
-For Feishu, the demo includes `com.larksuite.oapi:oapi-sdk:2.8.7`. Other server hosts can add it or omit it for Console-only use. It is not a dependency of the lightweight client SDK. User setup is covered by the [Feishu guide](../docs/guides/feishu.md).
+For Feishu, the server includes `com.larksuite.oapi:oapi-sdk:2.8.7`. Other server hosts can add it or omit it for Console-only use. It is not a dependency of the lightweight client SDK. User setup is covered by the [Feishu guide](../docs/guides/feishu.md).
 
 Run one Personal Agent worker per database application ID. User messages, project results and due checks wake it; waiting alone causes no model activity. Multi-replica hosts need a single-worker arrangement or must disable this feature. One decision runs per Agent; different Agents and project sessions can run concurrently.
 
 ## Storage
 
-The packaged demo defaults to SQLite and also includes the PostgreSQL driver. Standalone Maven consumers supply their chosen JDBC driver and configure `spring.datasource` or a `DataSource` bean. [Packaged host database settings](../QUICK_START.md#choose-a-database)
+The packaged Harness defaults to SQLite and also includes the PostgreSQL driver. Standalone Maven consumers supply their chosen JDBC driver and configure `spring.datasource` or a `DataSource` bean. [Packaged host database settings](../QUICK_START.md#choose-a-database)
 
 | Property | Purpose |
 | --- | --- |

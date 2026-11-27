@@ -36,11 +36,7 @@ jobs:
       - run: node --test scripts/lib/*.test.mjs && node scripts/start.mjs --help
       - run: node --test skills/tests/*.test.mjs
       - run: mvn -B install
-      - name: Verify Node Runner with the packaged Harness
-        run: |
-          npm ci --prefix sdk/node
-          server=(examples/server-demo/target/server-demo-*.jar)
-          JAGENT_TEST_SERVER_JAR="$PWD/${server[0]}" npm test --prefix sdk/node
+      - run: npm ci --prefix sdk/node && npm test --prefix sdk/node
       - name: Verify packaged host with PostgreSQL on Linux
         env:
           JAGENT_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:${{ job.services.postgres.ports['5432'] }}/jagent
@@ -55,7 +51,7 @@ jobs:
           trap 'kill "$launcher" 2>/dev/null || true; wait "$launcher" || true' EXIT
           curl -fsS --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:18181/api/v1/health
           test -s "$JAGENT_STATE_DIR/data/user.env"
-          server=(examples/server-demo/target/server-demo-*.jar)
+          server=(server/target/jagent-server-*.jar)
           java -jar "${server[0]}" users create --name pg-ci --output "$RUNNER_TEMP/pg-user.env"
           java -jar "${server[0]}" users list | grep -F pg-ci
           test ! -e "$JAGENT_STATE_DIR/data/agent-server.db"
@@ -65,6 +61,9 @@ jobs:
           npm pack --pack-destination "$RUNNER_TEMP"
           npm install --global --prefix "$RUNNER_TEMP/client" --cache "$RUNNER_TEMP/empty-cache" --offline --no-audit "$RUNNER_TEMP"/jagent-*.tgz
           "$RUNNER_TEMP/client/bin/jagent" --help
+          server=(../../server/target/jagent-server-*.jar)
+          JAGENT_TEST_RUNNER_CLI="$RUNNER_TEMP/client/lib/node_modules/jagent/dist/cli.js" \
+          JAGENT_TEST_SERVER_JAR="$(realpath "${server[0]}")" node --test test/harness.test.mjs
       - run: npm ci --prefix protocol && npm test --prefix protocol
       - run: npm ci --prefix console && npm test --prefix console && npm run build --prefix console
   coding-windows:

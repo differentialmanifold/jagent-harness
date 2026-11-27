@@ -1,6 +1,6 @@
 {
   "name": "jagent",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Node.js Coding Runner and local tool SDK for JAgentHarness",
   "license": "MIT",
   "repository": {
@@ -23,6 +23,8 @@
   },
   "files": [
     "dist",
+    "src",
+    "tsconfig.json",
     "README*.md",
     "LICENSE"
   ],
@@ -37,15 +39,18 @@
   },
   "dependencies": {
     "diff": "^8.0.2",
-    "minimatch": "^11.0.9"
+    "minimatch": "^11.0.9",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "~20.19.43",
+    "@types/yauzl": "^3.4.0",
     "typescript": "~5.9.3"
   },
   "bundleDependencies": [
     "diff",
-    "minimatch"
+    "minimatch",
+    "yauzl"
   ],
   "homepage": "https://github.com/differentialmanifold/jagent-harness"
 }

@@ -18,8 +18,8 @@ Project results and scheduled checks bring mainbot back to a task while the Harn
 
 ## Try mainbot
 
-1. In the checkout or extracted ZIP for this revision, copy `.env.example` to `.env.local` and enter your model connection. [Prerequisites and model settings](QUICK_START.md#install-and-start)
-2. Run `node scripts/start.mjs local`. The Node Runner opens the Console at **Agents → mainbot → Chat**.
+1. In the source checkout, copy `.env.example` to `.env.local` and enter your model connection. [Prerequisites and model settings](QUICK_START.md#install-and-start)
+2. Run `node scripts/start.mjs local`. The local launcher opens the Console at **Agents → mainbot → Chat**.
 3. Send a request you can verify:
 
    > Make a release checklist in a new workspace. Write two items to CHECKLIST.md, “Run tests” and “Write release notes”. Mark “Run tests” complete, read the file back, and tell me its path and what is still open.
@@ -30,7 +30,7 @@ On a headless Linux host, use the per-user CLI from a service account. SQLite wo
 
 ## Other ways to use mainbot
 
-- **Ask about your installation.** With the all-in-one launcher, mainbot can inspect the bundled source or checkout through a Project. It can also manage supported settings, such as adding a model or installing a Skill. [Configuration](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
+- **Ask about your installation.** The Coding Runner automatically downloads the running Harness’s source. mainbot can inspect the server and Console code through a local Project, including on an offline network. It can also manage supported settings, such as adding a model or installing a Skill. [Configuration](docs/guides/configuration.md#ask-mainbot-to-configure-jagentharness)
 - **Keep the files on another machine.** Host the Harness and Console together and run a lightweight Runner on your laptop or server. A second browser can pair with the same personal workspace. [Remote deployment and browser pairing](docs/guides/access.md)
 - **Choose another interface.** Connect Feishu for messages and progress updates, or let another assistant use the Agent API. [Feishu](docs/guides/feishu.md) · [External Agent access](docs/guides/external-agents.md)
 

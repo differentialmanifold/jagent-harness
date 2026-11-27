@@ -12,6 +12,9 @@ public class RunnerInfo {
     public String version, buildRevision;
     /** Wire API major version ("1" for /api/v1), not the product or Java version. */
     public String protocolVersion;
+    /** Optional source locations on this terminal, reported by Coding Runners. */
+    public String runnerSourceWorkspace, harnessSourceWorkspace, harnessSourceSha256;
+
 
     public String description = "", platform = "";
     public List<String> capabilities = new ArrayList<>();

@@ -29,7 +29,7 @@ Run the checks relevant to a change during development; CI runs the full build o
 | `jagent-api/` | Shared tool contracts and wire types |
 | `jagent-harness-sdk/` | Server core, persistence, Spring configuration and Web/channel adapters |
 | `sdk/node/` | npm CLI, Runner SDK and native coding tools |
-| `examples/server-demo/` | Runnable server host |
+| `server/` | Runnable server host |
 | `console/` | Web frontend |
 | `protocol/` | HTTP/JSON contract, schemas and conformance tests |
 | `skills/jagent/` | Distributable external Agent Skill and client |
@@ -50,7 +50,7 @@ Keep one authoritative explanation for each subject; link to it from other entry
 | `skills/jagent/` | Installed external Agent workflow and HTTP/SDK reference | Links that require the rest of this repository |
 | `docs/releasing.md` | Publication procedure and release artifacts | Day-to-day development instructions |
 
-`examples/` contains runnable applications. A guide that only describes UI steps belongs in `docs/guides/`, even if it uses an example task.
+The standalone application is in `server/`. Put guided examples in `docs/guides/`.
 
 ## Document a feature with its implementation
 

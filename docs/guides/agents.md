@@ -8,7 +8,7 @@ Give your Agent a small development task and watch it create a project, run tool
 
 ## 1. Start and meet mainbot
 
-Follow [Quick start](../../QUICK_START.md) and use the Console opened by your Runner. Select **Agents → mainbot → Chat**. The Harness creates mainbot and its first conversation for your user. Your first authenticated Runner becomes its execution environment. The all-in-one launcher also registers the matching source location for mainbot’s help with JAgentHarness.
+Follow [Quick start](../../QUICK_START.md) and open the Console. Select **Agents → mainbot → Chat**. The Harness creates mainbot and its first conversation for your user. Your first authenticated Runner becomes its execution environment. The Coding Runner automatically prepares the source workspace for mainbot.
 
 The Console opens mainbot by default. Tell it your goal, including any need for a specialist or another machine. mainbot can use its own Projects, reuse an existing Agent or create one on the intended Runner. It follows the work and reports back in the same chat. Use the Agent selector to inspect a colleague's work.
 
@@ -81,7 +81,7 @@ You should see a clickable image and a description in the same reply. Refresh th
 
 > Explain how this version loads a Skill and why it might not appear in a Project. Check the source and show the relevant code locations.
 
-mainbot loads `jagent-help`, reads its registered source location/version and opens an ordinary source Project on its Coding Runner. Further questions reuse that Project with independent sessions when needed. The all-in-one launcher uses the current checkout; the prebuilt application includes a source snapshot. A dirty checkout may differ from the running JAR. mainbot checks evidence before claiming a match or a repair; editing source does not deploy it.
+mainbot loads `jagent-help`, reads its registered source location/version and opens an ordinary source Project on its Coding Runner. Further questions reuse that Project with independent sessions when needed. The source comes from the running server JAR and includes the Web Console source at that revision. For a separately deployed UI, compare its `/version.json` with the snapshot. mainbot checks evidence before claiming a match or a repair; editing source does not deploy it.
 
 These built-in Skills appear only in mainbot's **Configuration → Skills**, even if you rename mainbot. Other Agents can ask mainbot for help through their existing `agents` tool. No source checkout is required on a phone Runner.
 
