@@ -8,7 +8,7 @@
 
 ## 1. 启动并认识 mainbot
 
-按[快速启动](../../QUICK_START.md)运行程序，使用 Runner 自动打开的网页，进入 **Agents → mainbot → Chat**。Harness 会为当前用户创建 mainbot 和第一个会话，第一个通过认证的 Runner 成为它的执行环境。一键启动还会登记对应的源码目录，方便 mainbot 回答 JAgentHarness 自身的问题。
+按[快速启动](../../QUICK_START.md)运行程序，打开控制台，进入 **Agents → mainbot → Chat**。Harness 会为当前用户创建 mainbot 和第一个会话，第一个通过认证的 Runner 成为它的执行环境。Coding Runner 会自动准备对应版本的源码目录，方便 mainbot 回答 JAgentHarness 自身的问题。
 
 控制台默认打开 mainbot。把目标告诉它，需要专门角色或指定机器时也一起说明。mainbot 可以通过自己的 Project 执行，也可以复用已有 Agent，或在目标 Runner 上创建 Agent。它会跟进任务，在原对话里汇报结果。你可以通过下拉框查看其他 Agent 的工作。
 
@@ -126,7 +126,7 @@ Agent 在创建时绑定一个 Runner，创建项目时自动使用它。其他�
 
 > 解释当前版本是如何加载 Skill 的，为什么安装后可能没有在 Project 中出现。请查源码，并指出相关代码位置。
 
-mainbot 会加载 `jagent-help`，读取登记的源码位置和版本，通过普通 Project 查询。后续复用该源码项目，不同问题可使用独立会话。一键源码启动使用当前仓库；预构建运行包携带对应的源码快照。本地未提交修改可能与运行中的 JAR 不一致，mainbot 需要核对证据。改完源码不代表已经部署修复。
+mainbot 会加载 `jagent-help`，读取登记的源码位置和版本，通过普通 Project 查询。后续复用该源码项目，不同问题可使用独立会话。源码由运行中的 JAR 提供，包含该版本的 Console 源码。独立部署的页面可以通过其 `/version.json` 核对版本。改完源码不代表已经部署修复。
 
 这两份内置 Skill 仅出现在 mainbot 的 **Configuration → Skills** 中，改名后仍然可用。其他 Agent 可通过现有 `agents` 工具向 mainbot 求助，手机 Runner 无需获取源码。
 

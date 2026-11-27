@@ -9,21 +9,31 @@ import { parseArgs } from 'node:util'
 import { codingEnvironment } from './coding/index.js'
 import { digest, load, missing, save, type Identity } from './files.js'
 import { Harness, origin } from './http.js'
+import { routeKey, SshTunnel } from './ssh.js'
 import { AgentRunner, connection } from './runner.js'
 import { errorText } from './types.js'
 
 const help = [
   'JAgent Coding Runner for Node.js',
   '  jagent version (also --version or -v)',
-  '  jagent runner [--server <url>] [--credentials <user.env>] [--no-browser]',
-  '  jagent open [--link] [--profile <id>]',
+  '  jagent runner [--ssh <[user@]host>] [--server <url>] [--credentials <user.env>]',
+  '  jagent open [--link] [--console <browser-url>] [--profile <id>]',
   '  jagent pair <code> [--profile <id>]',
   '  jagent recover --session <id>',
   'Start without arguments to serve. The default Harness is http://127.0.0.1:18181.',
+  '--ssh opens a tunnel with system OpenSSH. --server is the origin as seen from the SSH host.',
   'Other options: --home <directory>, --name <name>, --description <text>, --console <url>,',
-  '  --idle-disconnect-timeout <seconds> (default 86400, 0 disables the timeout).',
+  '  --ssh-config <OpenSSH config file>, --idle-disconnect-timeout <seconds> (default 86400, 0 disables the timeout).',
 ].join('\n')
-type Profile = { server: string; user: string; home: string; console: string; credentials?: string }
+type Profile = {
+  ssh?: string
+  sshConfig?: string
+  server: string
+  user: string
+  home: string
+  console?: string
+  credentials?: string
+}
 async function listProfiles(dir: string) {
   const names = await readdir(dir).catch((e) => {
     if (!missing(e)) throw e
@@ -65,10 +75,12 @@ async function main() {
     options: {
       help: { type: 'boolean' },
       version: { type: 'boolean', short: 'v' },
-      'no-browser': { type: 'boolean' },
+      'no-browser': { type: 'boolean' }, // Accepted by older launch scripts.
       link: { type: 'boolean' },
       credentials: { type: 'string' },
       server: { type: 'string' },
+      ssh: { type: 'string' },
+      'ssh-config': { type: 'string' },
       console: { type: 'string' },
       name: { type: 'string' },
       description: { type: 'string' },
@@ -102,17 +114,30 @@ async function main() {
     profilesDir = join(state, 'node-profiles')
   const selectedServer = f.server ?? env.JAGENT_SERVER_URL,
     selectedHome = f.home ?? env.JAGENT_RUNNER_HOME
+  const configPath = f['ssh-config'] ?? env.JAGENT_SSH_CONFIG
+  if (configPath === '') throw new Error('Missing OpenSSH config path')
+  const selectedConfig = configPath && resolve(configPath)
+  const selectedSsh = f.ssh ?? env.JAGENT_SSH
+  if (selectedSsh === '') throw new Error('Missing SSH destination')
   let profile: Profile | undefined
   if (
     f.profile ||
     command === 'open' ||
     command === 'pair' ||
-    (command === 'runner' && !f.credentials && !env.JAGENT_USER_TOKEN && !env.JAGENT_USER_CREDENTIALS)
+    command === 'recover' ||
+    (['runner', 'serve'].includes(command) &&
+      !f.credentials &&
+      !env.JAGENT_USER_TOKEN &&
+      !env.JAGENT_USER_CREDENTIALS)
   ) {
     const profiles = await listProfiles(profilesDir)
     const matches = [...profiles].filter(
       ([id, p]) =>
         (!f.profile || id === f.profile) &&
+        (!selectedConfig || selectedConfig === p.sshConfig) &&
+        (selectedSsh
+          ? p.ssh === selectedSsh
+          : !selectedServer || !!f.profile || !['runner', 'serve'].includes(command) || !p.ssh) &&
         (!selectedServer || p.server === origin(selectedServer)) &&
         (!selectedHome || p.home === resolve(selectedHome)),
     )
@@ -121,28 +146,44 @@ async function main() {
       throw new Error(
         'Choose --profile: ' +
           matches
-            .map(([id, p]) => id + ' (' + p.server + ', ' + p.user + ', ' + p.home + ')')
+            .map(
+              ([id, p]) =>
+                id +
+                ' (' +
+                p.server +
+                (p.ssh ? ' via ' + p.ssh : '') +
+                ', ' +
+                p.user +
+                ', ' +
+                p.home +
+                ')',
+            )
             .join(', '),
       )
     profile = matches[0]?.[1]
   }
   const server = origin(selectedServer ?? profile?.server ?? 'http://127.0.0.1:18181')
+  const ssh = selectedSsh ?? profile?.ssh
+  const sshConfig = selectedConfig ?? profile?.sshConfig
+  if (sshConfig && !ssh) throw new Error('--ssh-config requires --ssh')
+  const key = routeKey(server, ssh, sshConfig)
   const home = resolve(selectedHome ?? profile?.home ?? join(homedir(), '.jagent-runner'))
-  const consoleUrl = origin(
-    f.console ??
-      env.JAGENT_CONSOLE_URL ??
-      profile?.console ??
-      (server === 'http://127.0.0.1:18181' ? 'http://127.0.0.1:5175' : server),
-  )
+  const browserAddress = f.console ?? env.JAGENT_CONSOLE_URL ?? profile?.console
+  const consoleUrl =
+    browserAddress ?? (server === 'http://127.0.0.1:18181' ? 'http://127.0.0.1:5175' : server)
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(server).hostname)
   if (!loopback && server.startsWith('http:'))
-    console.error('Plain HTTP sends credentials unencrypted. Use a trusted network or HTTPS.')
+    console.error(
+      ssh
+        ? 'HTTP from the SSH host to the Harness is unencrypted. Use a trusted network or HTTPS.'
+        : 'Plain HTTP sends credentials unencrypted. Use a trusted network or HTTPS.',
+    )
   let credentials = f.credentials ?? env.JAGENT_USER_CREDENTIALS ?? profile?.credentials
   let token = env.JAGENT_USER_TOKEN
   if (!token || f.credentials) {
     const paths = credentials
       ? [credentials]
-      : loopback
+      : loopback && !ssh
         ? env.JAGENT_STATE_DIR
           ? [join(state, 'data', 'user.env')]
           : [resolve('data/user.env'), join(state, 'data', 'user.env')]
@@ -163,41 +204,48 @@ async function main() {
   } else credentials = undefined
   if (!token) throw new Error('Supply --credentials <user.env> or set JAGENT_USER_TOKEN')
   if (command === 'open' || command === 'pair') {
-    const { userId, dir } = await connection(server, token, home, profile?.user)
-    const identity = await load<Identity>(join(dir, 'config.json'))
-    if (!identity || identity.server !== server || !identity.runnerId || !identity.secret)
-      throw new Error('Start the Node Runner first')
-    const http = new Harness(server, token, identity)
-    if (command === 'open') {
-      const url = await link(http, consoleUrl)
-      if (f.link) console.log(url)
-      else await openBrowser(url)
-    } else {
-      const { browser } = await http.request<{ browser: string }>('access/pair/info', { code })
-      if (!process.stdin.isTTY || !process.stdout.isTTY)
-        throw new Error('Confirm pairing in an interactive terminal on this Runner')
-      const input = createInterface({ input: process.stdin, output: process.stdout })
-      try {
-        const answer = await input.question(
-          'Allow ' +
-            browser +
-            ' (' +
-            code +
-            ') to access ' +
-            userId +
-            ' on ' +
-            server +
-            ' via ' +
-            identity.runnerId +
-            '? Type yes: ',
-        )
-        if (answer.trim().toLowerCase() === 'yes') {
-          await http.request('access/pair/approve', { code })
-          console.log('Browser approved.')
-        } else console.log('Pairing cancelled.')
-      } finally {
-        input.close()
+    if (ssh && command === 'open' && !browserAddress)
+      throw new Error('Supply --console <browser-accessible Console URL> to open the remote Console')
+    const tunnel = ssh ? new SshTunnel(ssh, new URL(server), sshConfig) : undefined
+    try {
+      const { userId, dir } = await connection(server, token, home, profile?.user, tunnel)
+      const identity = await load<Identity>(join(dir, 'config.json'))
+      if (!identity || identity.server !== server || !identity.runnerId || !identity.secret)
+        throw new Error('Start the Node Runner first')
+      const http = new Harness(server, token, identity, tunnel)
+      if (command === 'open') {
+        const url = await link(http, consoleUrl)
+        if (f.link) console.log(url)
+        else await openBrowser(url)
+      } else {
+        const { browser } = await http.request<{ browser: string }>('access/pair/info', { code })
+        if (!process.stdin.isTTY || !process.stdout.isTTY)
+          throw new Error('Confirm pairing in an interactive terminal on this Runner')
+        const input = createInterface({ input: process.stdin, output: process.stdout })
+        try {
+          const answer = await input.question(
+            'Allow ' +
+              browser +
+              ' (' +
+              code +
+              ') to access ' +
+              userId +
+              ' on ' +
+              server +
+              ' via ' +
+              identity.runnerId +
+              '? Type yes: ',
+          )
+          if (answer.trim().toLowerCase() === 'yes') {
+            await http.request('access/pair/approve', { code })
+            console.log('Browser approved.')
+          } else console.log('Pairing cancelled.')
+        } finally {
+          input.close()
+        }
       }
+    } finally {
+      tunnel?.close()
     }
     return
   }
@@ -206,6 +254,8 @@ async function main() {
   const runner = await AgentRunner.create({
     ...coding,
     server,
+    ssh,
+    sshConfig,
     token,
     home,
     userId: profile?.user,
@@ -225,27 +275,18 @@ async function main() {
         console.log('Executing ' + (event.payload as { toolName: string }).toolName)
     },
     async onRegistered(r) {
-      const id = digest(server + '\n' + r.userId + '\n' + home).slice(0, 12)
+      const id = digest(key + '\n' + r.userId + '\n' + home).slice(0, 12)
       await save(join(profilesDir, id + '.json'), {
         user: r.userId,
         server,
         home,
-        console: consoleUrl,
+        ssh,
+        sshConfig,
+        console: browserAddress,
         credentials,
       }).catch((e) => console.error('Could not save Runner profile: ' + errorText(e)))
-      process.send?.({ type: 'registered', runnerId: r.identity.runnerId })
+      process.send?.({ type: 'registered', runnerId: r.identity.runnerId, profileId: id })
       console.log('Runner online: ' + r.identity.runnerId + ' (profile ' + id + ')')
-      if (
-        command !== 'recover' &&
-        !f['no-browser'] &&
-        env.JAGENT_OPEN_BROWSER?.toLowerCase() !== 'false'
-      ) {
-        try {
-          await openBrowser(await link(r.http, consoleUrl))
-        } catch {
-          console.error('Use jagent open --link to open your Console.')
-        }
-      }
     },
   })
   const shutdown = () => {

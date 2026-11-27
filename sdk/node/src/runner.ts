@@ -1,3 +1,5 @@
+import { syncSource } from './source.js'
+import { SshTunnel } from './ssh.js'
 import { deferred } from './deferred.js'
 import { hostname, homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -23,6 +25,8 @@ import {
 
 export interface RunnerOptions {
   server: string
+  ssh?: string
+  sshConfig?: string
   token: string
   home?: string
   userId?: string
@@ -34,6 +38,7 @@ export interface RunnerOptions {
   instructions?: string
   diagnostics?: Record<string, string>
   version?: string
+  runnerSourceWorkspace?: string
   buildRevision?: string
   idleDisconnectSeconds?: number
   onStatus?: (text: string) => void
@@ -53,16 +58,25 @@ function toolMessage(call: ToolCall, result: ToolResult) {
     text && Buffer.byteLength(text) > MAX_RESULT_BYTES ? preview(text, MAX_RESULT_BYTES) : result.content
   return { role: 'tool', toolCallId: call.toolCallId, ...result, content }
 }
-export async function connection(server: string, token: string, home: string, expectedUser?: string) {
+export async function connection(
+  server: string,
+  token: string,
+  home: string,
+  expectedUser?: string,
+  tunnel?: SshTunnel,
+) {
   server = origin(server)
-  const { userId } = await new Harness(server, token).request<{ userId: string }>('access/identity')
+  const { userId } = await new Harness(server, token, undefined, tunnel).request<{ userId: string }>(
+    'access/identity',
+  )
   if (!userId || (expectedUser && userId !== expectedUser))
     throw new Error('Credential does not match the Runner profile')
   if (!/^[A-Za-z0-9_-]+$/.test(userId)) throw new Error('Invalid user identity')
   const root = resolve(home)
-  let base = join(root, 'servers', digest(server))
+  let base = join(root, 'servers', digest(tunnel?.key ?? server))
   // Existing identities retain their project and mainbot bindings across upgrades.
   if (
+    !tunnel &&
     !(await load<Identity>(join(base, 'config.json'))) &&
     (await load<Identity>(join(root, 'config.json')))?.server === server
   )
@@ -86,6 +100,7 @@ export class AgentRunner {
   private closed = false
   private running = false
   private registered = false
+  private retrySourceAt = Infinity
   private readonly finished = deferred<void>()
   private constructor(
     readonly options: RunnerOptions,
@@ -93,9 +108,10 @@ export class AgentRunner {
     readonly userId: string,
     dir: string,
     private release: () => Promise<void>,
+    private tunnel?: SshTunnel,
   ) {
     this.journal = new Journal(dir)
-    this.http = new Harness(identity.server, options.token, identity)
+    this.http = new Harness(identity.server, options.token, identity, tunnel)
     this.endpoint = 'runners/' + identity.runnerId
     this.catalog = new Map(options.tools.map((tool) => [tool.name, tool]))
   }
@@ -107,11 +123,25 @@ export class AgentRunner {
       (!Number.isFinite(options.idleDisconnectSeconds) || options.idleDisconnectSeconds < 0)
     )
       throw new Error('Invalid idle disconnect timeout')
+    if (options.sshConfig && !options.ssh) throw new Error('SSH config requires an SSH destination')
+    const tunnel = options.ssh
+      ? new SshTunnel(options.ssh, new URL(origin(options.server)), options.sshConfig)
+      : undefined
+    try {
+      return await AgentRunner.connect(options, tunnel)
+    } catch (error) {
+      tunnel?.close()
+      throw error
+    }
+  }
+
+  private static async connect(options: RunnerOptions, tunnel?: SshTunnel) {
     const { server, userId, dir } = await connection(
       options.server,
       options.token,
       options.home ?? join(homedir(), '.jagent-runner'),
       options.userId,
+      tunnel,
     )
     const release = await lease(join(dir, 'leases'))
     try {
@@ -127,7 +157,7 @@ export class AgentRunner {
       }
       if (identity.server !== server || !/^runner_[\w-]+$/.test(identity.runnerId) || !identity.secret)
         throw new Error('Invalid saved Runner identity')
-      return new AgentRunner(options, identity, userId, dir, release)
+      return new AgentRunner(options, identity, userId, dir, release, tunnel)
     } catch (e) {
       await release()
       throw e
@@ -135,6 +165,18 @@ export class AgentRunner {
   }
   private async register() {
     const o = this.options
+    let source
+    if (o.runnerSourceWorkspace) {
+      try {
+        source = await syncSource(this.http, join(this.journal.dir, 'sources'), this.stopped.signal)
+        this.retrySourceAt = Infinity
+      } catch (error) {
+        if (this.stopped.signal.aborted) throw error
+        // Older Harness versions can still run jobs. Check again on reconnect.
+        this.retrySourceAt = error instanceof HttpError && error.status === 404 ? Infinity : Date.now() + 60000
+        o.onStatus?.('Harness source unavailable: ' + errorText(error))
+      }
+    }
     await this.http.request(
       'runners',
       {
@@ -144,6 +186,8 @@ export class AgentRunner {
         platform: process.platform + ' ' + process.arch,
         version: o.version,
         buildRevision: o.buildRevision,
+        runnerSourceWorkspace: o.runnerSourceWorkspace,
+        ...source,
         protocolVersion: '1',
         description: o.description ?? '',
         capabilities: o.capabilities ?? [],
@@ -287,7 +331,7 @@ export class AgentRunner {
     try {
       while (!signal.aborted) {
         try {
-          if (reconnect) {
+          if (reconnect || Date.now() >= this.retrySourceAt) {
             await this.register()
             reconnect = false
           }
@@ -409,6 +453,7 @@ export class AgentRunner {
       try {
         await this.release()
       } finally {
+        this.tunnel?.close()
         this.finished.resolve()
       }
     }

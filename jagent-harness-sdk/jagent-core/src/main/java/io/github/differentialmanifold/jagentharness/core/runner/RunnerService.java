@@ -114,6 +114,10 @@ public class RunnerService implements AutoCloseable {
                 || info.platform.length() > 256
                 || (info.version != null && info.version.length() > 128)
                 || (info.buildRevision != null && info.buildRevision.length() > 160)
+                || (info.runnerSourceWorkspace != null && info.runnerSourceWorkspace.length() > 2048)
+                || (info.harnessSourceWorkspace != null && info.harnessSourceWorkspace.length() > 2048)
+                || ((info.harnessSourceWorkspace == null) != (info.harnessSourceSha256 == null))
+                || (info.harnessSourceSha256 != null && !info.harnessSourceSha256.matches("[a-f0-9]{64}"))
                 || (info.protocolVersion != null && info.protocolVersion.length() > 32)
                 || info.capabilities == null
                 || info.capabilities.size() > 64

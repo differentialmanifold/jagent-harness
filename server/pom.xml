@@ -1,0 +1,92 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>2.7.18</version>
+    <relativePath />
+  </parent>
+  <groupId>io.github.differentialmanifold</groupId>
+  <artifactId>jagent-server</artifactId>
+  <version>2.4.0</version>
+  <name>JAgentHarness Server</name>
+  <properties>
+    <java.version>8</java.version>
+    <postgresql.version>42.7.14</postgresql.version>
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>com.larksuite.oapi</groupId>
+      <artifactId>oapi-sdk</artifactId>
+      <version>2.8.7</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.github.differentialmanifold</groupId>
+      <artifactId>jagent-console-spring-boot-starter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.differentialmanifold</groupId>
+      <artifactId>jagent-store-jdbc</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.differentialmanifold</groupId>
+      <artifactId>jagent-mcp-spring-boot-starter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.xerial</groupId>
+      <artifactId>sqlite-jdbc</artifactId>
+      <version>3.45.3.0</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>bundle-product-source</id>
+            <phase>generate-resources</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <target>
+                <property name="source.dir" location="${project.build.outputDirectory}/META-INF/jagent"/>
+                <mkdir dir="${source.dir}"/>
+                <exec executable="node" dir="${project.basedir}/.." failonerror="true">
+                  <arg value="scripts/source-files.mjs"/>
+                  <arg value="${project.build.directory}"/>
+                </exec>
+                <delete file="${source.dir}/source.zip"/>
+                <zip destfile="${source.dir}/source.zip" filesonly="true" modificationtime="946684800000">
+                  <fileset dir="${project.basedir}/.." includesfile="${project.build.directory}/source-files.txt" followsymlinks="false" defaultexcludes="false"/>
+                </zip>
+                <checksum file="${source.dir}/source.zip" algorithm="SHA-256" property="source.sha256"/>
+                <loadfile property="source.revision" srcfile="${project.build.directory}/source-revision.txt"/>
+                <echo file="${source.dir}/source.properties">version=${project.version}
+revision=${source.revision}
+sha256=${source.sha256}
+</echo>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

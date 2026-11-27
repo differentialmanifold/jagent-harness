@@ -6,7 +6,7 @@ Each user has their own mainbot, Agents, Projects, conversations, memory, Skills
 
 ## Local startup
 
-`node scripts/start.mjs local` starts the server and frontend, then the Runner opens your personal Console automatically. The standard server creates a local identity and writes its credential to `data/user.env` on first startup. The local launcher and the npm CLI read that file automatically. Keep the database and credential file across restarts.
+`node scripts/start.mjs local` starts the server and frontend, then the launcher opens your personal Console automatically. The standard server creates a local identity and writes its credential to `data/user.env` on first startup. The local launcher and the npm CLI read that file automatically. Keep the database and credential file across restarts.
 
 For separate processes, start the server, frontend, then Runner. Use the repository root as the working directory for a source launch, or set `JAGENT_USER_CREDENTIALS` to the credential file's absolute path.
 
@@ -15,8 +15,8 @@ For separate processes, start the server, frontend, then Runner. Use the reposit
 Run these commands **on the Harness host**, from the same working directory and with the same database configuration as the server. They do not start a web server or Agent execution loops.
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.4.0.jar users create --name Alice --output alice.env
-java -jar examples/server-demo/target/server-demo-2.4.0.jar users list
+java -jar server/target/jagent-server-2.4.0.jar users create --name Alice --output alice.env
+java -jar server/target/jagent-server-2.4.0.jar users list
 ```
 
 With the prebuilt application, replace the JAR path with `server/server.jar`. For SQLite, point `JAGENT_DATASOURCE_URL` at the same database file as the running Harness. For PostgreSQL, export the same JDBC URL, username, password and any custom application ID in this shell. Direct JAR commands read the process environment. [Database settings](../../QUICK_START.md#choose-a-database)
@@ -35,9 +35,9 @@ jagent runner \
   --credentials /path/to/alice.env
 ```
 
-The Runner connects outbound and opens the remote Console. If the frontend has a different address from the Harness API origin, add `--console http://console.example.com`; that frontend must proxy `/api/` to the same Harness. Environment equivalents are `JAGENT_SERVER_URL`, `JAGENT_USER_CREDENTIALS` (or `JAGENT_USER_TOKEN`) and `JAGENT_CONSOLE_URL`.
+The Runner connects outbound. Open the remote Console separately using `jagent open`. If the frontend has a different address from the Harness API origin, add `--console http://console.example.com`; that frontend must proxy `/api/` to the same Harness. Environment equivalents are `JAGENT_SERVER_URL`, `JAGENT_USER_CREDENTIALS` (or `JAGENT_USER_TOKEN`) and `JAGENT_CONSOLE_URL`.
 
-Only the Runner runs on the user's computer. Use `--no-browser` or `JAGENT_OPEN_BROWSER=false` to skip opening the Console on an unattended terminal.
+SSH and direct Runners can serve the same Harness simultaneously. SSH carries Runner API traffic. Browsers reach the Console independently and authenticate with a browser session, including when using a separately forwarded localhost Console.
 
 The first authorized Runner becomes the user's mainbot environment. Later Runners leave that binding unchanged. Using the same user's token on another machine adds another Runner to the same personal space; different users have different tokens and spaces. Runner state is separated by server and stable user ID. Resetting a token preserves the identity and execution records.
 
@@ -81,7 +81,7 @@ Use the **same API origin** the Runner registered against and the **same state r
 An operator can generate a link on the Harness host, using the same database configuration as the running server:
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.4.0.jar users link \
+java -jar server/target/jagent-server-2.4.0.jar users link \
   --id usr_example --console https://harness.example.com --output console-link.txt
 ```
 
@@ -98,8 +98,8 @@ Pending results are saved before exit. Restart with the same state directory and
 ## Reset or revoke access
 
 ```sh
-java -jar examples/server-demo/target/server-demo-2.4.0.jar users reset --id usr_example --output replacement.env
-java -jar examples/server-demo/target/server-demo-2.4.0.jar users revoke --id usr_example
+java -jar server/target/jagent-server-2.4.0.jar users reset --id usr_example --output replacement.env
+java -jar server/target/jagent-server-2.4.0.jar users revoke --id usr_example
 ```
 
 Use the actual ID from `users list`; the automatically created local user's ID is `local`. Resetting preserves data, invalidates the previous token and browser sessions, and re-enables a revoked user. Update every Runner using that token. Revocation prevents further authenticated access; it does not delete the user's data. If `data/user.env` is lost, reset `local` explicitly. Startup never silently replaces an existing credential.
@@ -110,8 +110,8 @@ One token grants access to its user's space, including browser access and regist
 
 Both are accepted. Remote HTTP produces a Runner warning and a non-blocking Console notice. Authentication still applies, but credentials, messages and tool commands can be intercepted or modified in transit. Use HTTP only with a trusted network or protected tunnel; HTTPS is recommended for remote access. HTTP browser cookies omit `Secure`; HTTPS cookies include it. Both retain HttpOnly, SameSite and cross-site request checks.
 
-## Embedding the server
+## Server identity settings
 
-The standard `server-demo` enables `harness.identity.enabled=true`. An application using the Maven libraries can enable the same setting with the JDBC store and Console starter. `harness.identity.local-token-file` optionally enables the local bootstrap credential file; omit it when issuing every user explicitly. User data uses a namespace derived from the configured application ID and stable user ID. Background work, subscriptions and in-memory execution state follow the same identity. Existing local data remains in the deployment's local namespace.
+The standard `jagent-server` enables `harness.identity.enabled=true`. `harness.identity.local-token-file` optionally enables the local bootstrap credential file; omit it when issuing every user explicitly. User data uses a namespace derived from the configured application ID and stable user ID. Background work, subscriptions and in-memory execution state follow the same identity. Existing local data remains in the deployment's local namespace.
 
 Custom stores and server tools must enforce the current `UserContext`; custom asynchronous work must capture and restore it. Storage isolation does not sandbox custom server tools or provide operating-system isolation between Runners. Cloud account registration and environment provisioning are not implemented yet.

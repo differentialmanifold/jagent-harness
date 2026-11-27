@@ -1,4 +1,4 @@
-package com.example.serverdemo;
+package io.github.differentialmanifold.jagentharness.server;
 
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.SpringApplication;
@@ -7,9 +7,8 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
-/** An ordinary consumer application. Framework components come from the Maven dependency. */
 @SpringBootApplication
-public class ServerDemoApplication {
+public class HarnessApplication {
     @Bean
     @ConfigurationProperties("spring.datasource.hikari")
     HikariDataSource dataSource(DataSourceProperties properties) {
@@ -25,6 +24,6 @@ public class ServerDemoApplication {
             UserCommand.run(args);
             return;
         }
-        SpringApplication.run(ServerDemoApplication.class, args);
+        SpringApplication.run(HarnessApplication.class, args);
     }
 }

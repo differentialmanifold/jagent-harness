@@ -5,7 +5,7 @@ import { once } from 'node:events'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { createConsoleServer } from './console-server.mjs'
+import { createConsoleServer } from '../../console/serve.mjs'
 
 test('offline Console serves only UI files and proxies authenticated streaming requests', async t => {
   const dir = mkdtempSync(resolve(tmpdir(), 'jagent-console-'))

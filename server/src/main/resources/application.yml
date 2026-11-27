@@ -4,7 +4,7 @@ server:
 
 spring:
   application:
-    name: server-demo
+    name: jagent-server
   datasource:
     url: ${JAGENT_DATASOURCE_URL:jdbc:sqlite:agent-server.db}
     username: ${JAGENT_DATASOURCE_USERNAME:}

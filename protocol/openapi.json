@@ -1456,6 +1456,59 @@
           }
         ]
       }
+    },
+    "/source/manifest": {
+      "get": {
+        "operationId": "sourceManifest",
+        "summary": "Identify the source snapshot embedded in this Harness build",
+        "responses": {
+          "200": {
+            "description": "Version, revision and SHA-256 of the archive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "revision",
+                    "sha256"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/source/archive": {
+      "get": {
+        "operationId": "sourceArchive",
+        "summary": "Download the matching source for a local Runner workspace",
+        "responses": {
+          "200": {
+            "description": "ZIP of the product build inputs",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -22,10 +22,10 @@ From the repository root, run:
 cd sdk/node
 npm ci
 npm pack
-npm install --global ./jagent-0.1.1.tgz
+npm install --global ./jagent-0.2.0.tgz
 jagent version
 ```
 
 Use the filename printed by `npm pack`. On the execution machine, connect with `jagent runner --server <url> --credentials <file>`. To uninstall, run `npm uninstall --global jagent`.
 
-To build the application ZIP and Runner tarball from a checkout, run `node scripts/package.mjs` from the repository root. Both files are written to `target/`.
+Build the [server JAR](../server/README.md#build-from-a-checkout) and [Console](../console/README.md#build-and-host) independently.

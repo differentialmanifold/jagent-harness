@@ -10,6 +10,10 @@ Reference materials: [OpenAPI](openapi.json), [JSON Schema](schema.json), and [f
 
 The JSON files in `fixtures/` are protocol test samples: user messages, tool results, responses, stream events, runner registration, and polling. `schema.test.mjs` checks them against the JSON Schema during CI and release validation. They are not runtime configuration or installed tool implementations. Run `npm ci --prefix protocol` and `npm test --prefix protocol` from the repository root to validate them.
 
+## Coding Runner source discovery
+
+On registration or reconnect the standard Coding Runner reads `GET /api/v1/source/manifest` and compares its `sha256` with its local cache. For a new digest it downloads `GET /api/v1/source/archive`, verifies and extracts the ZIP, then registers the absolute `harnessSourceWorkspace` and `harnessSourceSha256`. The independent `runnerSourceWorkspace` points to the installed Runner's own source. These optional registration fields are unnecessary for device Runners without coding tools.
+
 ## Public chat and internal Runner chat
 
 Frontends send messages to **`POST /api/v1/chat`** for every project. The session's project configuration selects execution; callers do not choose an endpoint based on Runner presence.

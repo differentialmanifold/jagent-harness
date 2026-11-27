@@ -36,12 +36,13 @@ If the version is unavailable from that registry, use the operator-supplied `jag
 Test connectivity from the target, including an authenticated API request when applicable.
 
 1. If the target can reach a configured Harness address directly, use it.
-2. If it cannot, but the current Runner can reach the Harness and SSH into the target, establish SSH remote port forwarding from the current Runner's machine. Bind the forwarded port only to the target's loopback interface, choose an unused port and check forwarding actually succeeded.
-3. If neither route exists, report the missing network or SSH access. Do not change server exposure or authentication to bypass it.
+2. If the target can SSH to the Harness host or a gateway, start the target's Coding Runner (0.2.0+) with `jagent runner --ssh <destination> --server <origin-as-seen-from-SSH-host> --credentials <user.env> --no-browser`. The Runner manages forwarding and reconnects itself. Use a trusted host key and unattended SSH credentials.
+3. If only the current Runner can reach the Harness and SSH into the target, establish SSH remote port forwarding from the current Runner's machine. Bind the forwarded port only to the target's loopback interface, choose an unused port and check forwarding actually succeeded.
+4. If none of these routes exists, report the missing network or SSH access. Do not change server exposure or authentication to bypass it.
 
 For example, when the Harness is HTTP on the SSH initiator's `127.0.0.1:18181`, a forward with `-R 127.0.0.1:18182:127.0.0.1:18181` makes it reachable at `http://127.0.0.1:18182` on the target. Use the real addresses and free ports, with `-N -T -o ExitOnForwardFailure=yes`. For HTTPS preserve certificate hostname validation; do not work around a tunnel hostname mismatch by disabling TLS verification.
 
-The SSH initiator maintains the tunnel. Supervise and reconnect it there; manage the Runner separately on the target, according to whether the environment is temporary or long-term. A detached process or `nohup` survives a shell exit but does not provide reboot recovery. Starting a service on the target does not maintain an SSH tunnel initiated on another machine.
+For the reverse-forwarding case, the SSH initiator maintains the tunnel. Supervise and reconnect it there; manage the Runner separately on the target, according to whether the environment is temporary or long-term. A detached process or `nohup` survives a shell exit but does not provide reboot recovery. Starting a service on the target does not maintain an SSH tunnel initiated on another machine.
 
 ## Start and verify
 

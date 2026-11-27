@@ -20,12 +20,12 @@ jobs:
           java-version: '8'
       - name: Check package version against tag
         run: node -e "require('node:assert/strict').equal(process.env.GITHUB_REF_NAME,'runner-v'+require('./sdk/node/package.json').version)"
-      - run: mvn -B -pl examples/server-demo -am -DskipTests package
+      - run: mvn -B -pl server -am -DskipTests package
       - run: npm ci --prefix sdk/node
       - name: Verify and stage the packed CLI
         working-directory: sdk/node
         run: |
-          server=(../../examples/server-demo/target/server-demo-*.jar)
+          server=(../../server/target/jagent-server-*.jar)
           JAGENT_TEST_SERVER_JAR="$(realpath "${server[0]}")" npm test
           npm pack --pack-destination "$RUNNER_TEMP"
           npm install --global --offline --no-audit --prefix "$RUNNER_TEMP/client" "$RUNNER_TEMP"/jagent-*.tgz
