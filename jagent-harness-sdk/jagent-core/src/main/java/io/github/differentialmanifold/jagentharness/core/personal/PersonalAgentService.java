@@ -357,14 +357,16 @@ public class PersonalAgentService implements AutoCloseable {
     }
 
     public Map<String, Object> discoverAgents(String query) {
-        String needle = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        // Every whitespace-separated token must appear in the row text (lowercased substring).
+        String[] tokens = query == null ? new String[0] : query.trim().toLowerCase(Locale.ROOT).split("\\s+");
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, RunnerSummary> visible = new LinkedHashMap<>();
         Set<String> matching = new LinkedHashSet<>();
         Map<String, RunnerSummary> found = new LinkedHashMap<>();
+        Map<String, String> runnerText = new LinkedHashMap<>();
         for (RunnerSummary runner : runners()) {
             visible.put(runner.runnerId, runner);
-            if (Arrays.asList(
+            String row = Arrays.asList(
                             runner.runnerId,
                             runner.name,
                             runner.description,
@@ -372,16 +374,19 @@ public class PersonalAgentService implements AutoCloseable {
                             runner.runtime,
                             runner.capabilities)
                     .toString()
-                    .toLowerCase(Locale.ROOT)
-                    .contains(needle)) matching.add(runner.runnerId);
+                    .toLowerCase(Locale.ROOT);
+            runnerText.put(runner.runnerId, row);
+            if (matches(row, tokens)) matching.add(runner.runnerId);
         }
         List<Map<String, Object>> colleagues = new ArrayList<>();
         for (Profile p : store.profiles()) {
             RunnerSummary environment = visible.get(p.runnerId);
             if (p.runnerId != null && environment == null) continue;
             Map<String, Object> row = agentDescription(p);
-            if (!matching.contains(p.runnerId)
-                    && !row.toString().toLowerCase(Locale.ROOT).contains(needle)) continue;
+            // An agent is discovered together with the runner it is bound to, so both texts are searched.
+            String text = row.toString().toLowerCase(Locale.ROOT);
+            if (environment != null) text += " " + runnerText.get(environment.runnerId);
+            if (!matching.contains(p.runnerId) && !matches(text, tokens)) continue;
             colleagues.add(row);
             if (environment != null) found.put(environment.runnerId, environment);
             if (colleagues.size() == 50) break;
@@ -393,6 +398,13 @@ public class PersonalAgentService implements AutoCloseable {
         out.put("agents", colleagues);
         out.put("runners", new ArrayList<>(found.values()));
         return out;
+    }
+
+    /** True when the lowercased row text contains every query token (an empty token list matches all). */
+    private static boolean matches(String rowText, String[] tokens) {
+        for (String token : tokens)
+            if (!token.isEmpty() && !rowText.contains(token)) return false;
+        return true;
     }
 
     public synchronized Map<String, Object> sendToAgent(
