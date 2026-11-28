@@ -199,8 +199,9 @@ abstract class PersonalTool implements ToolDefinition {
     }
 
     private void validate(JsonNode args, Action a) {
+        boolean update = args.hasNonNull("id");
         for (String key : a.required)
-            if (!args.hasNonNull(key))
+            if (!update && !args.hasNonNull(key))
                 throw new IllegalArgumentException("Missing required field: " + key);
         args.fields()
                 .forEachRemaining(
